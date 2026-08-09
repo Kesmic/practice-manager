@@ -152,27 +152,61 @@ the point.
 
 ## Part 4 — Publish it
 
-Everything is now in place. This step sets it running.
+This happens in **two separate stages**: first you create a request to publish,
+then you approve it. The approve button does not exist until the request does, so
+do these in order.
+
+> **Before you start this part, make sure Part 3 is finished** — both codes handed
+> to GitHub. Publishing without them will fail. Harmlessly, but it will fail.
+
+### 4a. Create the request
 
 1. Go to **https://github.com/Kesmic/practice-manager/pulls**
-2. Click **New pull request**
-3. You will see two dropdown boxes. Set them so it reads:
+2. **If you already see an open request in the list, skip to 4b** — it may
+   already have been created for you.
+3. Otherwise click **New pull request**
+4. You will see two dropdown boxes side by side near the top. Set them so the
+   line reads:
+
    **base: `main`** ← **compare: `claude/kesmic-task-management-d68vl7`**
-4. Click **Create pull request**, then **Create pull request** again on the next
-   screen
-5. Wait a minute or two. Some automatic checks run and should show green ticks.
-6. Click **Merge pull request**, then **Confirm merge**
 
-Now watch it publish:
+   The order matters. If you set them the other way round, GitHub will tell you
+   there is nothing to compare.
+5. Click the green **Create pull request** button
+6. A form appears with a title already filled in. Click the green
+   **Create pull request** button again to confirm.
 
-7. Go to **https://github.com/Kesmic/practice-manager/actions**
-8. The top item will have a spinning amber dot. Click it to watch progress.
-9. After roughly two minutes the dot turns into a **green tick**. Your portal is
+You are now on the request's own page. This is where the approve button lives.
+
+### 4b. Approve it
+
+You are looking at a page with tabs across the top (**Conversation**, **Commits**,
+**Files changed**). Stay on **Conversation**.
+
+1. **Scroll to the bottom of that page.** This is the step most people miss — the
+   button is below the list of automatic checks, not up at the top.
+2. You will see a box. Wait for the checks above it to finish (a minute or two);
+   they should show green ticks.
+3. Click the green button in that box. It will say **Merge pull request** — or
+   possibly **Squash and merge** or **Rebase and merge**, depending on settings.
+   **Any of them is fine.** If it has a small dropdown arrow beside it, ignore the
+   arrow and click the main part of the button.
+4. The button changes to **Confirm merge**. Click that.
+
+The box turns purple and says **Merged**. That is the moment your portal starts
+publishing itself.
+
+### 4c. Watch it publish
+
+1. Go to **https://github.com/Kesmic/practice-manager/actions**
+2. The top item will have a spinning amber dot. Click it to watch progress.
+3. After roughly two minutes the dot turns into a **green tick**. Your portal is
    live.
 
 If it turns into a **red cross** instead, click into it, then send me a
 screenshot — I will tell you exactly what to change. A failure here breaks
-nothing; it simply means it did not publish yet.
+nothing; it simply means it did not publish yet, and you can try again as many
+times as you like.
 
 ---
 
