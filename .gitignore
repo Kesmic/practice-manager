@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.wrangler/
+
+# Local secrets for `wrangler dev`. Never commit — holds BOOTSTRAP_SECRET.
+.dev.vars
+.env
+.env.*
+
+*.log
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/
