@@ -334,9 +334,18 @@ To add staff, clients or work, you simply use the portal.
 ## If something goes wrong
 
 **The Actions page shows a red cross.** Click into it and send me a screenshot.
-Nothing is broken — it just did not publish. The three usual causes are a
-mistyped secret name in Part 3c, a database name that is not exactly
-`kesmic-practice`, or the Database ID pasted without its quotation marks.
+Nothing is broken — it just did not publish. The usual causes are a mistyped
+secret name in Part 3c, a database name that is not exactly `kesmic-practice`,
+or the Database ID pasted without its quotation marks.
+
+**It says the token "contains a character that cannot be used".** Copying a long
+code out of a web page sometimes drags an invisible character along with it — you
+cannot see it, and it is nobody's fault. The publish step now strips those
+characters automatically, so this should not recur. If it somehow does, go back
+to **https://dash.cloudflare.com/profile/api-tokens**, use **Roll** on the token
+to get a fresh value, and update the secret in GitHub. Use Cloudflare's copy
+button rather than selecting the text by hand, and paste it straight into GitHub
+without going via any other app.
 
 **The portal address shows an error.** Give it two minutes after the green tick,
 then reload. If it persists, tell me what the page says.
