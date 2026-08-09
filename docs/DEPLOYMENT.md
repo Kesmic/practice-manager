@@ -33,6 +33,36 @@ each one somewhere. That is really all this process is.
 
 ---
 
+## If you already set this up once
+
+The portal used to run as a Cloudflare *Worker* and now runs as a Cloudflare
+*Pages* project. That change was needed to put it on **portal.kesmic.org** —
+[docs/DOMAIN.md](./DOMAIN.md) explains why. Three things follow from it, and the
+first will stop a publish if you skip it:
+
+1. **Your permission slip needs one more tick.** The one you made in Part 3a was
+   for Workers. Go to **https://dash.cloudflare.com/profile/api-tokens**, click
+   **Edit** next to `GitHub publishing`, and change the **Workers Scripts** row to
+   **Cloudflare Pages** — leaving the D1 and Account Settings rows alone. Save. The
+   code itself does not change, so there is nothing to re-paste into GitHub. If
+   you would rather start fresh, create a new token as in Part 3a and update the
+   `CLOUDFLARE_API_TOKEN` secret on GitHub with the new value.
+2. **The portal's address changes**, from one ending `.workers.dev` to one ending
+   `.pages.dev`. Part 5a tells you where to find it.
+3. **Your two secrets need adding again** on the new project — Parts 5b and 5b(ii).
+   They belong to the old Worker and do not follow it across.
+
+**Your information is safe.** The filing cabinet is untouched by all of this: it is
+the same database with the same contents. If you already created your
+administrator account, it still exists, with the same password.
+
+Once the new address works, tidy up the old one: **Workers & Pages**, click the
+old **kesmic-practice-manager** *Worker* (it will say Worker, not Pages), then
+**Settings → Delete**. That removes a second front door to the same records.
+Deleting it does not touch the database.
+
+---
+
 ## Part 1 — Make the filing cabinet (on Cloudflare)
 
 This is where staff records, client work and signed documents will be stored.
@@ -104,7 +134,7 @@ Right now the two websites do not know each other. This part introduces them.
 
    | Box 1 | Box 2 | Box 3 |
    | --- | --- | --- |
-   | Account | Workers Scripts | Edit |
+   | Account | Cloudflare Pages | Edit |
 
 6. Click **+ Add more** and set the second row to:
 
@@ -217,9 +247,9 @@ times as you like.
 
 ### 5a. Get the web address
 
-1. In Cloudflare, go to **Compute (Workers)** (or **Workers & Pages**)
+1. In Cloudflare, go to **Workers & Pages**
 2. Click **kesmic-practice-manager**
-3. Near the top you will see an address ending in **.workers.dev**. That is your
+3. Near the top you will see an address ending in **.pages.dev**. That is your
    portal. Open it in a new tab.
 
 You will see a sign-in screen. You do not have an account yet — next step.
@@ -235,7 +265,8 @@ do.
    For example: `purple-cabinet-19-ostrich-clay`
 2. In Cloudflare, still on the **kesmic-practice-manager** page, click
    **Settings**
-3. Find **Variables and Secrets**, then click **+ Add**
+3. Find **Variables and Secrets** — make sure you are on the **Production** side
+   of that panel, not Preview — then click **+ Add**
 4. Set **Type** to **Secret**
 5. In **Variable name**, type exactly: `BOOTSTRAP_SECRET`
 6. In **Value**, paste your phrase
@@ -276,7 +307,7 @@ the same problem for $5 a month and needs nothing to remember.
 ### 5c. Create your administrator account
 
 1. Go to your portal address and add `/setup` on the end, for example:
-   `https://kesmic-practice-manager.something.workers.dev/setup`
+   `https://kesmic-practice-manager.pages.dev/setup`
 2. Fill in the form:
    - **Bootstrap secret** — the phrase from 5b
    - **Full name** — your name, spelled the way you want it to appear on
@@ -295,7 +326,8 @@ it to create an account.
 
 Now that your account exists, remove the setup phrase so that page is dead for good.
 
-1. In Cloudflare: **kesmic-practice-manager → Settings → Variables and Secrets**
+1. In Cloudflare: **Workers & Pages → kesmic-practice-manager → Settings →
+   Variables and Secrets → Production**
 2. Find `BOOTSTRAP_SECRET` and delete it
 3. Click **Deploy** (or **Save**)
 
@@ -353,7 +385,7 @@ before they can do anything else.
 
 ### And check the filing deadlines
 
-**Job templates** has fifteen standard jobs — VAT returns, PAYE, corporate tax
+**Job templates** has fourteen standard jobs — VAT returns, PAYE, corporate tax
 and so on — each with a filing deadline built in. Those dates are sensible
 defaults, not advice. Check each against current Ghana Revenue Authority rules
 and adjust. No technical help needed; just edit the template.
@@ -370,6 +402,12 @@ To add staff, clients or work, you simply use the portal.
 ---
 
 ## If something goes wrong
+
+**The publish fails mentioning authentication, permissions, or "Pages".** The
+permission slip is missing the Pages tick. Fix it as described in **If you already
+set this up once**, above, then go to
+**https://github.com/Kesmic/practice-manager/actions**, open the failed run and
+click **Re-run all jobs**.
 
 **The Actions page shows a red cross.** Click into it and send me a screenshot.
 Nothing is broken — it just did not publish. The usual causes are a mistyped

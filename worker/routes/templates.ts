@@ -101,7 +101,10 @@ export function registerTemplateRoutes(router: Router<Env>): void {
         fields.default_recurrence ?? "none",
         fields.budget_hours,
         fields.checklist ?? "[]",
-        fields.due_date_rule,
+        // Nullable in the schema, and genuinely optional: an internal job has no
+        // statutory filing deadline. Without the coalesce, omitting it binds
+        // undefined and D1 rejects the whole insert.
+        fields.due_date_rule ?? null,
         fields.internal_lead_days ?? 5,
         timestamp,
         timestamp,

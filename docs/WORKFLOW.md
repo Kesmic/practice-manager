@@ -145,7 +145,7 @@ read and interpret.
 ## Recurring work and job templates
 
 A **job template** holds the standard procedures for a recurring compliance job
-plus its statutory deadline rule. Fifteen are seeded, covering VAT, PAYE,
+plus its statutory deadline rule. Fourteen are seeded, covering VAT, PAYE,
 withholding tax, corporate tax instalments and returns, transfer pricing,
 statutory audit, financial statements, management accounts, payroll, registrar
 annual returns, regulatory returns, tax health checks and client onboarding.

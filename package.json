@@ -6,10 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/build-worker.mjs",
     "typecheck": "tsc --noEmit",
-    "preview": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "preview": "wrangler pages dev",
+    "deploy": "wrangler pages deploy",
     "db:migrate:local": "wrangler d1 migrations apply kesmic-practice --local",
     "db:migrate:remote": "wrangler d1 migrations apply kesmic-practice --remote"
   },
@@ -24,6 +24,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
+    "esbuild": "0.21.5",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.6.2",

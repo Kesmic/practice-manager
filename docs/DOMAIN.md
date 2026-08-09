@@ -13,83 +13,104 @@ Two facts, both verified, that between them rule out the obvious approach:
    domain away from Wix. It is why the domain's **⋯** menu offers *Manage DNS
    records* and *Transfer away from Wix*, but nothing about nameservers.
 
-So as long as kesmic.org is registered at Wix, Cloudflare cannot manage its DNS,
-and the portal cannot be given that name **in its current form**.
-
-There are three honest ways forward.
-
----
-
-## Route A — Move the portal to Cloudflare Pages (recommended)
-
-Cloudflare Pages is the one Cloudflare product that accepts a subdomain pointed at
-it from someone else's DNS. Convert the portal to a Pages project and Wix keeps
-managing kesmic.org exactly as it does today.
-
-**What you do:** add one record in Wix — a CNAME called `portal` pointing at the
-project's `.pages.dev` address — and register that same name in Cloudflare first
-so it is recognised.
-
-**What this costs:**
-
-- About an hour of development work to convert the project.
-- The portal's underlying address changes, so the two secrets
-  (`PASSWORD_PEPPER`, and `BOOTSTRAP_SECRET` if it is still there) are entered
-  again on the new project.
-- Pages is the older of Cloudflare's two ways of doing this. It is not being shut
-  down — Cloudflare is folding its features into Workers rather than retiring it,
-  and new projects are still created normally — but it is the less
-  actively-developed side.
-
-**What this does not cost:** nothing about your website or your email is touched.
-Not one existing record changes. The database, and therefore every account and
-record in the portal, carries over untouched.
-
-**Why it is recommended:** it is the only route that gives you the name you want
-while honouring the thing you asked for at the outset — no transferring the
-domain — and it puts nothing at risk that is currently working.
+So as long as kesmic.org is registered at Wix, Cloudflare cannot manage its DNS.
+The way round it is Cloudflare Pages, which the portal now uses; the whole job is
+one record.
 
 ---
 
-## Route B — Transfer the domain away from Wix
+## The plan: one record at Wix
 
-If kesmic.org is registered somewhere that lets you choose nameservers —
-Cloudflare Registrar being the obvious candidate, at cost price and usually
-cheaper than Wix — then Cloudflare can manage the DNS, and the portal keeps its
-current, more modern setup with **no code changes at all**. `portal.kesmic.org`
-becomes a single click.
+The portal now runs as a Cloudflare **Pages** project, which is the one Cloudflare
+product that accepts a subdomain pointed at it from someone else's DNS. So Wix
+keeps managing kesmic.org exactly as it does today, and you add a single record.
 
-**What this costs:**
+**Nothing that currently works is touched.** Not your website, not your email, not
+one existing record. The sixteen records listed further down stay exactly as they
+are — they are there for reference, not because anything needs doing to them.
 
-- A registrar transfer: unlock the domain at Wix, get the authorisation code,
-  start the transfer at the new registrar, wait roughly five to seven days. A
-  domain cannot be transferred within 60 days of registration or a previous
-  transfer.
-- Your DNS records then have to be recreated at Cloudflare. This is where the
-  care is needed, because **your firm's Microsoft 365 email runs on this domain**
-  — the full list is at the end of this page.
-- You stop paying Wix for the domain and start paying the new registrar.
+### Step 1 — Register the name with Cloudflare first
 
-**Worth knowing:** the website itself stays on Wix either way. A registrar
-transfer moves who you buy the name from, not where the site is hosted.
+This step is not optional and the order matters: adding the record at Wix before
+Cloudflare knows about the name gives visitors an error page rather than the
+portal.
+
+1. Sign in at **https://dash.cloudflare.com**
+2. Go to **Workers & Pages** and click **kesmic-practice-manager**
+3. Open the **Custom domains** tab
+4. Click **Set up a custom domain**
+5. Type `portal.kesmic.org` and continue
+
+Cloudflare will then show you the record it wants — a **CNAME** for `portal`
+pointing at something ending in **.pages.dev**. Copy that target exactly.
+
+### Step 2 — Add that one record at Wix
+
+1. In your Wix account, go to **Domains**
+2. Click the **⋯** button to the right of **kesmic.org**
+3. Choose **Manage DNS records**
+4. Find the **CNAME (Aliases)** section and click **+ Add Record**
+5. Fill it in:
+
+   | Field | Value |
+   | --- | --- |
+   | Host name | `portal` |
+   | Value / Points to | the `.pages.dev` target from Step 1 |
+   | TTL | leave as it is |
+
+6. Save
+
+### Step 3 — Wait for the padlock
+
+Back on the Cloudflare **Custom domains** tab, the entry for
+`portal.kesmic.org` moves from *pending* to **Active** once it can see the record.
+Usually a few minutes; occasionally up to a few hours. Cloudflare issues the
+security certificate itself — there is nothing to buy or install.
+
+When it is Active, open **https://portal.kesmic.org**. You should get the portal's
+sign-in screen with a padlock in the address bar.
+
+The `.pages.dev` address keeps working as well, so nobody's bookmark breaks.
+
+### If it does not come up
+
+- **An error page mentioning DNS or a 522.** The record has not been seen yet, or
+  the target was mistyped. Re-check the value in Wix against Step 1 — it is easy
+  to paste a trailing space.
+- **A certificate warning.** Cloudflare has not finished issuing the certificate.
+  Give it an hour before worrying.
+- **Nothing happens at all after a few hours.** Tell me and I will check what the
+  name is resolving to.
+
+Removing it later is the reverse: delete the custom domain in Cloudflare, delete
+the CNAME at Wix. Nothing else is affected.
 
 ---
 
-## Route C — Leave it on the `.workers.dev` address
+## Why not the other ways
 
-The portal already works, over HTTPS, at
-`kesmic-practice-manager.kesmicgh.workers.dev`. Staff can bookmark it. The only
-thing wrong with it is that it does not carry the firm's name.
+**Why not simply point the subdomain at the Worker?** Cloudflare will only let a
+Worker answer on your own name if Cloudflare manages the whole domain's DNS, and
+Wix does not permit a Wix-registered domain to use anyone else's nameservers —
+their help centre states that moving nameservers requires transferring the domain
+away. That is why the domain's **⋯** menu offers *Manage DNS records* and
+*Transfer away from Wix*, with nothing in between.
 
-Nothing to do, nothing at risk, and the decision stays open indefinitely.
+**Why not transfer the domain away from Wix?** It would work, and it would let the
+portal keep its original setup with no code changes. But it means a five-to-seven
+day registrar transfer, buying the name from someone else, and recreating all
+sixteen DNS records — including the firm's Microsoft 365 mail — at Cloudflare
+afterwards. Pointing one record is a great deal less that can go wrong.
 
 ---
 
 ## Reference: every DNS record on kesmic.org
 
-Read from live DNS on **9 August 2026**. You need this only for **Route B**, where
-the records have to be recreated — but it is worth keeping regardless, as a record
-of how the domain is set up. The lines marked ⚠️ are your firm's email.
+Read from live DNS on **9 August 2026**. **Nothing here needs changing** — the
+portal's subdomain is added alongside all of it. It is written down because it is
+worth having a record of how the domain is set up, and because it is what you
+would need if you ever did move the domain elsewhere. The lines marked ⚠️ are your
+firm's email.
 
 ### Website (Wix)
 
@@ -137,10 +158,12 @@ Sixteen records in total. Nameservers are currently `ns12.wixdns.net` and
 
 ---
 
-## Two email problems worth fixing, whichever route you take
+## Two email problems worth fixing separately
 
-Neither is caused by anything here — both are live today. Both are fixed in Wix
-under **Domains → ⋯ → Manage DNS records**.
+Neither is caused by anything on this page — both are live today, and both are
+fixed in Wix under **Domains → ⋯ → Manage DNS records**, the same screen you used
+for the subdomain. Do them as a separate sitting, so you are only ever changing one
+thing at a time.
 
 **Your domain has two SPF records, and may only ever have one.** You have
 `v=spf1 include:spf.protection.outlook.com -all` for Microsoft 365 and

@@ -560,9 +560,13 @@ async function readDocumentFields(
     requires_signature: requiresSignature,
     requires_acknowledgement: requiresAck,
     audience,
-    assigned_user_id: body.assigned_user_id === undefined ? undefined : assignedUserId,
     effective_from: optionalDate(body.effective_from, "effective_from"),
     position: optionalNumber(body.position, "position", { max: 10_000 }),
+    // `optionalId` already turns an absent value into null, which is what the
+    // INSERT needs. Mapping it back to `undefined` here would bind undefined to
+    // D1 and fail the whole request — an all-staff policy, which is the ordinary
+    // case, carries no assigned employee. Updates are handled by the loop below.
+    assigned_user_id: assignedUserId,
   };
 
   /*

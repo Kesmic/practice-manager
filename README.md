@@ -58,7 +58,7 @@ reference to the working paper at issue, and a status. The preparer answers each
 one; the reviewer resolves or waives it. A deliverable cannot be signed off with
 a must-fix point outstanding.
 
-**Job templates and a filing calendar** — fifteen seeded compliance templates
+**Job templates and a filing calendar** — fourteen seeded compliance templates
 (VAT, PAYE, withholding tax, corporate tax, transfer pricing, statutory audit,
 management accounts, payroll, registrar and regulatory returns, and more), each
 with its standard procedures and a statutory deadline rule. Generate a whole
@@ -99,8 +99,16 @@ The workflow, the grades and the controls are documented in
 
 ## Architecture
 
-One Cloudflare Worker serves the React app and the API from a single origin,
-backed by Cloudflare D1 (SQLite).
+One Worker serves the React app and the API from a single origin, backed by
+Cloudflare D1 (SQLite). It is deployed as a **Cloudflare Pages** project in
+advanced mode: `worker/index.ts` is bundled to `dist/_worker.js`, which Pages
+hands every request to.
+
+Pages rather than Workers only because of the custom domain. `portal.kesmic.org`
+has to be pointed at this from Wix's DNS, and Wix does not let a domain
+registered with it use anyone else's nameservers — which a Worker custom domain
+requires. Pages accepts a CNAME from external DNS. See
+**[docs/DOMAIN.md](docs/DOMAIN.md)**.
 
 ```
 shared/workflow.ts   the deliverable state machine, grades and gates — the single
@@ -128,6 +136,7 @@ src/                 the React app (TypeScript, Vite, Tailwind)
 
 migrations/          D1 schema, seeded job templates and seeded handbook,
                      applied by CI
+scripts/             build-worker.mjs — bundles the Worker to dist/_worker.js
 docs/                deployment, custom domain, workflow and portal documentation
 ```
 
@@ -153,28 +162,33 @@ line:
 ```bash
 npm install
 npx wrangler login
-npx wrangler d1 create kesmic-practice     # paste the id into wrangler.toml
-npx wrangler secret put BOOTSTRAP_SECRET   # a long random string
+npx wrangler d1 create kesmic-practice           # paste the id into wrangler.toml
+npx wrangler pages project create kesmic-practice-manager --production-branch=main
+npx wrangler pages secret put BOOTSTRAP_SECRET   # a long random string
 npm run build
 npx wrangler d1 migrations apply kesmic-practice --remote
-npx wrangler deploy
+npx wrangler pages deploy --branch=main
 ```
 
 Then open `/setup` on the deployed URL to create the first administrator.
 
 Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub repository
-secrets, and every push to `main` builds, migrates and deploys itself.
+secrets, and every push to `main` builds, migrates and deploys itself. The token
+needs **Cloudflare Pages: Edit**, **D1: Edit** and **Account Settings: Read** — a
+token cut for Workers Scripts instead of Pages will fail at the deploy step.
 
 ### Local development
 
 ```bash
 echo 'BOOTSTRAP_SECRET=local-dev-secret' > .dev.vars
 npx wrangler d1 migrations apply kesmic-practice --local
-npm run build && npx wrangler dev          # http://127.0.0.1:8787
+npm run build && npx wrangler pages dev    # http://127.0.0.1:8788
 ```
 
 `npm run dev` runs Vite alone for fast UI iteration, but the API needs
-`wrangler dev`, so use the command above when working on anything end to end.
+`wrangler pages dev`, so use the command above when working on anything end to
+end. Note that `npm run build` must run first, and again after any change to
+`worker/` — `pages dev` serves the bundled `dist/_worker.js`, not the sources.
 
 ---
 
@@ -184,7 +198,7 @@ npm run build && npx wrangler dev          # http://127.0.0.1:8787
 | --------------------------- | ---------------------------------------------- |
 | `npm run typecheck`         | TypeScript across app, Worker and shared code  |
 | `npm run build`             | Typecheck, then build the app into `dist/`     |
-| `npx wrangler dev`          | Run the whole system locally                   |
+| `npx wrangler pages dev`    | Run the whole system locally                   |
 | `npm run db:migrate:local`  | Apply migrations to the local database         |
 | `npm run db:migrate:remote` | Apply migrations to production                 |
 | `npm run deploy`            | Deploy by hand (CI normally does this)         |
@@ -208,7 +222,7 @@ npm run build && npx wrangler dev          # http://127.0.0.1:8787
 - **Take backups.** `npx wrangler d1 export kesmic-practice --remote --output backup.sql`
   on a schedule. Client compliance records deserve a copy outside Cloudflare.
 - **Clear the bootstrap secret** once the first administrator exists:
-  `npx wrangler secret delete BOOTSTRAP_SECRET`. That disables `/setup`.
+  `npx wrangler pages secret delete BOOTSTRAP_SECRET`. That disables `/setup`.
 - **Understand the password work factor.** It is capped by the Worker CPU budget,
   not by cryptography: the Free plan allows 10 ms of CPU per request, and
   PBKDF2-SHA256 costs ~0.5 ms per thousand iterations, so the default is 8,000
