@@ -1,0 +1,31 @@
+name = "kesmic-practice-manager"
+main = "worker/index.ts"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+# The built React app. `run_worker_first` keeps /api/* out of the static asset
+# resolver, while `single-page-application` makes every other unmatched path
+# fall back to index.html so client-side routing works on a hard refresh.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[observability]
+enabled = true
+
+# Created once with:
+#   wrangler d1 create kesmic-practice
+# then paste the returned database_id below and commit it (it is not a secret).
+[[d1_databases]]
+binding = "DB"
+database_name = "kesmic-practice"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[vars]
+SESSION_TTL_DAYS = "7"
+
+# BOOTSTRAP_SECRET is a secret, not a var. Set it once with:
+#   wrangler secret put BOOTSTRAP_SECRET
