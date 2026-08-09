@@ -419,10 +419,13 @@ first account — probably you, in an earlier attempt. Just sign in normally.
 ## Three things for later
 
 **Your own web address.** Right now the portal lives at a `.workers.dev`
-address. It can live at something like `portal.kesmic.org` instead, without
-moving your domain away from Wix and without touching your existing website —
-but it needs a change on my side first. Tell me when you want it and I will
-handle that part.
+address. It can live at **portal.kesmic.org** instead, with kesmic.org staying
+registered at Wix and your website staying exactly where it is.
+
+**[docs/DOMAIN.md](./DOMAIN.md)** is the click-by-click guide, including every
+record that has to survive the switch — your firm's Microsoft 365 email runs on
+this domain, so the order of the steps matters. Nothing in the portal needs
+changing and nothing is needed from me.
 
 **Backups.** Cloudflare keeps your information safely, but there is no automatic
 copy you hold yourself. For records about clients and employees, you want one.

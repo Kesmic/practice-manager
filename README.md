@@ -128,7 +128,7 @@ src/                 the React app (TypeScript, Vite, Tailwind)
 
 migrations/          D1 schema, seeded job templates and seeded handbook,
                      applied by CI
-docs/                deployment, workflow and portal documentation
+docs/                deployment, custom domain, workflow and portal documentation
 ```
 
 Because both sides import `shared/workflow.ts`, a button appears in the UI
