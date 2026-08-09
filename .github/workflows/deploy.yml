@@ -16,7 +16,9 @@ jobs:
     name: Build, migrate and deploy
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: production
+    # No `environment:` here on purpose. Naming an environment can introduce an
+    # approval gate that silently parks the deploy in a "waiting" state, which is
+    # confusing when you are expecting a push to main to simply go live.
 
     steps:
       - uses: actions/checkout@v4

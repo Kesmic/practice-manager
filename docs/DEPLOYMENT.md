@@ -1,227 +1,329 @@
-# Deployment
+# Putting the portal online
 
-The system is one Cloudflare Worker that serves both the React app and the JSON
-API, backed by a Cloudflare D1 database. GitHub is the source of truth, and
-GitHub Actions deploys on every push to `main`.
+A step-by-step guide you can follow entirely in your web browser. No software to
+install, nothing to type into a black screen.
 
-```
-  git push to main
-        │
-        ▼
-  GitHub Actions ──► npm run build (typecheck + Vite)
-        │            wrangler d1 migrations apply --remote
-        │            wrangler deploy
-        ▼
-  Cloudflare Worker ── /api/*  → API handlers ──► D1 (kesmic-practice)
-                    └─ /*      → React app (static assets)
-```
+**Roughly 30 minutes.** Most of it is copying a few codes between two websites.
 
-There is a **one-time manual setup** below. After that you never deploy by hand:
-pushing to `main` is the deploy.
+You will use two websites:
+
+- **GitHub** — where the portal's files live: https://github.com/Kesmic/practice-manager
+- **Cloudflare** — where the portal will actually run, and where its information
+  is stored
+
+The idea: you tell Cloudflare to make an empty filing cabinet, you tell GitHub
+where that cabinet is, and then GitHub does all the building and publishing work
+for you — now and every time anything changes in future.
 
 ---
 
-## Why not GitHub Pages
+## Before you start
 
-GitHub Pages serves static files only. This system has to enforce rules that the
-browser must not be trusted with — an associate cannot approve their own work, a
-deliverable cannot be signed off with unresolved review points. Those checks have
-to run on a server, so there has to be a backend somewhere.
+Create a **free** Cloudflare account if you do not have one:
+**https://dash.cloudflare.com/sign-up**
 
-Cloudflare Workers is that backend. The code, history and CI all stay on GitHub;
-Cloudflare is only the runtime.
+That is the only sign-up needed. There is nothing to pay — a firm of your size
+fits comfortably inside the free allowance.
 
----
-
-## Part 1 — One-time Cloudflare setup
-
-### 1.1 Create the database
-
-Install Wrangler locally and sign in once:
-
-```bash
-npm install
-npx wrangler login          # opens a browser
-npx wrangler d1 create kesmic-practice
-```
-
-That prints a `database_id`. Paste it into `wrangler.toml`, replacing
-`REPLACE_WITH_YOUR_D1_DATABASE_ID`, then commit. The id is not a secret.
-
-### 1.2 First deploy
-
-Migrations run before the deploy so the schema exists by the time the Worker
-serves its first request:
-
-```bash
-npm run build
-npx wrangler d1 migrations apply kesmic-practice --remote
-npx wrangler deploy
-```
-
-Wrangler prints a `https://kesmic-practice-manager.<subdomain>.workers.dev` URL.
-
-### 1.3 Set the bootstrap secret
-
-This authorises creation of the very first administrator account, once. Set it
-*after* the first deploy — the Worker has to exist before a secret can be
-attached to it, otherwise Wrangler stops to ask whether to create one.
-
-```bash
-npx wrangler secret put BOOTSTRAP_SECRET
-# paste a long random string and keep it somewhere safe
-```
-
-Generate one with `openssl rand -base64 32`. Secrets take effect immediately;
-no redeploy is needed.
-
-Now open the Worker URL, go to `/setup`, and create your administrator account
-using that secret. The endpoint refuses to run again once a user exists.
-
-### 1.4 Hand the deploys to GitHub Actions
-
-Create a Cloudflare API token at
-**Cloudflare dashboard → My Profile → API Tokens → Create Token → Custom token**
-with these permissions:
-
-| Scope   | Permission           | Access |
-| ------- | -------------------- | ------ |
-| Account | Workers Scripts      | Edit   |
-| Account | D1                   | Edit   |
-| Account | Account Settings     | Read   |
-
-Then add two **repository secrets** in GitHub
-(**Settings → Secrets and variables → Actions → New repository secret**):
-
-| Name                    | Value                                              |
-| ----------------------- | -------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`  | the token you just created                         |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → Workers & Pages → Account ID |
-
-From here on, every push to `main` builds, migrates and deploys by itself.
+Keep a blank note open. You will collect **three codes** along the way and paste
+each one somewhere. That is really all this process is.
 
 ---
 
-## Part 2 — Putting it on your domain
+## Part 1 — Make the filing cabinet (on Cloudflare)
 
-You own `kesmic.org` through Wix. The goal is
-`https://tasks.kesmic.org` pointing at the Worker, with `www.kesmic.org`
-continuing to serve your existing Wix site.
+This is where staff records, client work and signed documents will be stored.
 
-Pick one of the two options below. **Option A** is the one I recommend.
+1. Sign in at **https://dash.cloudflare.com**
+2. In the menu on the left, look for **Storage & Databases**, then click
+   **D1 SQL Database**. (Cloudflare occasionally rearranges this menu — if you
+   cannot see it, type "D1" into the search box at the top.)
+3. Click **Create database**
+4. In the name box, type exactly:
 
-### Option A (recommended) — move DNS for kesmic.org to Cloudflare
+   ```
+   kesmic-practice
+   ```
 
-Cloudflare Worker custom domains require the domain's DNS to be hosted at
-Cloudflare. Moving it also puts Cloudflare's CDN and certificates in front of
-your Wix site, which is a bonus rather than a cost.
+   **The name must match exactly**, including the hyphen and all lower case. The
+   portal looks for a cabinet with this precise name and will not find one that
+   is spelled differently.
+5. Click **Create**
 
-**Before you change anything, record your current DNS.** In the Wix dashboard
-open **Domains → kesmic.org → DNS Records** and screenshot or copy every record
-(A, CNAME, MX, TXT). You will verify these afterwards. The records that matter
-most are the ones pointing `kesmic.org` and `www.kesmic.org` at Wix, plus any
-`MX` records for email and `TXT` records for SPF/DKIM or domain verification.
+You will land on a page about your new database. Find **Database ID** — a long
+string of letters, numbers and hyphens. Click the copy button next to it.
 
-1. Create a free Cloudflare account and choose **Add a site** → `kesmic.org`.
-2. Cloudflare scans your existing DNS and imports what it finds. **Check the
-   imported list against what you recorded** and add anything missing —
-   especially `MX` and `TXT` records. Getting this wrong is the one step that can
-   take your website or email offline.
-3. Cloudflare gives you two nameservers, e.g. `xxx.ns.cloudflare.com`.
-4. In Wix: **Domains → kesmic.org → Advanced → Change nameservers**, and set
-   Wix to use external nameservers, entering Cloudflare's two.
-5. Wait for Cloudflare to report the domain **Active** (usually well under an
-   hour, occasionally up to 24). Confirm `www.kesmic.org` still loads your Wix
-   site before continuing.
-6. Attach the subdomain to the Worker — **Workers & Pages →
-   kesmic-practice-manager → Settings → Domains & Routes → Add → Custom
-   domain** → `tasks.kesmic.org`. Cloudflare creates the DNS record and issues
-   the TLS certificate automatically.
-
-`https://tasks.kesmic.org` is now the system, and it stays on that URL through
-every future deploy.
-
-### Option B — leave DNS at Wix
-
-If you would rather not move the apex domain, run on the free hostname
-Cloudflare already gave you:
-
-```
-https://kesmic-practice-manager.<your-subdomain>.workers.dev
-```
-
-Everything works identically — it is the same Worker — the URL is just not
-branded. This needs no DNS changes at all. You can switch to Option A whenever
-you like without touching the code.
-
-> There is a third route: delegating only `tasks.kesmic.org` to Cloudflare with
-> `NS` records at Wix, leaving the apex on Wix DNS. Cloudflare supports
-> subdomain-only zones, but availability varies by plan, so confirm it is offered
-> on your account before relying on it.
+📋 **Paste it into your note as "Code 1 — Database ID".**
 
 ---
 
-## Part 3 — Adding your team
+## Part 2 — Tell the portal where the cabinet is (on GitHub)
 
-Sign in as the administrator, go to **Team → Add team member**, and set each
-person's grade. The system shows a temporary password **once** — pass it on
-through a channel separate from the link, for example read it out by phone.
+1. Open this link, which takes you straight to the right file:
 
-On first sign-in the user must set their own password. Until they do, the API
-refuses everything except the account screen, so a temporary password cannot be
-used to drive the system.
+   **https://github.com/Kesmic/practice-manager/blob/claude/kesmic-task-management-d68vl7/wrangler.toml**
 
-Grades and what they permit are documented in [WORKFLOW.md](./WORKFLOW.md).
+2. Click the **pencil icon** near the top right of the file to edit it
+3. Find this line, roughly two thirds of the way down:
 
----
+   ```
+   database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+   ```
 
-## Everyday operations
+4. Select just the words `REPLACE_WITH_YOUR_D1_DATABASE_ID` and replace them with
+   **Code 1** from your note. **Keep the quotation marks.** When you are done it
+   should look something like:
 
-| Task                          | How                                                    |
-| ----------------------------- | ------------------------------------------------------ |
-| Ship a change                 | Merge to `main`. Actions deploys it.                   |
-| Change the schema             | Add a **new** file in `migrations/`. Never edit an applied one. |
-| Roll back                     | Revert the commit and push. Actions redeploys.          |
-| Read production logs          | `npx wrangler tail`                                     |
-| Query production data         | `npx wrangler d1 execute kesmic-practice --remote --command "SELECT ..."` |
-| Back up the database          | `npx wrangler d1 export kesmic-practice --remote --output backup.sql` |
-| Run locally                   | See below                                               |
+   ```
+   database_id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+   ```
 
-### Running locally
+5. Click the green **Commit changes...** button at the top right
+6. Leave the message as it is and click **Commit changes** again
 
-```bash
-npm install
-echo 'BOOTSTRAP_SECRET=local-dev-secret' > .dev.vars   # gitignored
-npx wrangler d1 migrations apply kesmic-practice --local
-npm run build
-npx wrangler dev
-```
-
-That serves the whole system at `http://127.0.0.1:8787` against a local SQLite
-database. `.dev.vars` is gitignored and must stay that way.
-
-### Backups
-
-D1 has point-in-time recovery on paid plans. On the free plan, take your own
-export on a schedule — the `d1 export` command above is enough, and a monthly
-run stored somewhere off Cloudflare is a sensible minimum for client records.
+That is not a password, by the way — it is just a label saying which cabinet to
+use, so there is no harm in it being saved here.
 
 ---
 
-## Cost
+## Part 3 — Let GitHub publish to Cloudflare
 
-At the size of a small practice this runs inside Cloudflare's free tier
-(100,000 Worker requests/day, 5 GB of D1 storage, 5 million row reads/day).
-The Workers Paid plan is $5/month if you outgrow it.
+Right now the two websites do not know each other. This part introduces them.
+
+### 3a. Create the permission slip on Cloudflare
+
+1. Go to **https://dash.cloudflare.com/profile/api-tokens**
+2. Click **Create Token**
+3. Scroll to the bottom and click **Get started** next to **Create Custom Token**
+4. In **Token name**, type: `GitHub publishing`
+5. Under **Permissions** you will see a row of three dropdown boxes. Set the
+   first row to:
+
+   | Box 1 | Box 2 | Box 3 |
+   | --- | --- | --- |
+   | Account | Workers Scripts | Edit |
+
+6. Click **+ Add more** and set the second row to:
+
+   | Box 1 | Box 2 | Box 3 |
+   | --- | --- | --- |
+   | Account | D1 | Edit |
+
+7. Click **+ Add more** and set the third row to:
+
+   | Box 1 | Box 2 | Box 3 |
+   | --- | --- | --- |
+   | Account | Account Settings | Read |
+
+8. Click **Continue to summary**, then **Create Token**
+9. A long code appears. **Copy it now** — Cloudflare will never show it again.
+
+📋 **Paste it into your note as "Code 2 — Permission slip".**
+
+If you lose it, no harm done: come back and create another one, then use the new
+one instead.
+
+### 3b. Find your Cloudflare account number
+
+1. In the Cloudflare menu on the left, click **Compute (Workers)** — or
+   **Workers & Pages**, depending on what your dashboard calls it
+2. Look for **Account ID** on that page (usually in a panel on the right) and
+   copy it
+
+📋 **Paste it into your note as "Code 3 — Account ID".**
+
+### 3c. Hand both codes to GitHub
+
+1. Go to **https://github.com/Kesmic/practice-manager/settings/secrets/actions**
+2. Click the green **New repository secret**
+3. In **Name**, type exactly: `CLOUDFLARE_API_TOKEN`
+4. In **Secret**, paste **Code 2**
+5. Click **Add secret**
+6. Click **New repository secret** again
+7. In **Name**, type exactly: `CLOUDFLARE_ACCOUNT_ID`
+8. In **Secret**, paste **Code 3**
+9. Click **Add secret**
+
+Both names must be typed exactly as shown — capital letters and underscores
+included. GitHub hides these values from now on, including from you, which is
+the point.
 
 ---
 
-## Rules the deployment relies on
+## Part 4 — Publish it
 
-- **Migrations are additive.** They run *before* the new Worker goes out, so a
-  migration must never break the currently released code. To remove a column,
-  ship a release that stops reading it, then drop it in a later migration.
-- **`.dev.vars` is never committed.** It holds the bootstrap secret.
-- **`BOOTSTRAP_SECRET` can be rotated or cleared** once the first administrator
-  exists. Clearing it disables `/setup` entirely, which is worth doing:
-  `npx wrangler secret delete BOOTSTRAP_SECRET`.
+Everything is now in place. This step sets it running.
+
+1. Go to **https://github.com/Kesmic/practice-manager/pulls**
+2. Click **New pull request**
+3. You will see two dropdown boxes. Set them so it reads:
+   **base: `main`** ← **compare: `claude/kesmic-task-management-d68vl7`**
+4. Click **Create pull request**, then **Create pull request** again on the next
+   screen
+5. Wait a minute or two. Some automatic checks run and should show green ticks.
+6. Click **Merge pull request**, then **Confirm merge**
+
+Now watch it publish:
+
+7. Go to **https://github.com/Kesmic/practice-manager/actions**
+8. The top item will have a spinning amber dot. Click it to watch progress.
+9. After roughly two minutes the dot turns into a **green tick**. Your portal is
+   live.
+
+If it turns into a **red cross** instead, click into it, then send me a
+screenshot — I will tell you exactly what to change. A failure here breaks
+nothing; it simply means it did not publish yet.
+
+---
+
+## Part 5 — Find your portal and create your account
+
+### 5a. Get the web address
+
+1. In Cloudflare, go to **Compute (Workers)** (or **Workers & Pages**)
+2. Click **kesmic-practice-manager**
+3. Near the top you will see an address ending in **.workers.dev**. That is your
+   portal. Open it in a new tab.
+
+You will see a sign-in screen. You do not have an account yet — next step.
+
+📋 **Paste the address into your note as "Portal address".**
+
+### 5b. Set a one-time setup password
+
+This stops a stranger claiming the very first account in the minutes before you
+do.
+
+1. Think of a long random phrase — at least 20 characters, nothing guessable.
+   For example: `purple-cabinet-19-ostrich-clay`
+2. In Cloudflare, still on the **kesmic-practice-manager** page, click
+   **Settings**
+3. Find **Variables and Secrets**, then click **+ Add**
+4. Set **Type** to **Secret**
+5. In **Variable name**, type exactly: `BOOTSTRAP_SECRET`
+6. In **Value**, paste your phrase
+7. Click **Deploy** (or **Save**)
+
+📋 **Keep the phrase in your note for the next two minutes.**
+
+### 5c. Create your administrator account
+
+1. Go to your portal address and add `/setup` on the end, for example:
+   `https://kesmic-practice-manager.something.workers.dev/setup`
+2. Fill in the form:
+   - **Bootstrap secret** — the phrase from 5b
+   - **Full name** — your name, spelled the way you want it to appear on
+     documents you sign
+   - **Email** — your work email
+   - **Password** — at least 12 characters, mixing capitals, lower case and
+     numbers or symbols
+3. Click **Create administrator**
+
+You are in. This page will refuse to work a second time, so nobody else can use
+it to create an account.
+
+---
+
+## Part 6 — Close the setup door
+
+Now that your account exists, remove the setup phrase so that page is dead for good.
+
+1. In Cloudflare: **kesmic-practice-manager → Settings → Variables and Secrets**
+2. Find `BOOTSTRAP_SECRET` and delete it
+3. Click **Deploy** (or **Save**)
+
+You can now cross the phrase out of your note.
+
+---
+
+## Part 7 — Before your staff use it
+
+Two things need your judgement. Take your time over them — nothing is visible to
+staff until you say so.
+
+### Review the handbook
+
+Sign in and go to **Handbook and welcome**.
+
+Ten policies are waiting there marked **Draft**: conduct and ethics, client
+confidentiality, independence and conflicts of interest, anti-money laundering,
+IT security, leave, working hours, dignity at work, performance, and grievance
+and disciplinary procedure.
+
+**These are starting points, not finished documents.** They were written to be
+edited. Read each one and have them checked against Ghanaian employment law and
+your professional body's requirements before you publish. Click a policy, then
+**Edit** to change the wording.
+
+When a policy is genuinely ready, click **Publish**. Only then does it appear to
+staff, and only then are they asked to agree to it. Nothing can go out by
+accident.
+
+There is also a **Contract of Employment (template)**. Do not publish that one —
+copy it for each new employee, fill in their details, and issue it to them
+individually.
+
+### Write your welcome message
+
+**Handbook and welcome → Welcome message and firm details.**
+
+There is a draft there, but it will read far better in your own words. Add your
+name so it is signed properly. This is the first thing every new joiner reads.
+
+### Then add your team
+
+**People → Team → Add team member.** Set each person's grade — this decides who
+can assign work, who can review it, and who can sign it off.
+
+Each person gets a temporary password, shown **once**. Pass it on by phone or in
+person, not in the same email as the link. They must set their own password
+before they can do anything else.
+
+### And check the filing deadlines
+
+**Job templates** has fifteen standard jobs — VAT returns, PAYE, corporate tax
+and so on — each with a filing deadline built in. Those dates are sensible
+defaults, not advice. Check each against current Ghana Revenue Authority rules
+and adjust. No technical help needed; just edit the template.
+
+---
+
+## From now on
+
+You never repeat any of this. If anything about the portal changes in future, it
+publishes itself within a couple of minutes. You do not have to do anything.
+
+To add staff, clients or work, you simply use the portal.
+
+---
+
+## If something goes wrong
+
+**The Actions page shows a red cross.** Click into it and send me a screenshot.
+Nothing is broken — it just did not publish. The three usual causes are a
+mistyped secret name in Part 3c, a database name that is not exactly
+`kesmic-practice`, or the Database ID pasted without its quotation marks.
+
+**The portal address shows an error.** Give it two minutes after the green tick,
+then reload. If it persists, tell me what the page says.
+
+**`/setup` says the secret is incorrect.** The phrase in Cloudflare and the
+phrase you typed do not match. Check for a trailing space when you pasted it.
+
+**`/setup` says the deployment already has users.** Someone already created the
+first account — probably you, in an earlier attempt. Just sign in normally.
+
+---
+
+## Two things for later
+
+**Your own web address.** Right now the portal lives at a `.workers.dev`
+address. It can live at something like `portal.kesmic.org` instead, without
+moving your domain away from Wix and without touching your existing website —
+but it needs a change on my side first. Tell me when you want it and I will
+handle that part.
+
+**Backups.** Cloudflare keeps your information safely, but there is no automatic
+copy you hold yourself. For records about clients and employees, you want one.
+Ask me and I will set up automatic backups for you — it is not something you
+need to do by hand.

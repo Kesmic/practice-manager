@@ -140,9 +140,14 @@ Same-origin means no CORS layer and session cookies that stay `SameSite=Lax`.
 
 ## Getting it running
 
-Full instructions, including connecting a subdomain such as
-`portal.kesmic.org`, are in
-**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. The short version:
+**If you are not a developer**, follow
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** instead of anything below. It is a
+click-by-click guide you can complete entirely in a web browser — no software to
+install and nothing to type into a terminal. GitHub does the building and
+publishing; you only paste three codes between two websites.
+
+The rest of this section is the equivalent for someone comfortable at a command
+line:
 
 ```bash
 npm install
