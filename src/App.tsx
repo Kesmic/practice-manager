@@ -6,8 +6,15 @@ import { Account } from "./pages/Account";
 import { ClientDetail } from "./pages/ClientDetail";
 import { Clients } from "./pages/Clients";
 import { Dashboard } from "./pages/Dashboard";
+import { DocumentView } from "./pages/DocumentView";
+import { EmployeeDetail } from "./pages/EmployeeDetail";
 import { Engagements } from "./pages/Engagements";
+import { Handbook } from "./pages/Handbook";
 import { Login } from "./pages/Login";
+import { MyProfile } from "./pages/MyProfile";
+import { Onboarding } from "./pages/Onboarding";
+import { People } from "./pages/People";
+import { PortalAdmin } from "./pages/PortalAdmin";
 import { Notifications } from "./pages/Notifications";
 import { Reports } from "./pages/Reports";
 import { Setup } from "./pages/Setup";
@@ -72,6 +79,29 @@ export function App() {
         <Route path="/templates" element={<Templates />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/account" element={<Account />} />
+
+        {/* Employee portal */}
+        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/handbook" element={<Handbook />} />
+        <Route path="/documents/:id" element={<DocumentView />} />
+        <Route path="/my-profile" element={<MyProfile />} />
+        <Route
+          path="/people"
+          element={
+            <Protected minimum="manager">
+              <People />
+            </Protected>
+          }
+        />
+        <Route path="/people/:id" element={<EmployeeDetail />} />
+        <Route
+          path="/portal-admin"
+          element={
+            <Protected minimum="partner">
+              <PortalAdmin />
+            </Protected>
+          }
+        />
         <Route
           path="/reports"
           element={

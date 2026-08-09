@@ -16,6 +16,16 @@ import type {
   ServiceLine,
   TaskStatus,
 } from "./workflow";
+import type {
+  DocumentAudience,
+  DocumentKind,
+  DocumentStatus,
+  EmploymentStatus,
+  EmploymentType,
+  OnboardingProgress,
+  PayFrequency,
+  SignatureAction,
+} from "./hr";
 
 export interface User {
   id: string;
@@ -347,4 +357,188 @@ export interface Reports {
 export interface ApiError {
   error: string;
   detail?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Employee portal
+// ---------------------------------------------------------------------------
+
+export interface EmployeeProfile {
+  user_id: string;
+  staff_no: string | null;
+  job_title: string | null;
+  department: string | null;
+  employment_type: EmploymentType;
+  employment_status: EmploymentStatus;
+  start_date: string | null;
+  probation_end_date: string | null;
+  confirmed_on: string | null;
+  exit_date: string | null;
+  line_manager_id: string | null;
+  work_location: string | null;
+  profile_completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Personal details, only ever sent to the employee themselves or to HR. */
+export interface EmployeePersonalDetails {
+  date_of_birth: string | null;
+  gender: string | null;
+  marital_status: string | null;
+  personal_email: string | null;
+  phone: string | null;
+  residential_address: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  emergency_contact_relationship: string | null;
+  next_of_kin_name: string | null;
+  next_of_kin_phone: string | null;
+  highest_qualification: string | null;
+  professional_body: string | null;
+  membership_number: string | null;
+}
+
+/** Pay and bank details. Partner grade only. */
+export interface EmployeeCompensation {
+  user_id: string;
+  annual_salary: number | null;
+  currency: string;
+  pay_frequency: PayFrequency;
+  bank_name: string | null;
+  bank_branch: string | null;
+  account_name: string | null;
+  account_number: string | null;
+  tax_identification_no: string | null;
+  social_security_no: string | null;
+  notes: string | null;
+  updated_at: string;
+}
+
+export interface EmployeeSummary extends EmployeeProfile {
+  full_name: string;
+  email: string;
+  role: Role;
+  account_status: "active" | "suspended";
+  line_manager_name: string | null;
+  open_tasks: number;
+  overdue_tasks: number;
+  outstanding_documents: number;
+  onboarding_items_outstanding: number;
+}
+
+export interface PortalDocument {
+  id: string;
+  kind: DocumentKind;
+  category: string | null;
+  title: string;
+  summary: string | null;
+  version: number;
+  status: DocumentStatus;
+  requires_signature: 0 | 1;
+  requires_acknowledgement: 0 | 1;
+  audience: DocumentAudience;
+  assigned_user_id: string | null;
+  assigned_user_name: string | null;
+  effective_from: string | null;
+  position: number;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A document with its text, plus the viewer's own signature state. */
+export interface PortalDocumentDetail extends PortalDocument {
+  body: string;
+  my_signature: DocumentSignature | null;
+  /** Signatures across the firm — HR administrators only. */
+  signatures?: DocumentSignature[];
+  /** Employees who have not yet responded — HR administrators only. */
+  outstanding?: Array<{ user_id: string; full_name: string }>;
+}
+
+export interface DocumentSignature {
+  id: string;
+  document_id: string;
+  document_title?: string;
+  version: number;
+  user_id: string;
+  user_name?: string | null;
+  action: SignatureAction;
+  typed_name: string;
+  content_hash: string;
+  signed_at: string;
+}
+
+export interface OnboardingItem {
+  id: string;
+  user_id: string;
+  position: number;
+  label: string;
+  detail: string | null;
+  owner: "employee" | "hr";
+  category: string | null;
+  is_done: 0 | 1;
+  done_at: string | null;
+  done_by_name: string | null;
+}
+
+export interface EmployeeDocument {
+  id: string;
+  user_id: string;
+  label: string;
+  category: string | null;
+  url: string;
+  visible_to_employee: 0 | 1;
+  expires_on: string | null;
+  added_by_name: string | null;
+  added_at: string;
+}
+
+export interface HrEvent {
+  id: string;
+  subject_id: string | null;
+  actor_id: string | null;
+  actor_name: string | null;
+  kind: string;
+  detail: string | null;
+  created_at: string;
+}
+
+/** Everything the employee's own onboarding screen needs. */
+export interface MyOnboarding {
+  welcome_message: string;
+  md_name: string;
+  md_title: string;
+  firm_name: string;
+  profile: EmployeeProfile | null;
+  personal: EmployeePersonalDetails | null;
+  missing_profile_fields: string[];
+  items: OnboardingItem[];
+  /** Documents awaiting the viewer's signature or acknowledgement. */
+  outstanding_documents: PortalDocument[];
+  completed_documents: Array<PortalDocument & { signed_at: string; action: SignatureAction }>;
+  progress: OnboardingProgress;
+}
+
+/** The full personnel file, assembled for the HR employee screen. */
+export interface EmployeeFile {
+  user: User;
+  profile: EmployeeProfile | null;
+  personal: EmployeePersonalDetails | null;
+  compensation: EmployeeCompensation | null;
+  onboarding: OnboardingItem[];
+  documents: EmployeeDocument[];
+  signatures: DocumentSignature[];
+  outstanding_documents: PortalDocument[];
+  events: HrEvent[];
+  progress: OnboardingProgress;
+}
+
+export interface FirmSettings {
+  firm_name: string;
+  firm_website: string;
+  md_name: string;
+  md_title: string;
+  welcome_message: string;
 }

@@ -10,9 +10,12 @@ import type { Env } from "./env";
 import { Router, errorResponse, json } from "./http";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerClientRoutes } from "./routes/clients";
+import { registerDocumentRoutes } from "./routes/documents";
+import { registerEmployeeRoutes } from "./routes/employees";
 import { registerEngagementRoutes } from "./routes/engagements";
 import { registerInsightRoutes } from "./routes/insights";
 import { registerReviewRoutes } from "./routes/reviews";
+import { registerSettingsRoutes } from "./routes/settings";
 import { registerTaskItemRoutes } from "./routes/task-items";
 import { registerTaskRoutes } from "./routes/tasks";
 import { registerTemplateRoutes } from "./routes/templates";
@@ -34,6 +37,11 @@ registerReviewRoutes(router);
 registerTaskItemRoutes(router);
 registerTemplateRoutes(router);
 registerInsightRoutes(router);
+
+// Employee portal: HR records, onboarding and portal documents.
+registerEmployeeRoutes(router);
+registerDocumentRoutes(router);
+registerSettingsRoutes(router);
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

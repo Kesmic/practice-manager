@@ -9,6 +9,15 @@
 
 import type {
   ChecklistItem,
+  DocumentSignature,
+  EmployeeCompensation,
+  EmployeeFile,
+  EmployeeSummary,
+  FirmSettings,
+  MyOnboarding,
+  OnboardingItem,
+  PortalDocument,
+  PortalDocumentDetail,
   Client,
   ClientSummary,
   Dashboard,
@@ -319,5 +328,108 @@ export const api = {
     request<{ unread_notifications: number }>("/api/notifications/read", {
       method: "POST",
       body: { ids: ids ?? [] },
+    }),
+
+  // ------------------------------------------------------- employee portal
+  settings: () => request<{ settings: FirmSettings }>("/api/settings"),
+
+  updateSettings: (input: Partial<FirmSettings>) =>
+    request<{ settings: FirmSettings }>("/api/settings", {
+      method: "PATCH",
+      body: input,
+    }),
+
+  myProfile: () =>
+    request<{
+      profile: Record<string, string | null> | null;
+      missing_profile_fields: string[];
+    }>("/api/me/profile"),
+
+  updateMyProfile: (input: Record<string, unknown>) =>
+    request<{
+      profile: Record<string, string | null> | null;
+      missing_profile_fields: string[];
+    }>("/api/me/profile", { method: "PATCH", body: input }),
+
+  myOnboarding: () => request<MyOnboarding>("/api/me/onboarding"),
+
+  setOnboardingItem: (id: string, isDone: boolean) =>
+    request<{ item: OnboardingItem }>(`/api/onboarding-items/${id}`, {
+      method: "PATCH",
+      body: { is_done: isDone },
+    }),
+
+  employees: (params: Record<string, string | undefined> = {}) =>
+    request<{ employees: EmployeeSummary[]; can_administer: boolean }>(
+      `/api/employees${qs(params)}`,
+    ),
+
+  employee: (id: string) => request<EmployeeFile>(`/api/employees/${id}`),
+
+  updateEmployee: (id: string, input: Record<string, unknown>) =>
+    request<{ ok: true }>(`/api/employees/${id}`, { method: "PATCH", body: input }),
+
+  updateCompensation: (id: string, input: Record<string, unknown>) =>
+    request<{ compensation: EmployeeCompensation }>(
+      `/api/employees/${id}/compensation`,
+      { method: "PATCH", body: input },
+    ),
+
+  startOnboarding: (id: string) =>
+    request<{ ok: true; created: number }>(`/api/employees/${id}/onboarding`, {
+      method: "POST",
+    }),
+
+  addOnboardingItem: (id: string, input: Record<string, unknown>) =>
+    request<{ ok: true }>(`/api/employees/${id}/onboarding-items`, {
+      method: "POST",
+      body: input,
+    }),
+
+  addEmployeeDocument: (id: string, input: Record<string, unknown>) =>
+    request<{ ok: true }>(`/api/employees/${id}/documents`, {
+      method: "POST",
+      body: input,
+    }),
+
+  onboardingOverview: () =>
+    request<{ employees: Array<Record<string, unknown>> }>("/api/onboarding"),
+
+  // ------------------------------------------------------- portal documents
+  documents: (params: Record<string, string | undefined> = {}) =>
+    request<{ documents: Array<PortalDocument & { my_action: string | null; my_signed_at: string | null }> }>(
+      `/api/documents${qs(params)}`,
+    ),
+
+  document: (id: string) =>
+    request<{
+      document: PortalDocumentDetail;
+      my_signature: DocumentSignature | null;
+      signatures?: DocumentSignature[];
+      outstanding?: Array<{ user_id: string; full_name: string }>;
+    }>(`/api/documents/${id}`),
+
+  signDocument: (id: string, typedName: string) =>
+    request<{ signature: DocumentSignature }>(`/api/documents/${id}/sign`, {
+      method: "POST",
+      body: { typed_name: typedName },
+    }),
+
+  createDocument: (input: Record<string, unknown>) =>
+    request<{ document: PortalDocument }>("/api/documents", {
+      method: "POST",
+      body: input,
+    }),
+
+  updateDocument: (id: string, input: Record<string, unknown>) =>
+    request<{ document: PortalDocument }>(`/api/documents/${id}`, {
+      method: "PATCH",
+      body: input,
+    }),
+
+  setDocumentStatus: (id: string, status: "draft" | "published" | "archived") =>
+    request<{ document: PortalDocument }>(`/api/documents/${id}/publish`, {
+      method: "POST",
+      body: { status },
     }),
 };

@@ -9,16 +9,30 @@ interface NavItem {
   label: string;
   /** Minimum grade required to see the item. */
   minimum?: "manager" | "partner";
+  /** Heading the item sits under in the sidebar. */
+  section: string;
 }
 
 const NAV: NavItem[] = [
-  { to: "/", label: "Dashboard" },
-  { to: "/tasks", label: "Deliverables" },
-  { to: "/clients", label: "Clients" },
-  { to: "/engagements", label: "Engagements" },
-  { to: "/templates", label: "Job templates" },
-  { to: "/reports", label: "Reports", minimum: "manager" },
-  { to: "/team", label: "Team", minimum: "partner" },
+  { to: "/", label: "Dashboard", section: "Work" },
+  { to: "/tasks", label: "Deliverables", section: "Work" },
+  { to: "/clients", label: "Clients", section: "Work" },
+  { to: "/engagements", label: "Engagements", section: "Work" },
+  { to: "/templates", label: "Job templates", section: "Work" },
+  { to: "/reports", label: "Reports", minimum: "manager", section: "Work" },
+
+  { to: "/onboarding", label: "My onboarding", section: "My portal" },
+  { to: "/handbook", label: "Employee handbook", section: "My portal" },
+  { to: "/my-profile", label: "My details", section: "My portal" },
+
+  { to: "/people", label: "People", minimum: "manager", section: "Administration" },
+  { to: "/team", label: "Accounts and grades", minimum: "partner", section: "Administration" },
+  {
+    to: "/portal-admin",
+    label: "Handbook and welcome",
+    minimum: "partner",
+    section: "Administration",
+  },
 ];
 
 export function Layout() {
@@ -27,6 +41,10 @@ export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const visible = NAV.filter((item) => !item.minimum || can(item.minimum));
+  // Preserve the declared section order rather than relying on object key order.
+  const sections = ["Work", "My portal", "Administration"].filter((section) =>
+    visible.some((item) => item.section === section),
+  );
 
   const handleSignOut = async () => {
     await signOut();
@@ -52,22 +70,31 @@ export function Layout() {
         </div>
 
         <nav className="px-2 pb-4">
-          {visible.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === "/"}
-              onClick={() => setMenuOpen(false)}
-              className={({ isActive }) =>
-                `block rounded-md px-3 py-2 text-sm transition-colors ${
-                  isActive
-                    ? "bg-white/15 font-semibold text-white"
-                    : "text-brand-100 hover:bg-white/10 hover:text-white"
-                }`
-              }
-            >
-              {item.label}
-            </NavLink>
+          {sections.map((section) => (
+            <div key={section} className="mb-3">
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-brand-300">
+                {section}
+              </p>
+              {visible
+                .filter((item) => item.section === section)
+                .map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === "/"}
+                    onClick={() => setMenuOpen(false)}
+                    className={({ isActive }) =>
+                      `block rounded-md px-3 py-2 text-sm transition-colors ${
+                        isActive
+                          ? "bg-white/15 font-semibold text-white"
+                          : "text-brand-100 hover:bg-white/10 hover:text-white"
+                      }`
+                    }
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+            </div>
           ))}
         </nav>
       </aside>

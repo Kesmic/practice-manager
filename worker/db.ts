@@ -251,3 +251,30 @@ export function buildUpdate(
     binds,
   };
 }
+
+/**
+ * Appends to the HR audit trail. Kept separate from `task_events` because the
+ * two trails have different subjects, different readers and different retention
+ * expectations — an employment record is not a client deliverable.
+ */
+export function hrEventStatement(
+  env: Env,
+  input: {
+    subjectId: string | null;
+    actorId: string | null;
+    kind: string;
+    detail?: string | null;
+  },
+): D1PreparedStatement {
+  return env.DB.prepare(
+    `INSERT INTO hr_events (id, subject_id, actor_id, kind, detail, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    newId(),
+    input.subjectId,
+    input.actorId,
+    input.kind,
+    input.detail ?? null,
+    nowIso(),
+  );
+}
