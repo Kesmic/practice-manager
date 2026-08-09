@@ -103,7 +103,7 @@ export function registerUserRoutes(router: Router<Env>): void {
         fullName,
         role,
         title,
-        await hashPassword(password),
+        await hashPassword(env, password),
         mustChange,
         timestamp,
         timestamp,
@@ -231,7 +231,7 @@ export function registerUserRoutes(router: Router<Env>): void {
       `UPDATE users SET password_hash = ?, must_change_password = 1, updated_at = ?
         WHERE id = ?`,
     )
-      .bind(await hashPassword(password), nowIso(), target.id)
+      .bind(await hashPassword(env, password), nowIso(), target.id)
       .run();
 
     // Force the user back through sign-in with the new credential.

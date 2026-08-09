@@ -27,5 +27,27 @@ migrations_dir = "migrations"
 [vars]
 SESSION_TTL_DAYS = "7"
 
-# BOOTSTRAP_SECRET is a secret, not a var. Set it once with:
-#   wrangler secret put BOOTSTRAP_SECRET
+# Password hashing work factor. Left unset, the Worker uses 8,000 PBKDF2
+# iterations (~4 ms of CPU), which fits the 10 ms per-request CPU budget of the
+# Workers **Free** plan. Exceeding that budget does not degrade gracefully —
+# Cloudflare kills the request, so signing in becomes impossible rather than
+# slow, which is why this is deliberately low.
+#
+# On the Workers **Paid** plan there is no such constraint: uncomment both lines
+# below for the 600,000 iterations OWASP currently recommends (~290 ms).
+# Existing passwords keep working either way, because every hash records the
+# count it was created with; change or reset a password to move it to the new one.
+#
+# PASSWORD_ITERATIONS = "600000"
+#
+# [limits]
+# cpu_ms = 1000
+
+# Two secrets, neither of them set here — use the Cloudflare dashboard, or:
+#   wrangler secret put BOOTSTRAP_SECRET   # authorises /setup; delete afterwards
+#   wrangler secret put PASSWORD_PEPPER    # optional; see docs/DEPLOYMENT.md
+#
+# PASSWORD_PEPPER is mixed into every password before hashing. Because it lives
+# outside D1, a leaked database export cannot be attacked offline at all. It can
+# be added at any time without invalidating existing passwords, but once set it
+# must never be changed or removed.

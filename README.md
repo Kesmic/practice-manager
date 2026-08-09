@@ -111,7 +111,8 @@ shared/types.ts      wire types shared across the boundary
 
 worker/              the API
   index.ts           router; /api/* handled here, everything else is a static asset
-  auth.ts            PBKDF2 passwords, database-backed sessions
+  auth.ts            PBKDF2 passwords (work factor bounded by the Worker CPU
+                     budget, optional pepper), database-backed sessions
   dates.ts           statutory deadline and recurrence arithmetic
   routes/            auth, users, clients, engagements, tasks, workflow,
                      reviews, task-items, templates, insights,
@@ -208,6 +209,22 @@ npm run build && npx wrangler dev          # http://127.0.0.1:8787
   on a schedule. Client compliance records deserve a copy outside Cloudflare.
 - **Clear the bootstrap secret** once the first administrator exists:
   `npx wrangler secret delete BOOTSTRAP_SECRET`. That disables `/setup`.
+- **Understand the password work factor.** It is capped by the Worker CPU budget,
+  not by cryptography: the Free plan allows 10 ms of CPU per request, and
+  PBKDF2-SHA256 costs ~0.5 ms per thousand iterations, so the default is 8,000
+  (~4 ms) rather than the 600,000 OWASP recommends (~290 ms). Exceeding the budget
+  does not degrade gracefully — Cloudflare kills the request, so authentication
+  fails outright. On the Paid plan, set `PASSWORD_ITERATIONS = "600000"` and
+  `[limits] cpu_ms` (both are written and commented in `wrangler.toml`). Every
+  hash records its own iteration count, so changing the setting never invalidates
+  a stored password.
+- **Set `PASSWORD_PEPPER` if you stay on the Free plan.** It is HMAC'd into each
+  password before the KDF and lives in Worker secrets rather than D1, so a leaked
+  database export cannot be attacked offline whatever the work factor — which is
+  what makes a reduced iteration count defensible. Hashes record whether they were
+  peppered, so it can be switched on later without locking anyone out; it can
+  never be changed or removed afterwards, and the API says so explicitly rather
+  than reporting a wrong password.
 - **Documents are linked, not stored.** Deliverables and personnel files hold
   links into your existing document store rather than file uploads. Cloudflare R2
   would be the natural place to add real uploads later.
