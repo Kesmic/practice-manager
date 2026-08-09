@@ -1,43 +1,97 @@
 # Putting the portal on portal.kesmic.org
 
-A step-by-step guide you can follow in your web browser, for moving the portal
-from its `.workers.dev` address to **portal.kesmic.org**.
+## The constraint that decides everything
 
-**Read this page before you change anything.** Your firm's email runs on this
-domain, so the order of the steps is what keeps it working. Done in this order,
-nothing goes down at any point.
+Two facts, both verified, that between them rule out the obvious approach:
 
----
+1. **Cloudflare will only let the portal answer to `portal.kesmic.org` if
+   Cloudflare manages the whole domain's DNS.** You cannot point a record at the
+   portal's `.workers.dev` address from somewhere else; Cloudflare rejects it.
+2. **Wix does not allow a Wix-registered domain to use anyone else's
+   nameservers.** This is Wix policy, not a setting that is hidden somewhere —
+   their help centre states that changing nameservers requires transferring the
+   domain away from Wix. It is why the domain's **⋯** menu offers *Manage DNS
+   records* and *Transfer away from Wix*, but nothing about nameservers.
 
-## Why one setting at Wix is not enough
+So as long as kesmic.org is registered at Wix, Cloudflare cannot manage its DNS,
+and the portal cannot be given that name **in its current form**.
 
-You cannot simply add a record at Wix pointing at the portal. Cloudflare only
-answers to your own name if Cloudflare is the one being asked "where does
-kesmic.org live?" — and today Wix is being asked that.
-
-So the change is: **Cloudflare takes over answering that question.**
-
-**This is not transferring your domain.** kesmic.org stays registered with Wix.
-You keep paying Wix for it, you keep renewing it there, your website stays exactly
-where it is, and you can undo this at any time by putting the old settings back.
-The only thing that changes is which company keeps your domain's address book.
-
-You also get something for free out of it: your main website becomes faster and
-gets Cloudflare's protection against attacks.
+There are three honest ways forward.
 
 ---
 
-## What must survive the move
+## Route A — Move the portal to Cloudflare Pages (recommended)
 
-Cloudflare copies your existing address book across automatically when you add the
-domain — but it is best-effort, not a guarantee. This is the full list as it stood
-on **9 August 2026**, read directly from your live domain. Check the list
-Cloudflare shows you against this one, and add anything it missed.
+Cloudflare Pages is the one Cloudflare product that accepts a subdomain pointed at
+it from someone else's DNS. Convert the portal to a Pages project and Wix keeps
+managing kesmic.org exactly as it does today.
 
-**The lines marked ⚠️ are your firm's email.** If one of those is missing, mail
-stops arriving. They matter more than the website records.
+**What you do:** add one record in Wix — a CNAME called `portal` pointing at the
+project's `.pages.dev` address — and register that same name in Cloudflare first
+so it is recognised.
 
-### Your website (Wix)
+**What this costs:**
+
+- About an hour of development work to convert the project.
+- The portal's underlying address changes, so the two secrets
+  (`PASSWORD_PEPPER`, and `BOOTSTRAP_SECRET` if it is still there) are entered
+  again on the new project.
+- Pages is the older of Cloudflare's two ways of doing this. It is not being shut
+  down — Cloudflare is folding its features into Workers rather than retiring it,
+  and new projects are still created normally — but it is the less
+  actively-developed side.
+
+**What this does not cost:** nothing about your website or your email is touched.
+Not one existing record changes. The database, and therefore every account and
+record in the portal, carries over untouched.
+
+**Why it is recommended:** it is the only route that gives you the name you want
+while honouring the thing you asked for at the outset — no transferring the
+domain — and it puts nothing at risk that is currently working.
+
+---
+
+## Route B — Transfer the domain away from Wix
+
+If kesmic.org is registered somewhere that lets you choose nameservers —
+Cloudflare Registrar being the obvious candidate, at cost price and usually
+cheaper than Wix — then Cloudflare can manage the DNS, and the portal keeps its
+current, more modern setup with **no code changes at all**. `portal.kesmic.org`
+becomes a single click.
+
+**What this costs:**
+
+- A registrar transfer: unlock the domain at Wix, get the authorisation code,
+  start the transfer at the new registrar, wait roughly five to seven days. A
+  domain cannot be transferred within 60 days of registration or a previous
+  transfer.
+- Your DNS records then have to be recreated at Cloudflare. This is where the
+  care is needed, because **your firm's Microsoft 365 email runs on this domain**
+  — the full list is at the end of this page.
+- You stop paying Wix for the domain and start paying the new registrar.
+
+**Worth knowing:** the website itself stays on Wix either way. A registrar
+transfer moves who you buy the name from, not where the site is hosted.
+
+---
+
+## Route C — Leave it on the `.workers.dev` address
+
+The portal already works, over HTTPS, at
+`kesmic-practice-manager.kesmicgh.workers.dev`. Staff can bookmark it. The only
+thing wrong with it is that it does not carry the firm's name.
+
+Nothing to do, nothing at risk, and the decision stays open indefinitely.
+
+---
+
+## Reference: every DNS record on kesmic.org
+
+Read from live DNS on **9 August 2026**. You need this only for **Route B**, where
+the records have to be recreated — but it is worth keeping regardless, as a record
+of how the domain is set up. The lines marked ⚠️ are your firm's email.
+
+### Website (Wix)
 
 | Type | Name | Value |
 | --- | --- | --- |
@@ -46,9 +100,7 @@ stops arriving. They matter more than the website records.
 | A | `kesmic.org` | `185.230.63.171` |
 | CNAME | `www` | `cdn1.wixdns.net` |
 
-Three separate A records, all on the bare name. That is normal.
-
-### Your email and Microsoft 365
+### Email and Microsoft 365
 
 | Type | Name | Value | |
 | --- | --- | --- | --- |
@@ -62,8 +114,8 @@ Three separate A records, all on the bare name. That is normal.
 | CNAME | `lyncdiscover` | `webdir.online.lync.com` | |
 | CNAME | `sip` | `sipdir.online.lync.com` | |
 
-`autodiscover` is the one that lets Outlook and phones set themselves up. Without
-it, existing mailboxes keep working but new devices cannot be configured.
+`autodiscover` is what lets Outlook and phones configure themselves. Without it,
+existing mailboxes keep working but new devices cannot be set up.
 
 ### Teams / Skype call routing
 
@@ -72,10 +124,7 @@ it, existing mailboxes keep working but new devices cannot be configured.
 | SRV | `_sipfederationtls._tcp` | 100 | 1 | 5061 | `sipfed.online.lync.com` |
 | SRV | `_sip._tls` | 100 | 1 | 443 | `sipdir.online.lync.com` |
 
-Cloudflare asks for these in separate boxes. For the first one, **Service** is
-`_sipfederationtls`, **Protocol** is `_tcp`, and **Name** is `kesmic.org`.
-
-### Other verifications
+### Verifications
 
 | Type | Name | Value |
 | --- | --- | --- |
@@ -83,105 +132,23 @@ Cloudflare asks for these in separate boxes. For the first one, **Service** is
 | TXT | `kesmic.org` | `google-site-verification=HPupNqjhh9PB6fF9-lt19wnpYpp3sP8DgNHrULYYEFA` |
 | TXT | `kesmic.org` | `v=spf1 include:sender.zohobooks.com` |
 
-That last one has a problem, described at the end of this page. **Copy it across
-as-is for now** — fixing it during the move would mean changing two things at once.
-
-**Sixteen records in total.** Count them when you check.
+Sixteen records in total. Nameservers are currently `ns12.wixdns.net` and
+`ns13.wixdns.net`.
 
 ---
 
-## Step 1 — Add kesmic.org to Cloudflare
+## Two email problems worth fixing, whichever route you take
 
-1. Sign in at **https://dash.cloudflare.com**
-2. Click **Add a domain** (sometimes **Add site**)
-3. Type `kesmic.org` and continue
-4. Choose the **Free** plan
-5. Cloudflare reads your current address book and shows you what it found
+Neither is caused by anything here — both are live today. Both are fixed in Wix
+under **Domains → ⋯ → Manage DNS records**.
 
-Nothing has changed yet. Your website and email are still running through Wix at
-this point, and will stay that way until Step 4. Everything up to then is
-preparation you can take as long as you like over.
-
-## Step 2 — Check the list, add what is missing
-
-Compare what Cloudflare found against the sixteen records above. Add any that are
-missing with **+ Add record**.
-
-Take your time here. This is the only step that matters, and it is much easier to
-get right now than to fix later.
-
-## Step 3 — Set the website records to "DNS only"
-
-Some records show a cloud icon that can be orange or grey.
-
-For the four **website** records — the three `A` records and `www` — click the
-cloud so it is **grey** ("DNS only"). Your website is hosted by Wix and manages
-its own security certificate; sending it through Cloudflare's orange cloud as well
-can cause certificate warnings.
-
-The email records have no cloud to set. That is expected.
-
-## Step 4 — Switch over, at Wix
-
-Cloudflare now shows you **two nameservers**, each looking something like
-`xxxx.ns.cloudflare.com`. Copy both.
-
-1. Go to your Wix account → **Domains**
-2. Click **kesmic.org**
-3. Look for **Advanced** → **Name Servers**
-4. Choose the option to use your **own / external** nameservers
-5. Replace the two Wix entries (`ns12.wixdns.net` and `ns13.wixdns.net`) with the
-   two from Cloudflare
-6. Save
-
-Wix may warn you that your site could disconnect. It will not, because you
-recreated its records in Step 2.
-
-## Step 5 — Wait, then check
-
-The change usually takes effect within an hour, occasionally up to a day.
-Cloudflare emails you when it has taken over.
-
-Then check three things:
-
-- **https://www.kesmic.org** still loads
-- **Send yourself an email** from an outside address — a personal Gmail will do —
-  and confirm it arrives
-- Outlook on your computer and phone still sends and receives
-
-If anything is wrong, the fastest fix is always to put the two Wix nameservers
-back; everything returns to how it was within the hour. Then tell me and we will
-find what was missing before trying again.
-
-## Step 6 — Give the portal its address
-
-Only once Step 5 is clean:
-
-1. In Cloudflare, go to **Compute (Workers)** and click **kesmic-practice-manager**
-2. Open **Settings**, then find **Domains & Routes**
-3. Click **Add**, choose **Custom Domain**
-4. Type `portal.kesmic.org` and save
-
-That is the whole thing. Cloudflare creates the record and the security
-certificate itself, usually within a couple of minutes. Nothing in the portal
-needs changing, and I do not need to do anything on my side.
-
-The old `.workers.dev` address keeps working too, so nobody's bookmark breaks.
-
----
-
-## Two email problems worth fixing afterwards
-
-Neither is caused by this move — both are there today. Deal with them **after**
-the move has settled, so you are only ever changing one thing at a time.
-
-**Your domain has two SPF records, and it should only ever have one.** You have
+**Your domain has two SPF records, and may only ever have one.** You have
 `v=spf1 include:spf.protection.outlook.com -all` for Microsoft 365 and
 `v=spf1 include:sender.zohobooks.com` for Zoho Books. When a receiving mail server
 finds two, the rule is that it stops and treats the check as broken rather than
-picking one — so some of your legitimate email is likely being marked as suspicious
-or landing in spam. The fix is to delete both and add one record that names both
-services:
+picking one — so some of your legitimate email is likely being treated as
+suspicious or filed as spam. Delete both, and add this single record in their
+place:
 
 ```
 v=spf1 include:spf.protection.outlook.com include:sender.zohobooks.com -all
@@ -189,12 +156,10 @@ v=spf1 include:spf.protection.outlook.com include:sender.zohobooks.com -all
 
 **You have no DMARC record.** That is the instruction telling other mail systems
 what to do with email that only pretends to come from kesmic.org. Without it,
-someone forging your firm's address has an easier time of it — which matters more
-than usual for a practice that emails clients about their tax affairs. A safe
-starting point, which only asks for reports and changes nothing about delivery:
+forging your firm's address is easier than it should be — which matters for a
+practice that emails clients about their tax affairs. A safe starting point, which
+only asks for reports and changes nothing about delivery:
 
 ```
 Type: TXT   Name: _dmarc   Value: v=DMARC1; p=none; rua=mailto:<your address>
 ```
-
-Tell me when you want to do either and I will walk you through it.

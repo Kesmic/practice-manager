@@ -422,10 +422,10 @@ first account — probably you, in an earlier attempt. Just sign in normally.
 address. It can live at **portal.kesmic.org** instead, with kesmic.org staying
 registered at Wix and your website staying exactly where it is.
 
-**[docs/DOMAIN.md](./DOMAIN.md)** is the click-by-click guide, including every
-record that has to survive the switch — your firm's Microsoft 365 email runs on
-this domain, so the order of the steps matters. Nothing in the portal needs
-changing and nothing is needed from me.
+There is a catch, and **[docs/DOMAIN.md](./DOMAIN.md)** explains it: Wix does not
+allow a domain registered with it to use anyone else's nameservers, and Cloudflare
+will only serve your own name if it manages the domain's DNS. That page sets out
+the three ways round it and what each one costs.
 
 **Backups.** Cloudflare keeps your information safely, but there is no automatic
 copy you hold yourself. For records about clients and employees, you want one.
