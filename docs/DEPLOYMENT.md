@@ -22,8 +22,11 @@ for you — now and every time anything changes in future.
 Create a **free** Cloudflare account if you do not have one:
 **https://dash.cloudflare.com/sign-up**
 
-That is the only sign-up needed. There is nothing to pay — a firm of your size
-fits comfortably inside the free allowance.
+That is the only sign-up needed. The free plan is enough to run the portal — a
+firm of your size fits comfortably inside its allowance. There is one thing the
+free plan limits that is worth knowing about, and it concerns how strongly staff
+passwords are protected; it is explained in **Part 5b**, and you can act on it
+now or later.
 
 Keep a blank note open. You will collect **three codes** along the way and paste
 each one somewhere. That is really all this process is.
@@ -240,6 +243,36 @@ do.
 
 📋 **Keep the phrase in your note for the next two minutes.**
 
+### 5b(ii). Add the password protection key — recommended
+
+While you are on this exact screen, add a second one. This is the free-plan
+limitation mentioned at the top, and this step deals with it.
+
+**What it is for.** Staff passwords are never stored — only a scrambled version
+of each one. Scrambling is deliberately slow, because that is what makes guessing
+passwords impractical. Cloudflare's free plan allows each action about a
+hundredth of a second of thinking time, which is not enough to scramble as
+thoroughly as we would like. This key closes that gap a different way: it is kept
+apart from the filing cabinet, so even someone who obtained a complete copy of
+your database could not work out anybody's password without it.
+
+1. Still under **Variables and Secrets**, click **+ Add** again
+2. Set **Type** to **Secret**
+3. In **Variable name**, type exactly: `PASSWORD_PEPPER`
+4. In **Value**, paste a long random phrase — **different** from the one above,
+   at least 30 characters. For example: `27-harbour-thimble-glass-mango-64-slate`
+5. Click **Deploy** (or **Save**)
+
+> ⚠️ **This one is permanent.** Write it down somewhere safe and never change or
+> delete it. Everyone's password is checked against it, so removing it locks the
+> whole firm out until it is put back exactly as it was. In **Part 6** you delete
+> the *setup* phrase only — this one stays forever.
+
+You may skip this step; the portal works either way, and you can add it later
+without disturbing anyone's existing password. If you would rather not keep track
+of another phrase, see **Two things for later** at the end — the paid plan solves
+the same problem for $5 a month and needs nothing to remember.
+
 ### 5c. Create your administrator account
 
 1. Go to your portal address and add `/setup` on the end, for example:
@@ -266,7 +299,12 @@ Now that your account exists, remove the setup phrase so that page is dead for g
 2. Find `BOOTSTRAP_SECRET` and delete it
 3. Click **Deploy** (or **Save**)
 
-You can now cross the phrase out of your note.
+> ⚠️ **Delete `BOOTSTRAP_SECRET` only.** If you also added `PASSWORD_PEPPER` in
+> Part 5b(ii), leave it exactly where it is. Read the names carefully — they sit
+> next to each other, and deleting the wrong one locks everybody out.
+
+You can now cross the setup phrase out of your note. Keep the `PASSWORD_PEPPER`
+phrase somewhere safe and permanent.
 
 ---
 
@@ -350,15 +388,35 @@ without going via any other app.
 **The portal address shows an error.** Give it two minutes after the green tick,
 then reload. If it persists, tell me what the page says.
 
+**`/setup` said "Internal server error" when you clicked Create administrator.**
+This was a real fault in the portal, and it is fixed. The cause: scrambling your
+password took about a tenth of a second of thinking time, and Cloudflare's free
+plan cuts every action off after about a hundredth of a second, so the work was
+abandoned halfway through. It would have stopped every sign-in too, not just this
+page. Nothing was damaged and no half-made account was left behind — the account
+is only written once the whole step succeeds. Make sure the green tick has
+appeared on the **Actions** page for the newest change, then try 5c again.
+
 **`/setup` says the secret is incorrect.** The phrase in Cloudflare and the
 phrase you typed do not match. Check for a trailing space when you pasted it.
+
+**Signing in says the `PASSWORD_PEPPER` secret is missing.** The permanent key
+from Part 5b(ii) has been deleted or renamed. Nobody can sign in until it is put
+back with **exactly** the value it had. Add it again under
+**kesmic-practice-manager → Settings → Variables and Secrets**. If the original
+value is genuinely lost, tell me — passwords cannot be recovered, but I can reset
+everybody's so the firm can get back in.
+
+**Signing in shows a Cloudflare page mentioning "resource limits" or error 1102.**
+The password scrambling is set higher than your plan's thinking-time allowance.
+Either move to the paid plan (see below), or tell me and I will lower the setting.
 
 **`/setup` says the deployment already has users.** Someone already created the
 first account — probably you, in an earlier attempt. Just sign in normally.
 
 ---
 
-## Two things for later
+## Three things for later
 
 **Your own web address.** Right now the portal lives at a `.workers.dev`
 address. It can live at something like `portal.kesmic.org` instead, without
@@ -370,3 +428,17 @@ handle that part.
 copy you hold yourself. For records about clients and employees, you want one.
 Ask me and I will set up automatic backups for you — it is not something you
 need to do by hand.
+
+**The $5 plan, if you would rather not manage a permanent key.** Cloudflare's
+paid plan ($5 a month) removes the thinking-time limit described in Part 5b(ii),
+which lets the portal scramble passwords roughly seventy times more thoroughly —
+the standard professional bodies now recommend. It is the simplest answer for a
+firm holding client tax records and staff bank details, and it needs nothing for
+you to remember.
+
+If you take it up: switch the plan on at
+**https://dash.cloudflare.com** → **Compute (Workers)** → **Plans**, then tell me
+and I will change the one setting on my side. It is two lines, already written and
+commented out in the project, and everyone's existing password keeps working —
+each one is checked at the strength it was created with, and moves up to the new
+strength the next time it is changed.

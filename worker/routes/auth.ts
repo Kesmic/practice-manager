@@ -4,6 +4,7 @@ import {
   clearedCookie,
   createSession,
   currentUser,
+  decoyHash,
   destroySession,
   hashPassword,
   pruneSessions,
@@ -23,14 +24,6 @@ import {
   unauthorized,
 } from "../http";
 import type { Role } from "../../shared/workflow";
-
-/**
- * A hash of a value nobody can supply, used to spend the same PBKDF2 time on
- * unknown email addresses as on known ones. Without this, response latency
- * reveals which addresses are registered.
- */
-const DUMMY_HASH =
-  "pbkdf2$210000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
 export function registerAuthRoutes(router: Router<Env>): void {
   /**
@@ -85,7 +78,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
         email,
         fullName,
         "Managing Partner",
-        await hashPassword(password),
+        await hashPassword(env, password),
         timestamp,
         timestamp,
       )
@@ -120,7 +113,11 @@ export function registerAuthRoutes(router: Router<Env>): void {
         must_change_password: 0 | 1;
       }>();
 
-    const ok = await verifyPassword(password, row?.password_hash ?? DUMMY_HASH);
+    const ok = await verifyPassword(
+      env,
+      password,
+      row?.password_hash ?? decoyHash(env),
+    );
     if (!row || !ok) {
       throw unauthorized("Email or password is incorrect.");
     }
@@ -186,7 +183,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
 
     const current =
       typeof body.current_password === "string" ? body.current_password : "";
-    if (!(await verifyPassword(current, row.password_hash))) {
+    if (!(await verifyPassword(env, current, row.password_hash))) {
       throw new HttpError(400, "Your current password is incorrect.");
     }
 
@@ -200,7 +197,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
       `UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = ?
         WHERE id = ?`,
     )
-      .bind(await hashPassword(next), nowIso(), user.id)
+      .bind(await hashPassword(env, next), nowIso(), user.id)
       .run();
 
     // Every other session for this user is invalidated; the caller keeps theirs.

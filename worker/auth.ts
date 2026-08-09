@@ -11,9 +11,39 @@ import type { Env } from "./env";
 import { HttpError, forbidden, unauthorized } from "./http";
 import { atLeast, type Role } from "../shared/workflow";
 
-const PBKDF2_ITERATIONS = 210_000;
+/**
+ * The PBKDF2 work factor is a deployment setting rather than a constant, because
+ * what caps it is not cryptography but the Worker's CPU budget. Cloudflare
+ * allows **10 ms of CPU per request on the Workers Free plan**, and
+ * PBKDF2-SHA256 costs roughly 0.45 ms per thousand iterations, so the 600,000
+ * iterations OWASP currently recommends — about 280 ms — is only reachable on
+ * the Paid plan. Exceeding the budget does not fail gracefully: the request is
+ * killed, so signing in becomes impossible rather than slow.
+ *
+ * The default below leaves room for the rest of a request inside 10 ms. Raise it
+ * with the `PASSWORD_ITERATIONS` variable when the plan allows.
+ *
+ * The count is recorded inside each stored hash, so changing this setting never
+ * invalidates an existing password: every hash verifies at the count it was
+ * written with. Passwords set afterwards use the new count; to move an existing
+ * account across, change or reset its password.
+ */
+const DEFAULT_ITERATIONS = 8_000;
+const MIN_ITERATIONS = 1_000;
+const MAX_ITERATIONS = 1_000_000;
+
 const HASH_BYTES = 32;
 const SALT_BYTES = 16;
+
+/** Scheme labels recorded in stored hashes. `p` marks a peppered hash. */
+const PLAIN = "pbkdf2";
+const PEPPERED = "pbkdf2p";
+
+export function passwordIterations(env: Env): number {
+  const parsed = Number.parseInt(env.PASSWORD_ITERATIONS ?? "", 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_ITERATIONS;
+  return Math.min(MAX_ITERATIONS, Math.max(MIN_ITERATIONS, parsed));
+}
 
 export const SESSION_COOKIE = "kpm_session";
 const DEFAULT_TTL_DAYS = 7;
@@ -84,28 +114,91 @@ async function derive(
   return new Uint8Array(bits);
 }
 
-export async function hashPassword(password: string): Promise<string> {
+/**
+ * Mixes the deployment's pepper into a password before the KDF runs.
+ *
+ * The pepper lives in Worker secrets and never in D1, so a leaked database
+ * export — a mislaid backup, an over-scoped API token — cannot be attacked
+ * offline at all, whatever the work factor. That is what makes an iteration
+ * count trimmed to fit the CPU budget defensible. One HMAC costs microseconds.
+ */
+async function withPepper(secret: string, password: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(password),
+  );
+  return toBase64(new Uint8Array(mac));
+}
+
+export async function hashPassword(env: Env, password: string): Promise<string> {
+  const iterations = passwordIterations(env);
+  const pepper = env.PASSWORD_PEPPER;
+  const material = pepper ? await withPepper(pepper, password) : password;
   const salt = randomBytes(SALT_BYTES);
-  const hash = await derive(password, salt, PBKDF2_ITERATIONS);
-  return `pbkdf2$${PBKDF2_ITERATIONS}$${toBase64(salt)}$${toBase64(hash)}`;
+  const hash = await derive(material, salt, iterations);
+  const scheme = pepper ? PEPPERED : PLAIN;
+  return `${scheme}$${iterations}$${toBase64(salt)}$${toBase64(hash)}`;
 }
 
 export async function verifyPassword(
+  env: Env,
   password: string,
   stored: string,
 ): Promise<boolean> {
   const parts = stored.split("$");
-  if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
+  if (parts.length !== 4) return false;
+  const scheme = parts[0];
+  if (scheme !== PLAIN && scheme !== PEPPERED) return false;
+
+  // Whether a hash was peppered is recorded in the hash itself, so switching the
+  // pepper on later leaves existing passwords working. Switching it back off
+  // does not: nothing can match, and reporting "password incorrect" would send
+  // an administrator hunting for a problem that is not there.
+  if (scheme === PEPPERED && !env.PASSWORD_PEPPER) {
+    throw new HttpError(
+      500,
+      "This deployment's PASSWORD_PEPPER secret is missing, so no password can be checked.",
+      "Restore the PASSWORD_PEPPER secret in the Cloudflare dashboard. It must keep the exact value it had when passwords were set.",
+    );
+  }
+
   const iterations = Number.parseInt(parts[1], 10);
-  if (!Number.isFinite(iterations) || iterations < 1000) return false;
+  if (!Number.isFinite(iterations) || iterations < MIN_ITERATIONS) return false;
   try {
+    const material =
+      scheme === PEPPERED
+        ? await withPepper(env.PASSWORD_PEPPER!, password)
+        : password;
     const salt = fromBase64(parts[2]);
     const expected = fromBase64(parts[3]);
-    const actual = await derive(password, salt, iterations);
+    const actual = await derive(material, salt, iterations);
     return timingSafeEqual(actual, expected);
   } catch {
     return false;
   }
+}
+
+/**
+ * A hash of a value nobody can supply, so an unknown email address costs the
+ * same PBKDF2 time as a registered one and response latency does not reveal
+ * which addresses exist. It is built at the deployment's *current* work factor:
+ * a constant with an iteration count baked in would leak the difference through
+ * timing, and — if that count were higher — would spend the CPU budget on
+ * requests that could never succeed.
+ */
+export function decoyHash(env: Env): string {
+  const scheme = env.PASSWORD_PEPPER ? PEPPERED : PLAIN;
+  const salt = toBase64(new Uint8Array(SALT_BYTES));
+  const hash = toBase64(new Uint8Array(HASH_BYTES));
+  return `${scheme}$${passwordIterations(env)}$${salt}$${hash}`;
 }
 
 /** Minimum password policy for a system holding client tax data. */
