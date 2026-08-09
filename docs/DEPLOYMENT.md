@@ -48,18 +48,10 @@ npx wrangler d1 create kesmic-practice
 That prints a `database_id`. Paste it into `wrangler.toml`, replacing
 `REPLACE_WITH_YOUR_D1_DATABASE_ID`, then commit. The id is not a secret.
 
-### 1.2 Set the bootstrap secret
+### 1.2 First deploy
 
-This authorises creation of the very first administrator account, once.
-
-```bash
-npx wrangler secret put BOOTSTRAP_SECRET
-# paste a long random string and keep it somewhere safe
-```
-
-Generate one with `openssl rand -base64 32`.
-
-### 1.3 First deploy
+Migrations run before the deploy so the schema exists by the time the Worker
+serves its first request:
 
 ```bash
 npm run build
@@ -68,8 +60,23 @@ npx wrangler deploy
 ```
 
 Wrangler prints a `https://kesmic-practice-manager.<subdomain>.workers.dev` URL.
-Open it, go to `/setup`, and create your administrator account using the
-bootstrap secret. The endpoint refuses to run again once a user exists.
+
+### 1.3 Set the bootstrap secret
+
+This authorises creation of the very first administrator account, once. Set it
+*after* the first deploy — the Worker has to exist before a secret can be
+attached to it, otherwise Wrangler stops to ask whether to create one.
+
+```bash
+npx wrangler secret put BOOTSTRAP_SECRET
+# paste a long random string and keep it somewhere safe
+```
+
+Generate one with `openssl rand -base64 32`. Secrets take effect immediately;
+no redeploy is needed.
+
+Now open the Worker URL, go to `/setup`, and create your administrator account
+using that secret. The endpoint refuses to run again once a user exists.
 
 ### 1.4 Hand the deploys to GitHub Actions
 
