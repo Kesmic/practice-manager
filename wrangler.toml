@@ -21,7 +21,7 @@ enabled = true
 [[d1_databases]]
 binding = "DB"
 database_name = "kesmic-practice"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "8d0f0a0e-01f3-4fd2-9eee-48677f51f17d"
 migrations_dir = "migrations"
 
 [vars]
