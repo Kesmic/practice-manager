@@ -1,7 +1,7 @@
 export interface Env {
   /** D1 binding declared in wrangler.toml. */
   DB: D1Database;
-  /** Static asset binding — serves the built React app. */
+  /** Static asset binding - serves the built React app. */
   ASSETS: Fetcher;
   /**
    * One-time secret that authorises creation of the very first administrator.
@@ -14,7 +14,7 @@ export interface Env {
   /**
    * PBKDF2 work factor for password hashing. Left unset it defaults to a value
    * that fits the 10 ms CPU budget of the Workers Free plan; raise it on the
-   * Paid plan. See the notes in `auth.ts` — the ceiling here is the CPU limit,
+   * Paid plan. See the notes in `auth.ts` - the ceiling here is the CPU limit,
    * not cryptography.
    */
   PASSWORD_ITERATIONS?: string;

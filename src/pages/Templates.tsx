@@ -363,7 +363,7 @@ function GenerateModal({
             hint={
               recurring
                 ? `Consecutive ${RECURRENCE_LABELS[template.default_recurrence].toLowerCase()} periods.`
-                : "One-off template — only a single period can be generated."
+                : "One-off template - only a single period can be generated."
             }
           >
             {(id) => (
@@ -388,7 +388,7 @@ function GenerateModal({
                 <option value="">Leave unassigned</option>
                 {users.map((user) => (
                   <option key={user.id} value={user.id}>
-                    {user.full_name} — {ROLE_LABELS[user.role]}
+                    {user.full_name} - {ROLE_LABELS[user.role]}
                   </option>
                 ))}
               </Select>
@@ -408,7 +408,7 @@ function GenerateModal({
                   )
                   .map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.full_name} — {ROLE_LABELS[user.role]}
+                      {user.full_name} - {ROLE_LABELS[user.role]}
                     </option>
                   ))}
               </Select>
@@ -486,7 +486,7 @@ const EMPTY: Omit<TaskTemplate, "id" | "created_at"> = {
  *
  * One form for both, because the fields are identical and two forms drift apart.
  * The statutory deadline is deliberately expressed the way the tax rules are
- * written — so many months after the period ends, on such a day — rather than as a
+ * written - so many months after the period ends, on such a day - rather than as a
  * fixed date, which is what lets one template generate a whole year of filings.
  */
 function TemplateModal({
@@ -603,7 +603,7 @@ function TemplateModal({
               id={id}
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
-              placeholder="VAT return — monthly"
+              placeholder="VAT return - monthly"
             />
           )}
         </Field>

@@ -116,7 +116,7 @@ export function Reports() {
                     <td className="text-right tabular-nums">
                       {row.budget_hours > 0
                         ? percent(row.logged_hours / row.budget_hours)
-                        : "—"}
+                        : "-"}
                     </td>
                   </tr>
                 ))}

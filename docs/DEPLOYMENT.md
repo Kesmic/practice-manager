@@ -7,13 +7,13 @@ install, nothing to type into a black screen.
 
 You will use two websites:
 
-- **GitHub** — where the portal's files live: https://github.com/Kesmic/practice-manager
-- **Cloudflare** — where the portal will actually run, and where its information
+- **GitHub** - where the portal's files live: https://github.com/Kesmic/practice-manager
+- **Cloudflare** - where the portal will actually run, and where its information
   is stored
 
 The idea: you tell Cloudflare to make an empty filing cabinet, you tell GitHub
 where that cabinet is, and then GitHub does all the building and publishing work
-for you — now and every time anything changes in future.
+for you - now and every time anything changes in future.
 
 ---
 
@@ -22,7 +22,7 @@ for you — now and every time anything changes in future.
 Create a **free** Cloudflare account if you do not have one:
 **https://dash.cloudflare.com/sign-up**
 
-That is the only sign-up needed. The free plan is enough to run the portal — a
+That is the only sign-up needed. The free plan is enough to run the portal - a
 firm of your size fits comfortably inside its allowance. There is one thing the
 free plan limits that is worth knowing about, and it concerns how strongly staff
 passwords are protected; it is explained in **Part 5b**, and you can act on it
@@ -36,20 +36,19 @@ each one somewhere. That is really all this process is.
 ## If you already set this up once
 
 The portal used to run as a Cloudflare *Worker* and now runs as a Cloudflare
-*Pages* project. That change was needed to put it on **portal.kesmic.org** —
-[docs/DOMAIN.md](./DOMAIN.md) explains why. Three things follow from it, and the
+*Pages* project. That change was needed to put it on **portal.kesmic.org**, [docs/DOMAIN.md](./DOMAIN.md) explains why. Three things follow from it, and the
 first will stop a publish if you skip it:
 
 1. **Your permission slip needs one more tick.** The one you made in Part 3a was
    for Workers. Go to **https://dash.cloudflare.com/profile/api-tokens**, click
    **Edit** next to `GitHub publishing`, and change the **Workers Scripts** row to
-   **Cloudflare Pages** — leaving the D1 and Account Settings rows alone. Save. The
+   **Cloudflare Pages** - leaving the D1 and Account Settings rows alone. Save. The
    code itself does not change, so there is nothing to re-paste into GitHub. If
    you would rather start fresh, create a new token as in Part 3a and update the
    `CLOUDFLARE_API_TOKEN` secret on GitHub with the new value.
 2. **The portal's address changes**, from one ending `.workers.dev` to one ending
    `.pages.dev`. Part 5a tells you where to find it.
-3. **Your two secrets need adding again** on the new project — Parts 5b and 5b(ii).
+3. **Your two secrets need adding again** on the new project - Parts 5b and 5b(ii).
    They belong to the old Worker and do not follow it across.
 
 **Your information is safe.** The filing cabinet is untouched by all of this: it is
@@ -63,13 +62,13 @@ Deleting it does not touch the database.
 
 ---
 
-## Part 1 — Make the filing cabinet (on Cloudflare)
+## Part 1 - Make the filing cabinet (on Cloudflare)
 
 This is where staff records, client work and signed documents will be stored.
 
 1. Sign in at **https://dash.cloudflare.com**
 2. In the menu on the left, look for **Storage & Databases**, then click
-   **D1 SQL Database**. (Cloudflare occasionally rearranges this menu — if you
+   **D1 SQL Database**. (Cloudflare occasionally rearranges this menu - if you
    cannot see it, type "D1" into the search box at the top.)
 3. Click **Create database**
 4. In the name box, type exactly:
@@ -83,14 +82,14 @@ This is where staff records, client work and signed documents will be stored.
    is spelled differently.
 5. Click **Create**
 
-You will land on a page about your new database. Find **Database ID** — a long
+You will land on a page about your new database. Find **Database ID** - a long
 string of letters, numbers and hyphens. Click the copy button next to it.
 
-📋 **Paste it into your note as "Code 1 — Database ID".**
+📋 **Paste it into your note as "Code 1 - Database ID".**
 
 ---
 
-## Part 2 — Tell the portal where the cabinet is (on GitHub)
+## Part 2 - Tell the portal where the cabinet is (on GitHub)
 
 1. Open this link, which takes you straight to the right file:
 
@@ -114,12 +113,12 @@ string of letters, numbers and hyphens. Click the copy button next to it.
 5. Click the green **Commit changes...** button at the top right
 6. Leave the message as it is and click **Commit changes** again
 
-That is not a password, by the way — it is just a label saying which cabinet to
+That is not a password, by the way - it is just a label saying which cabinet to
 use, so there is no harm in it being saved here.
 
 ---
 
-## Part 3 — Let GitHub publish to Cloudflare
+## Part 3 - Let GitHub publish to Cloudflare
 
 Right now the two websites do not know each other. This part introduces them.
 
@@ -149,21 +148,21 @@ Right now the two websites do not know each other. This part introduces them.
    | Account | Account Settings | Read |
 
 8. Click **Continue to summary**, then **Create Token**
-9. A long code appears. **Copy it now** — Cloudflare will never show it again.
+9. A long code appears. **Copy it now** - Cloudflare will never show it again.
 
-📋 **Paste it into your note as "Code 2 — Permission slip".**
+📋 **Paste it into your note as "Code 2 - Permission slip".**
 
 If you lose it, no harm done: come back and create another one, then use the new
 one instead.
 
 ### 3b. Find your Cloudflare account number
 
-1. In the Cloudflare menu on the left, click **Compute (Workers)** — or
+1. In the Cloudflare menu on the left, click **Compute (Workers)** - or
    **Workers & Pages**, depending on what your dashboard calls it
 2. Look for **Account ID** on that page (usually in a panel on the right) and
    copy it
 
-📋 **Paste it into your note as "Code 3 — Account ID".**
+📋 **Paste it into your note as "Code 3 - Account ID".**
 
 ### 3c. Hand both codes to GitHub
 
@@ -177,25 +176,25 @@ one instead.
 8. In **Secret**, paste **Code 3**
 9. Click **Add secret**
 
-Both names must be typed exactly as shown — capital letters and underscores
+Both names must be typed exactly as shown - capital letters and underscores
 included. GitHub hides these values from now on, including from you, which is
 the point.
 
 ---
 
-## Part 4 — Publish it
+## Part 4 - Publish it
 
 This happens in **two separate stages**: first you create a request to publish,
 then you approve it. The approve button does not exist until the request does, so
 do these in order.
 
-> **Before you start this part, make sure Part 3 is finished** — both codes handed
+> **Before you start this part, make sure Part 3 is finished** - both codes handed
 > to GitHub. Publishing without them will fail. Harmlessly, but it will fail.
 
 ### 4a. Create the request
 
 1. Go to **https://github.com/Kesmic/practice-manager/pulls**
-2. **If you already see an open request in the list, skip to 4b** — it may
+2. **If you already see an open request in the list, skip to 4b** - it may
    already have been created for you.
 3. Otherwise click **New pull request**
 4. You will see two dropdown boxes side by side near the top. Set them so the
@@ -216,11 +215,11 @@ You are now on the request's own page. This is where the approve button lives.
 You are looking at a page with tabs across the top (**Conversation**, **Commits**,
 **Files changed**). Stay on **Conversation**.
 
-1. **Scroll to the bottom of that page.** This is the step most people miss — the
+1. **Scroll to the bottom of that page.** This is the step most people miss - the
    button is below the list of automatic checks, not up at the top.
 2. You will see a box. Wait for the checks above it to finish (a minute or two);
    they should show green ticks.
-3. Click the green button in that box. It will say **Merge pull request** — or
+3. Click the green button in that box. It will say **Merge pull request** - or
    possibly **Squash and merge** or **Rebase and merge**, depending on settings.
    **Any of them is fine.** If it has a small dropdown arrow beside it, ignore the
    arrow and click the main part of the button.
@@ -237,13 +236,13 @@ publishing itself.
    live.
 
 If it turns into a **red cross** instead, click into it, then send me a
-screenshot — I will tell you exactly what to change. A failure here breaks
+screenshot - I will tell you exactly what to change. A failure here breaks
 nothing; it simply means it did not publish yet, and you can try again as many
 times as you like.
 
 ---
 
-## Part 5 — Find your portal and create your account
+## Part 5 - Find your portal and create your account
 
 ### 5a. Get the web address
 
@@ -252,7 +251,7 @@ times as you like.
 3. Near the top you will see an address ending in **.pages.dev**. That is your
    portal. Open it in a new tab.
 
-You will see a sign-in screen. You do not have an account yet — next step.
+You will see a sign-in screen. You do not have an account yet - next step.
 
 📋 **Paste the address into your note as "Portal address".**
 
@@ -261,17 +260,17 @@ You will see a sign-in screen. You do not have an account yet — next step.
 This stops a stranger claiming the very first account in the minutes before you
 do.
 
-1. Think of a long random phrase — at least 20 characters, nothing guessable.
+1. Think of a long random phrase - at least 20 characters, nothing guessable.
    For example: `purple-cabinet-19-ostrich-clay`
 2. In Cloudflare, still on the **kesmic-practice-manager** page, click
    **Settings**
-3. Find **Variables and Secrets** — make sure you are on the **Production** side
-   of that panel, not Preview — then click **+ Add**
+3. Find **Variables and Secrets** - make sure you are on the **Production** side
+   of that panel, not Preview - then click **+ Add**
 4. Set **Type** to **Secret**
 5. In **Variable name**, type exactly: `BOOTSTRAP_SECRET`
 6. In **Value**, paste your phrase
 7. Click **Deploy** (or **Save**)
-8. **Now publish again — this step is easy to miss and nothing works without it.**
+8. **Now publish again - this step is easy to miss and nothing works without it.**
    Go to **https://github.com/Kesmic/practice-manager/actions**, click **Deploy**
    in the left-hand list, then the **Run workflow** button on the right, and
    **Run workflow** again to confirm. Wait for the green tick, about a minute.
@@ -283,12 +282,12 @@ do.
 
 📋 **Keep the phrase in your note for the next few minutes.**
 
-### 5b(ii). Add the password protection key — recommended
+### 5b(ii). Add the password protection key - recommended
 
 While you are on this exact screen, add a second one. This is the free-plan
 limitation mentioned at the top, and this step deals with it.
 
-**What it is for.** Staff passwords are never stored — only a scrambled version
+**What it is for.** Staff passwords are never stored - only a scrambled version
 of each one. Scrambling is deliberately slow, because that is what makes guessing
 passwords impractical. Cloudflare's free plan allows each action about a
 hundredth of a second of thinking time, which is not enough to scramble as
@@ -299,22 +298,22 @@ your database could not work out anybody's password without it.
 1. Still under **Variables and Secrets**, click **+ Add** again
 2. Set **Type** to **Secret**
 3. In **Variable name**, type exactly: `PASSWORD_PEPPER`
-4. In **Value**, paste a long random phrase — **different** from the one above,
+4. In **Value**, paste a long random phrase - **different** from the one above,
    at least 30 characters. For example: `27-harbour-thimble-glass-mango-64-slate`
 5. Click **Deploy** (or **Save**)
 
 If you are adding this at the same time as the phrase above, one publish covers
-both — do it once, after adding the second one. If you are adding it later on its
+both - do it once, after adding the second one. If you are adding it later on its
 own, publish again as described in step 8 above, or it will not take effect.
 
 > ⚠️ **This one is permanent.** Write it down somewhere safe and never change or
 > delete it. Everyone's password is checked against it, so removing it locks the
 > whole firm out until it is put back exactly as it was. In **Part 6** you delete
-> the *setup* phrase only — this one stays forever.
+> the *setup* phrase only - this one stays forever.
 
 You may skip this step; the portal works either way, and you can add it later
 without disturbing anyone's existing password. If you would rather not keep track
-of another phrase, see **Two things for later** at the end — the paid plan solves
+of another phrase, see **Two things for later** at the end - the paid plan solves
 the same problem for $5 a month and needs nothing to remember.
 
 ### 5c. Create your administrator account
@@ -322,11 +321,11 @@ the same problem for $5 a month and needs nothing to remember.
 1. Go to your portal address and add `/setup` on the end, for example:
    `https://kesmic-practice-manager.pages.dev/setup`
 2. Fill in the form:
-   - **Bootstrap secret** — the phrase from 5b
-   - **Full name** — your name, spelled the way you want it to appear on
+   - **Bootstrap secret** - the phrase from 5b
+   - **Full name** - your name, spelled the way you want it to appear on
      documents you sign
-   - **Email** — your work email
-   - **Password** — at least 12 characters, mixing capitals, lower case and
+   - **Email** - your work email
+   - **Password** - at least 12 characters, mixing capitals, lower case and
      numbers or symbols
 3. Click **Create administrator**
 
@@ -335,7 +334,7 @@ it to create an account.
 
 ---
 
-## Part 6 — Close the setup door
+## Part 6 - Close the setup door
 
 Now that your account exists, remove the setup phrase so that page is dead for good.
 
@@ -345,7 +344,7 @@ Now that your account exists, remove the setup phrase so that page is dead for g
 3. Click **Deploy** (or **Save**)
 
 > ⚠️ **Delete `BOOTSTRAP_SECRET` only.** If you also added `PASSWORD_PEPPER` in
-> Part 5b(ii), leave it exactly where it is. Read the names carefully — they sit
+> Part 5b(ii), leave it exactly where it is. Read the names carefully - they sit
 > next to each other, and deleting the wrong one locks everybody out.
 
 Deleting it here does not take effect until the portal is next published, for the
@@ -360,9 +359,9 @@ phrase somewhere safe and permanent.
 
 ---
 
-## Part 7 — Before your staff use it
+## Part 7 - Before your staff use it
 
-Two things need your judgement. Take your time over them — nothing is visible to
+Two things need your judgement. Take your time over them - nothing is visible to
 staff until you say so.
 
 ### Review the handbook
@@ -383,8 +382,7 @@ When a policy is genuinely ready, click **Publish**. Only then does it appear to
 staff, and only then are they asked to agree to it. Nothing can go out by
 accident.
 
-There is also a **Contract of Employment (template)**. Do not publish that one —
-copy it for each new employee, fill in their details, and issue it to them
+There is also a **Contract of Employment (template)**. Do not publish that one, copy it for each new employee, fill in their details, and issue it to them
 individually.
 
 ### Write your welcome message
@@ -396,7 +394,7 @@ name so it is signed properly. This is the first thing every new joiner reads.
 
 ### Then add your team
 
-**People → Team → Add team member.** Set each person's grade — this decides who
+**People → Team → Add team member.** Set each person's grade - this decides who
 can assign work, who can review it, and who can sign it off.
 
 Each person gets a temporary password, shown **once**. Pass it on by phone or in
@@ -405,8 +403,8 @@ before they can do anything else.
 
 ### And check the filing deadlines
 
-**Job templates** has fourteen standard jobs — VAT returns, PAYE, corporate tax
-and so on — each with a filing deadline built in. Those dates are sensible
+**Job templates** has fourteen standard jobs - VAT returns, PAYE, corporate tax
+and so on - each with a filing deadline built in. Those dates are sensible
 defaults, not advice. Check each against current Ghana Revenue Authority rules
 and adjust. No technical help needed; just edit the template.
 
@@ -430,12 +428,12 @@ set this up once**, above, then go to
 click **Re-run all jobs**.
 
 **The Actions page shows a red cross.** Click into it and send me a screenshot.
-Nothing is broken — it just did not publish. The usual causes are a mistyped
+Nothing is broken - it just did not publish. The usual causes are a mistyped
 secret name in Part 3c, a database name that is not exactly `kesmic-practice`,
 or the Database ID pasted without its quotation marks.
 
 **It says the token "contains a character that cannot be used".** Copying a long
-code out of a web page sometimes drags an invisible character along with it — you
+code out of a web page sometimes drags an invisible character along with it - you
 cannot see it, and it is nobody's fault. The publish step now strips those
 characters automatically, so this should not recur. If it somehow does, go back
 to **https://dash.cloudflare.com/profile/api-tokens**, use **Roll** on the token
@@ -451,7 +449,7 @@ This was a real fault in the portal, and it is fixed. The cause: scrambling your
 password took about a tenth of a second of thinking time, and Cloudflare's free
 plan cuts every action off after about a hundredth of a second, so the work was
 abandoned halfway through. It would have stopped every sign-in too, not just this
-page. Nothing was damaged and no half-made account was left behind — the account
+page. Nothing was damaged and no half-made account was left behind - the account
 is only written once the whole step succeeds. Make sure the green tick has
 appeared on the **Actions** page for the newest change, then try 5c again.
 
@@ -468,7 +466,7 @@ phrase you typed do not match. Check for a trailing space when you pasted it.
 from Part 5b(ii) has been deleted or renamed. Nobody can sign in until it is put
 back with **exactly** the value it had. Add it again under
 **kesmic-practice-manager → Settings → Variables and Secrets**. If the original
-value is genuinely lost, tell me — passwords cannot be recovered, but I can reset
+value is genuinely lost, tell me - passwords cannot be recovered, but I can reset
 everybody's so the firm can get back in.
 
 **Signing in shows a Cloudflare page mentioning "resource limits" or error 1102.**
@@ -476,7 +474,7 @@ The password scrambling is set higher than your plan's thinking-time allowance.
 Either move to the paid plan (see below), or tell me and I will lower the setting.
 
 **`/setup` says the deployment already has users.** Someone already created the
-first account — probably you, in an earlier attempt. Just sign in normally.
+first account - probably you, in an earlier attempt. Just sign in normally.
 
 ---
 
@@ -493,19 +491,17 @@ the three ways round it and what each one costs.
 
 **Backups.** Cloudflare keeps your information safely, but there is no automatic
 copy you hold yourself. For records about clients and employees, you want one.
-Ask me and I will set up automatic backups for you — it is not something you
+Ask me and I will set up automatic backups for you - it is not something you
 need to do by hand.
 
 **The $5 plan, if you would rather not manage a permanent key.** Cloudflare's
 paid plan ($5 a month) removes the thinking-time limit described in Part 5b(ii),
-which lets the portal scramble passwords roughly seventy times more thoroughly —
-the standard professional bodies now recommend. It is the simplest answer for a
+which lets the portal scramble passwords roughly seventy times more thoroughly, the standard professional bodies now recommend. It is the simplest answer for a
 firm holding client tax records and staff bank details, and it needs nothing for
 you to remember.
 
 If you take it up: switch the plan on at
 **https://dash.cloudflare.com** → **Compute (Workers)** → **Plans**, then tell me
 and I will change the one setting on my side. It is two lines, already written and
-commented out in the project, and everyone's existing password keeps working —
-each one is checked at the strength it was created with, and moves up to the new
+commented out in the project, and everyone's existing password keeps working, each one is checked at the strength it was created with, and moves up to the new
 strength the next time it is changed.

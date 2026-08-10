@@ -2,7 +2,7 @@
  * Light, dark, or follow the device.
  *
  * Three explicit choices rather than a two-state switch: "follow the device" is
- * what most people actually want, and a plain toggle cannot express it — it would
+ * what most people actually want, and a plain toggle cannot express it - it would
  * silently override the phone's own evening switch to dark.
  */
 

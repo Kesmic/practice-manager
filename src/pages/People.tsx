@@ -155,13 +155,13 @@ export function People() {
                           </Link>
                         </td>
                         <td className="whitespace-nowrap font-mono text-xs">
-                          {person.staff_no ?? "—"}
+                          {person.staff_no ?? "-"}
                         </td>
                         <td className="whitespace-nowrap text-xs">
-                          {person.job_title ?? "—"}
+                          {person.job_title ?? "-"}
                         </td>
                         <td className="whitespace-nowrap text-xs">
-                          {person.department ?? "—"}
+                          {person.department ?? "-"}
                         </td>
                         <td className="whitespace-nowrap text-xs">
                           {ROLE_LABELS[person.role]}
@@ -182,7 +182,7 @@ export function People() {
                               }
                             </span>
                           ) : (
-                            <span className="text-xs text-slate-400">—</span>
+                            <span className="text-xs text-slate-400">-</span>
                           )}
                         </td>
                         <td className="whitespace-nowrap text-xs">
@@ -238,7 +238,7 @@ export function People() {
                           </Link>
                         </td>
                         <td className="whitespace-nowrap text-xs">
-                          {(row.job_title as string) ?? "—"}
+                          {(row.job_title as string) ?? "-"}
                         </td>
                         <td className="whitespace-nowrap text-xs">
                           {formatDate(row.start_date as string)}
@@ -259,7 +259,7 @@ export function People() {
                               }
                             </span>
                           ) : (
-                            "—"
+                            "-"
                           )}
                         </td>
                         <td className="min-w-32">

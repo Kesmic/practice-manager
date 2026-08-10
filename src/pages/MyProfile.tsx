@@ -113,7 +113,7 @@ export function MyProfile() {
         <h1 className="section-title">My details</h1>
         <p className="muted mt-0.5">
           Keep your contact and emergency information current. Your employment terms
-          are maintained by the firm — speak to a partner if anything there is wrong.
+          are maintained by the firm - speak to a partner if anything there is wrong.
         </p>
       </div>
 
@@ -127,18 +127,18 @@ export function MyProfile() {
         </div>
       )}
 
-      {/* Employment record — read only */}
+      {/* Employment record - read only */}
       <div className="card p-5">
         <h2 className="card-title mb-2">Employment record</h2>
         <dl className="divide-y divide-slate-100">
-          <DetailRow label="Staff number">{profile.staff_no ?? "—"}</DetailRow>
-          <DetailRow label="Job title">{profile.job_title ?? user.title ?? "—"}</DetailRow>
-          <DetailRow label="Department">{profile.department ?? "—"}</DetailRow>
+          <DetailRow label="Staff number">{profile.staff_no ?? "-"}</DetailRow>
+          <DetailRow label="Job title">{profile.job_title ?? user.title ?? "-"}</DetailRow>
+          <DetailRow label="Department">{profile.department ?? "-"}</DetailRow>
           <DetailRow label="Employment type">
-            {EMPLOYMENT_TYPE_LABELS[profile.employment_type as EmploymentType] ?? "—"}
+            {EMPLOYMENT_TYPE_LABELS[profile.employment_type as EmploymentType] ?? "-"}
           </DetailRow>
           <DetailRow label="Status">
-            {EMPLOYMENT_STATUS_LABELS[profile.employment_status as EmploymentStatus] ?? "—"}
+            {EMPLOYMENT_STATUS_LABELS[profile.employment_status as EmploymentStatus] ?? "-"}
           </DetailRow>
           <DetailRow label="Start date">{formatDate(profile.start_date)}</DetailRow>
           {profile.probation_end_date && (
@@ -147,9 +147,9 @@ export function MyProfile() {
             </DetailRow>
           )}
           <DetailRow label="Line manager">
-            {(profile.line_manager_name as string | null) ?? "—"}
+            {(profile.line_manager_name as string | null) ?? "-"}
           </DetailRow>
-          <DetailRow label="Work location">{profile.work_location ?? "—"}</DetailRow>
+          <DetailRow label="Work location">{profile.work_location ?? "-"}</DetailRow>
         </dl>
       </div>
 

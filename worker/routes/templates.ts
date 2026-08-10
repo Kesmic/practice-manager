@@ -249,7 +249,7 @@ export function registerTemplateRoutes(router: Router<Env>): void {
             id,
             ref,
             clientId,
-            `${template.name} — ${label}`,
+            `${template.name} - ${label}`,
             template.description,
             template.service_line,
             template.task_type,
@@ -290,7 +290,7 @@ export function registerTemplateRoutes(router: Router<Env>): void {
             taskId: id,
             kind: "assigned",
             title: `${ref} assigned to you`,
-            body: `${template.name} — ${clientName} (${label})`,
+            body: `${template.name} - ${clientName} (${label})`,
           }),
         );
 

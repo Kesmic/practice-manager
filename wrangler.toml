@@ -8,7 +8,7 @@ name = "kesmic-practice-manager"
 # Cloudflare manages. Pages accepts a CNAME from external DNS; Workers does not.
 # See docs/DOMAIN.md.
 #
-# `dist/` holds the built React app plus `dist/_worker.js` — the same Worker as
+# `dist/` holds the built React app plus `dist/_worker.js` - the same Worker as
 # before, bundled by scripts/build-worker.mjs. Pages hands every request to that
 # file (advanced mode), which is why /api/* and the app can share one origin.
 pages_build_output_dir = "./dist"
@@ -19,7 +19,7 @@ compatibility_flags = ["nodejs_compat"]
 # Created once with:
 #   wrangler d1 create kesmic-practice
 # then paste the returned database_id below and commit it (it is not a secret).
-# The database is unchanged by the move from Workers to Pages — same data, same id.
+# The database is unchanged by the move from Workers to Pages - same data, same id.
 [[d1_databases]]
 binding = "DB"
 database_name = "kesmic-practice"
@@ -31,7 +31,7 @@ SESSION_TTL_DAYS = "7"
 
 # Password hashing work factor. Left unset, the Worker uses 8,000 PBKDF2
 # iterations (~4 ms of CPU), which fits the 10 ms per-request CPU budget of the
-# **Free** plan. Exceeding that budget does not degrade gracefully — Cloudflare
+# **Free** plan. Exceeding that budget does not degrade gracefully - Cloudflare
 # kills the request, so signing in becomes impossible rather than slow, which is
 # why this is deliberately low.
 #

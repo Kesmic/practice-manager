@@ -451,9 +451,9 @@ export interface PortalDocument {
 export interface PortalDocumentDetail extends PortalDocument {
   body: string;
   my_signature: DocumentSignature | null;
-  /** Signatures across the firm — HR administrators only. */
+  /** Signatures across the firm - HR administrators only. */
   signatures?: DocumentSignature[];
-  /** Employees who have not yet responded — HR administrators only. */
+  /** Employees who have not yet responded - HR administrators only. */
   outstanding?: Array<{ user_id: string; full_name: string }>;
 }
 

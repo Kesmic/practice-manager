@@ -1082,7 +1082,7 @@ function TimePanel({ data, onChanged, setError }: PanelProps) {
                   <td className="whitespace-nowrap">{formatDate(entry.work_date)}</td>
                   <td className="whitespace-nowrap">{entry.user_name}</td>
                   <td>
-                    {entry.narrative ?? <span className="text-slate-400">—</span>}
+                    {entry.narrative ?? <span className="text-slate-400">-</span>}
                     {entry.billable === 0 && (
                       <span className="ml-2 pill bg-slate-100 text-slate-600 ring-slate-200">
                         Non-billable

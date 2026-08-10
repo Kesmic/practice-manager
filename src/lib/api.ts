@@ -3,7 +3,7 @@
  *
  * Every call is same-origin and relies on the session cookie, so there is no
  * token handling here. Errors are normalised into `ApiRequestError` so screens
- * can show the server's own message — those messages are written to be read by
+ * can show the server's own message - those messages are written to be read by
  * the person using the system, not just by a developer.
  */
 

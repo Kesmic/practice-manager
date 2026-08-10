@@ -2,7 +2,7 @@
 --
 -- `due_date_rule` is { month_offset, day } applied to the end of the period the
 -- job covers: month_offset 1 / day 15 means "the 15th of the month following
--- the period end". Statutory deadlines differ by jurisdiction — these are
+-- the period end". Statutory deadlines differ by jurisdiction - these are
 -- sensible defaults that a partner can edit in Settings → Templates without a
 -- code change. `internal_lead_days` is how many days ahead of the statutory
 -- date the firm targets internal sign-off.

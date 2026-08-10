@@ -1,9 +1,9 @@
 # Kesmic Practice Manager
 
 An employee portal for an accounting, tax and regulatory services practice.
-Staff are onboarded through it — contract read and signed on the portal, welcome
+Staff are onboarded through it - contract read and signed on the portal, welcome
 message from the Managing Director, the employee handbook acknowledged policy by
-policy, HR records maintained — and it is also where client work is managed:
+policy, HR records maintained - and it is also where client work is managed:
 deliverables created with timelines, assigned to associates, submitted for
 review, returned with itemised review points, rectified, resubmitted, approved
 and closed.
@@ -17,24 +17,24 @@ Built for [Kesmic Consulting](https://www.kesmic.org).
 
 ## The employee portal
 
-**Onboarding** — a new joiner signs in and lands on a page with a progress bar,
+**Onboarding** - a new joiner signs in and lands on a page with a progress bar,
 the welcome message from the MD, the documents they owe a response to, what
 personal details are still missing, their own steps, and the steps the firm owes
 them.
 
-**Contracts signed on the portal** — the employee reads the document, ticks an
+**Contracts signed on the portal** - the employee reads the document, ticks an
 explicit attestation and types their full name. The system requires the typed
 name to match their account, waits until they have scrolled to the end, and
 records the timestamp, IP address and a SHA-256 hash of the exact text agreed to.
 
-**The employee handbook** — ten seeded policies covering conduct and ethics,
+**The employee handbook** - ten seeded policies covering conduct and ethics,
 client confidentiality, independence and conflicts, anti-money laundering, IT
 security, leave, working hours, dignity at work, performance, and grievance and
 disciplinary procedure. Each is acknowledged separately. **Amending a published
 policy raises its version and asks everyone to acknowledge it again**, while the
 earlier signatures survive as a record of what was agreed before.
 
-**HR records** — employment details, personal and emergency contact information,
+**HR records** - employment details, personal and emergency contact information,
 qualifications, pay and bank details, and a personnel file of documents. Access is
 layered: personal details are visible to the employee and HR administrators only
 (**not** to a line manager), and pay details only at partner grade.
@@ -45,20 +45,20 @@ Details in **[docs/PORTAL.md](docs/PORTAL.md)**.
 
 ## Client work
 
-**Client and engagement records** — entity type, tax and registration numbers,
+**Client and engagement records** - entity type, tax and registration numbers,
 financial year end, risk rating, engagement partner and manager, and engagements
 that group deliverables under a signed letter, a fee and a budget.
 
-**Deliverables with a real review cycle** — separate internal target and
+**Deliverables with a real review cycle** - separate internal target and
 statutory deadline dates, procedure checklists, priorities, budget hours, and a
 status lifecycle that runs from draft through review rounds to closure.
 
-**Review points** — a reviewer raises itemised findings, each with a severity, a
+**Review points** - a reviewer raises itemised findings, each with a severity, a
 reference to the working paper at issue, and a status. The preparer answers each
 one; the reviewer resolves or waives it. A deliverable cannot be signed off with
 a must-fix point outstanding.
 
-**Job templates and a filing calendar** — fourteen seeded compliance templates
+**Job templates and a filing calendar** - fourteen seeded compliance templates
 (VAT, PAYE, withholding tax, corporate tax, transfer pricing, statutory audit,
 management accounts, payroll, registrar and regulatory returns, and more), each
 with its standard procedures and a statutory deadline rule. Generate a whole
@@ -68,7 +68,7 @@ automatically when closed.
 **Time recording, document links, discussion and an append-only audit trail** on
 every deliverable.
 
-**Dashboards and practice reports** — personal work queues, overdue exposure,
+**Dashboards and practice reports** - personal work queues, overdue exposure,
 workload by person, service line summaries, and review quality by preparer.
 
 The workflow, the grades and the controls are documented in
@@ -79,20 +79,20 @@ The workflow, the grades and the controls are documented in
 ## Controls worth knowing about
 
 - **Nobody reviews their own work.** No override exists, at any grade.
-- **Associates cannot be named reviewer** — reviewing needs Senior Associate grade.
+- **Associates cannot be named reviewer** - reviewing needs Senior Associate grade.
 - **Mandatory procedures block submission** until they are complete.
 - **Rework requires at least one review point**, so the preparer knows what to fix.
 - **Must-fix points must be answered before resubmission** and explicitly
   resolved or waived before approval.
 - **Manager grade closes files; only a Partner reopens one.**
 - **Temporary passwords are confined** to onboarding and the account screen until
-  changed — they cannot be used to reach client work.
+  changed - they cannot be used to reach client work.
 - **An employee cannot change their own job title, grade or pay.**
 - **A line manager cannot see their reports' home address or date of birth.**
 - **Pay details are partner-only**, and are kept in their own table so no ordinary
   query can reach them.
 - **Amending a published policy resets consent** rather than inheriting it.
-- **Both audit trails are append-only** — no endpoint updates or deletes
+- **Both audit trails are append-only** - no endpoint updates or deletes
   `task_events` or `hr_events`.
 
 ---
@@ -106,15 +106,15 @@ hands every request to.
 
 Pages rather than Workers only because of the custom domain. `portal.kesmic.org`
 has to be pointed at this from Wix's DNS, and Wix does not let a domain
-registered with it use anyone else's nameservers — which a Worker custom domain
+registered with it use anyone else's nameservers - which a Worker custom domain
 requires. Pages accepts a CNAME from external DNS. See
 **[docs/DOMAIN.md](docs/DOMAIN.md)**.
 
 ```
-shared/workflow.ts   the deliverable state machine, grades and gates — the single
+shared/workflow.ts   the deliverable state machine, grades and gates - the single
                      source of truth, imported by BOTH the Worker and the React app
 shared/hr.ts         portal domain: access thresholds, document rules, the
-                     onboarding programme — likewise shared by both sides
+                     onboarding programme - likewise shared by both sides
 shared/types.ts      wire types shared across the boundary
 
 worker/              the API
@@ -136,7 +136,7 @@ src/                 the React app (TypeScript, Vite, Tailwind)
 
 migrations/          D1 schema, seeded job templates and seeded handbook,
                      applied by CI
-scripts/             build-worker.mjs — bundles the Worker to dist/_worker.js
+scripts/             build-worker.mjs - bundles the Worker to dist/_worker.js
 docs/                deployment, custom domain, workflow and portal documentation
 ```
 
@@ -152,7 +152,7 @@ Same-origin means no CORS layer and session cookies that stay `SameSite=Lax`.
 
 **If you are not a developer**, follow
 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** instead of anything below. It is a
-click-by-click guide you can complete entirely in a web browser — no software to
+click-by-click guide you can complete entirely in a web browser - no software to
 install and nothing to type into a terminal. GitHub does the building and
 publishing; you only paste three codes between two websites.
 
@@ -174,7 +174,7 @@ Then open `/setup` on the deployed URL to create the first administrator.
 
 Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub repository
 secrets, and every push to `main` builds, migrates and deploys itself. The token
-needs **Cloudflare Pages: Edit**, **D1: Edit** and **Account Settings: Read** — a
+needs **Cloudflare Pages: Edit**, **D1: Edit** and **Account Settings: Read** - a
 token cut for Workers Scripts instead of Pages will fail at the deploy step.
 
 ### Local development
@@ -188,7 +188,7 @@ npm run build && npx wrangler pages dev    # http://127.0.0.1:8788
 `npm run dev` runs Vite alone for fast UI iteration, but the API needs
 `wrangler pages dev`, so use the command above when working on anything end to
 end. Note that `npm run build` must run first, and again after any change to
-`worker/` — `pages dev` serves the bundled `dist/_worker.js`, not the sources.
+`worker/` - `pages dev` serves the bundled `dist/_worker.js`, not the sources.
 
 ---
 
@@ -209,7 +209,7 @@ end. Note that `npm run build` must run first, and again after any change to
 
 - **Have the handbook reviewed before publishing it.** The seeded policies are
   drafting starting points, not finished legal instruments. They ship as **drafts**
-  for that reason — review each against the employment law and professional
+  for that reason - review each against the employment law and professional
   standards that apply to the firm, then publish. Nothing reaches staff until you
   do.
 - **Check whether typed-name signatures satisfy your jurisdiction** for
@@ -227,14 +227,14 @@ end. Note that `npm run build` must run first, and again after any change to
   not by cryptography: the Free plan allows 10 ms of CPU per request, and
   PBKDF2-SHA256 costs ~0.5 ms per thousand iterations, so the default is 8,000
   (~4 ms) rather than the 600,000 OWASP recommends (~290 ms). Exceeding the budget
-  does not degrade gracefully — Cloudflare kills the request, so authentication
+  does not degrade gracefully - Cloudflare kills the request, so authentication
   fails outright. On the Paid plan, set `PASSWORD_ITERATIONS = "600000"` and
   `[limits] cpu_ms` (both are written and commented in `wrangler.toml`). Every
   hash records its own iteration count, so changing the setting never invalidates
   a stored password.
 - **Set `PASSWORD_PEPPER` if you stay on the Free plan.** It is HMAC'd into each
   password before the KDF and lives in Worker secrets rather than D1, so a leaked
-  database export cannot be attacked offline whatever the work factor — which is
+  database export cannot be attacked offline whatever the work factor - which is
   what makes a reduced iteration count defensible. Hashes record whether they were
   peppered, so it can be switched on later without locking anyone out; it can
   never be changed or removed afterwards, and the API says so explicitly rather

@@ -276,7 +276,7 @@ export function registerTaskRoutes(router: Router<Env>): void {
         actorId: actor.id,
         kind: "created",
         toStatus: status,
-        detail: `${ref} — ${title}`,
+        detail: `${ref} - ${title}`,
       }),
     ];
 

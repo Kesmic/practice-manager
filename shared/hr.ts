@@ -36,7 +36,7 @@ export function canSeeDirectory(role: Role): boolean {
 }
 
 /**
- * Personal details — date of birth, home address, next of kin — are visible to
+ * Personal details - date of birth, home address, next of kin - are visible to
  * the employee themselves and to HR administrators only. A line manager has no
  * working need for them, so they do not get them.
  */
@@ -220,7 +220,7 @@ export const ONBOARDING_PROGRAMME: OnboardingSeedItem[] = [
   },
   {
     label: "Provide your bank details for payroll",
-    detail: "Give these to a partner directly — they are recorded on your file, not entered here.",
+    detail: "Give these to a partner directly - they are recorded on your file, not entered here.",
     owner: "employee",
     category: "Your details",
   },

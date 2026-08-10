@@ -1,5 +1,5 @@
 /**
- * Kesmic Practice Manager — Cloudflare Worker entry point.
+ * Kesmic Practice Manager - Cloudflare Worker entry point.
  *
  * Serves the JSON API under /api/* and hands everything else to the static
  * asset binding, which holds the built React app. Because the app and the API

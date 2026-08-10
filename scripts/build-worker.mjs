@@ -4,13 +4,13 @@
  * Cloudflare Pages' advanced mode hands *every* request to a single
  * `_worker.js` sitting in the build output directory, and leaves it to decide
  * what is API and what is a static file. That is exactly the shape this project
- * already had, so the Worker source is unchanged by the move — it just needs
+ * already had, so the Worker source is unchanged by the move - it just needs
  * bundling into one file beside the built app.
  *
  * Run after `vite build`, because Vite empties `dist/` first.
  *
- * The Worker has no runtime dependencies of its own — only relative imports and
- * `shared/` — so there is nothing here to resolve from node_modules and no need
+ * The Worker has no runtime dependencies of its own - only relative imports and
+ * `shared/` - so there is nothing here to resolve from node_modules and no need
  * to teach esbuild about path aliases.
  */
 

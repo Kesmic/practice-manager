@@ -143,7 +143,7 @@ export function registerTaskItemRoutes(router: Router<Env>): void {
       ...notifyMany(env, [task.assignee_id, task.reviewer_id], actor.id, {
         taskId: task.id,
         kind: "comment",
-        title: `${task.ref} — new comment from ${actor.full_name}`,
+        title: `${task.ref} - new comment from ${actor.full_name}`,
         body: text.slice(0, 200),
       }),
     ]);

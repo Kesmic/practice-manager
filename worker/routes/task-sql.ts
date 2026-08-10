@@ -2,7 +2,7 @@
  * Shared SQL fragments for reading deliverables.
  *
  * Keeping these in one place means the list, board, dashboard and client views
- * all report identical derived figures — particularly "overdue", which several
+ * all report identical derived figures - particularly "overdue", which several
  * screens surface and which must mean exactly one thing across the system.
  */
 

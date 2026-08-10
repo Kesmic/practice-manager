@@ -15,16 +15,16 @@ const DATETIME_FMT = new Intl.DateTimeFormat("en-GB", {
 });
 
 export function formatDate(value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return "-";
   const date = new Date(value.length === 10 ? `${value}T00:00:00Z` : value);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "-";
   return DATE_FMT.format(date);
 }
 
 export function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return "-";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "-";
   return DATETIME_FMT.format(date);
 }
 
@@ -41,7 +41,7 @@ export function daysUntil(value: string | null | undefined): number | null {
   return Math.round((target - now) / 86_400_000);
 }
 
-/** "3 days late", "due today", "in 5 days" — the phrasing a reviewer scans for. */
+/** "3 days late", "due today", "in 5 days" - the phrasing a reviewer scans for. */
 export function describeDue(value: string | null | undefined): {
   text: string;
   tone: "late" | "soon" | "ok" | "none";
@@ -58,9 +58,9 @@ export function describeDue(value: string | null | undefined): {
 }
 
 export function relativeTime(value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return "-";
   const then = Date.parse(value);
-  if (Number.isNaN(then)) return "—";
+  if (Number.isNaN(then)) return "-";
   const seconds = Math.round((Date.now() - then) / 1000);
   if (seconds < 60) return "just now";
   const minutes = Math.round(seconds / 60);
@@ -73,7 +73,7 @@ export function relativeTime(value: string | null | undefined): string {
 }
 
 export function formatHours(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "-";
   return `${Number(value).toLocaleString("en-GB", { maximumFractionDigits: 2 })}h`;
 }
 
@@ -81,7 +81,7 @@ export function formatMoney(
   amount: number | null | undefined,
   currency = "GHS",
 ): string {
-  if (amount === null || amount === undefined) return "—";
+  if (amount === null || amount === undefined) return "-";
   try {
     return new Intl.NumberFormat("en-GB", {
       style: "currency",
@@ -109,6 +109,6 @@ export function percent(value: number): string {
 
 /** Turns a snake_case identifier into readable text for values without a label map. */
 export function humanise(value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return "-";
   return value.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }

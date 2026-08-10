@@ -1,5 +1,5 @@
 /**
- * The firm's own identity — name, logo and colours — available everywhere,
+ * The firm's own identity - name, logo and colours - available everywhere,
  * including on the sign-in screen before anyone has signed in.
  *
  * It is fetched from `/api/branding`, which needs no session, so the first thing
@@ -73,8 +73,7 @@ export function useFirm(): FirmState {
 
 /**
  * The firm's logo, falling back to the product mark when none has been uploaded.
- * `alt` is empty on purpose where the firm name is already written beside it —
- * a screen reader announcing the name twice is worse than not announcing it.
+ * `alt` is empty on purpose where the firm name is already written beside it, * a screen reader announcing the name twice is worse than not announcing it.
  */
 export function FirmLogo({
   className = "h-9 w-9",

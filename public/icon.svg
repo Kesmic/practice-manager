@@ -2,8 +2,8 @@
   <title>Kesmic Practice Manager</title>
   <!--
     A reviewed working paper: a document with ruled lines and an approval tick.
-    That is the single idea the whole system turns on — work is prepared, then
-    signed off by someone else — so it is what the mark shows.
+    That is the single idea the whole system turns on - work is prepared, then
+    signed off by someone else - so it is what the mark shows.
 
     Drawn on a 64-unit grid with heavy strokes so it survives being shown at
     16 pixels in a browser tab. Colours are literal rather than themed: a favicon

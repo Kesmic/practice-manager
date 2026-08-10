@@ -8,8 +8,7 @@ Two facts, both verified, that between them rule out the obvious approach:
    Cloudflare manages the whole domain's DNS.** You cannot point a record at the
    portal's `.workers.dev` address from somewhere else; Cloudflare rejects it.
 2. **Wix does not allow a Wix-registered domain to use anyone else's
-   nameservers.** This is Wix policy, not a setting that is hidden somewhere —
-   their help centre states that changing nameservers requires transferring the
+   nameservers.** This is Wix policy, not a setting that is hidden somewhere, their help centre states that changing nameservers requires transferring the
    domain away from Wix. It is why the domain's **⋯** menu offers *Manage DNS
    records* and *Transfer away from Wix*, but nothing about nameservers.
 
@@ -27,9 +26,9 @@ keeps managing kesmic.org exactly as it does today, and you add a single record.
 
 **Nothing that currently works is touched.** Not your website, not your email, not
 one existing record. The sixteen records listed further down stay exactly as they
-are — they are there for reference, not because anything needs doing to them.
+are - they are there for reference, not because anything needs doing to them.
 
-### Step 1 — Register the name with Cloudflare first
+### Step 1 - Register the name with Cloudflare first
 
 This step is not optional and the order matters: adding the record at Wix before
 Cloudflare knows about the name gives visitors an error page rather than the
@@ -37,13 +36,13 @@ portal.
 
 1. Sign in at **https://dash.cloudflare.com**
 2. Go to **Workers & Pages**. You will see **two** entries called
-   **kesmic-practice-manager** — the old Worker and the new Pages project. Look at
+   **kesmic-practice-manager** - the old Worker and the new Pages project. Look at
    the type shown beside each and **click the one that says Pages.**
 
    > If you open the wrong one you will know: the Worker's page says **Worker URL**
    > at the top, and its domain dialog says "Connect your *Worker* to a domain in
    > your account" and then "No zones match portal.kesmic.org". That is the dead
-   > end this whole page exists to avoid — click **Cancel**, never **Onboard
+   > end this whole page exists to avoid - click **Cancel**, never **Onboard
    > domain**, which would start moving the whole domain to Cloudflare.
    >
    > The Pages project shows an address ending **.pages.dev** instead.
@@ -52,10 +51,10 @@ portal.
 4. Click **Set up a custom domain**
 5. Type `portal.kesmic.org` and continue
 
-Cloudflare will then show you the record it wants — a **CNAME** for `portal`
+Cloudflare will then show you the record it wants - a **CNAME** for `portal`
 pointing at something ending in **.pages.dev**. Copy that target exactly.
 
-### Step 2 — Add that one record at Wix
+### Step 2 - Add that one record at Wix
 
 1. In your Wix account, go to **Domains**
 2. Click the **⋯** button to the right of **kesmic.org**
@@ -71,12 +70,12 @@ pointing at something ending in **.pages.dev**. Copy that target exactly.
 
 6. Save
 
-### Step 3 — Wait for the padlock
+### Step 3 - Wait for the padlock
 
 Back on the Cloudflare **Custom domains** tab, the entry for
 `portal.kesmic.org` moves from *pending* to **Active** once it can see the record.
 Usually a few minutes; occasionally up to a few hours. Cloudflare issues the
-security certificate itself — there is nothing to buy or install.
+security certificate itself - there is nothing to buy or install.
 
 When it is Active, open **https://portal.kesmic.org**. You should get the portal's
 sign-in screen with a padlock in the address bar.
@@ -86,7 +85,7 @@ The `.pages.dev` address keeps working as well, so nobody's bookmark breaks.
 ### If it does not come up
 
 - **An error page mentioning DNS or a 522.** The record has not been seen yet, or
-  the target was mistyped. Re-check the value in Wix against Step 1 — it is easy
+  the target was mistyped. Re-check the value in Wix against Step 1 - it is easy
   to paste a trailing space.
 - **A certificate warning.** Cloudflare has not finished issuing the certificate.
   Give it an hour before worrying.
@@ -96,14 +95,14 @@ The `.pages.dev` address keeps working as well, so nobody's bookmark breaks.
 Removing it later is the reverse: delete the custom domain in Cloudflare, delete
 the CNAME at Wix. Nothing else is affected.
 
-### Step 4 — Delete the old Worker
+### Step 4 - Delete the old Worker
 
 Once the new address works, remove the old Worker so there is only one of
 everything and no chance of opening the wrong one again. In **Workers & Pages**,
 click the **kesmic-practice-manager** that says **Worker**, then **Settings →
 Delete**.
 
-This does not touch the database — the Worker is only a front door, and the
+This does not touch the database - the Worker is only a front door, and the
 records live separately. Both front doors read the same data, which is why nothing
 is lost.
 
@@ -113,22 +112,21 @@ is lost.
 
 **Why not simply point the subdomain at the Worker?** Cloudflare will only let a
 Worker answer on your own name if Cloudflare manages the whole domain's DNS, and
-Wix does not permit a Wix-registered domain to use anyone else's nameservers —
-their help centre states that moving nameservers requires transferring the domain
+Wix does not permit a Wix-registered domain to use anyone else's nameservers, their help centre states that moving nameservers requires transferring the domain
 away. That is why the domain's **⋯** menu offers *Manage DNS records* and
 *Transfer away from Wix*, with nothing in between.
 
 **Why not transfer the domain away from Wix?** It would work, and it would let the
 portal keep its original setup with no code changes. But it means a five-to-seven
 day registrar transfer, buying the name from someone else, and recreating all
-sixteen DNS records — including the firm's Microsoft 365 mail — at Cloudflare
+sixteen DNS records - including the firm's Microsoft 365 mail - at Cloudflare
 afterwards. Pointing one record is a great deal less that can go wrong.
 
 ---
 
 ## Reference: every DNS record on kesmic.org
 
-Read from live DNS on **9 August 2026**. **Nothing here needs changing** — the
+Read from live DNS on **9 August 2026**. **Nothing here needs changing** - the
 portal's subdomain is added alongside all of it. It is written down because it is
 worth having a record of how the domain is set up, and because it is what you
 would need if you ever did move the domain elsewhere. The lines marked ⚠️ are your
@@ -182,7 +180,7 @@ Sixteen records in total. Nameservers are currently `ns12.wixdns.net` and
 
 ## Two email problems worth fixing separately
 
-Neither is caused by anything on this page — both are live today, and both are
+Neither is caused by anything on this page - both are live today, and both are
 fixed in Wix under **Domains → ⋯ → Manage DNS records**, the same screen you used
 for the subdomain. Do them as a separate sitting, so you are only ever changing one
 thing at a time.
@@ -191,7 +189,7 @@ thing at a time.
 `v=spf1 include:spf.protection.outlook.com -all` for Microsoft 365 and
 `v=spf1 include:sender.zohobooks.com` for Zoho Books. When a receiving mail server
 finds two, the rule is that it stops and treats the check as broken rather than
-picking one — so some of your legitimate email is likely being treated as
+picking one - so some of your legitimate email is likely being treated as
 suspicious or filed as spam. Delete both, and add this single record in their
 place:
 
@@ -201,7 +199,7 @@ v=spf1 include:spf.protection.outlook.com include:sender.zohobooks.com -all
 
 **You have no DMARC record.** That is the instruction telling other mail systems
 what to do with email that only pretends to come from kesmic.org. Without it,
-forging your firm's address is easier than it should be — which matters for a
+forging your firm's address is easier than it should be - which matters for a
 practice that emails clients about their tax affairs. A safe starting point, which
 only asks for reports and changes nothing about delivery:
 

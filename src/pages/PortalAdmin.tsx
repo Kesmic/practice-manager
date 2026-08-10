@@ -187,7 +187,7 @@ function DocumentsAdmin({
                         )}
                       </td>
                       <td className="whitespace-nowrap text-xs">
-                        {doc.category ?? "—"}
+                        {doc.category ?? "-"}
                       </td>
                       <td className="whitespace-nowrap text-xs">
                         {doc.audience === "all"
@@ -293,7 +293,7 @@ function DocumentEditor({
   const [busy, setBusy] = useState(false);
   const [loadingBody, setLoadingBody] = useState(false);
 
-  // Load the existing text — list responses deliberately omit document bodies.
+  // Load the existing text - list responses deliberately omit document bodies.
   useEffect(() => {
     if (!target) return;
     if (target === "new") {
@@ -518,7 +518,7 @@ function DocumentEditor({
                 }
                 className="h-4 w-4 border-slate-300 text-link"
               />
-              Signature — for contracts and binding terms
+              Signature - for contracts and binding terms
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
@@ -534,7 +534,7 @@ function DocumentEditor({
                 }
                 className="h-4 w-4 border-slate-300 text-link"
               />
-              Acknowledgement — for handbook policies
+              Acknowledgement - for handbook policies
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
@@ -550,7 +550,7 @@ function DocumentEditor({
                 }
                 className="h-4 w-4 border-slate-300 text-link"
               />
-              None — reference only
+              None - reference only
             </label>
           </fieldset>
 
@@ -699,7 +699,7 @@ function WelcomeAdmin({
           />
         )}
         <p className="hint">
-          This is the first thing a new joiner reads. Write it in your own voice — a
+          This is the first thing a new joiner reads. Write it in your own voice - a
           seeded draft is provided, but it will read better rewritten.
         </p>
       </div>
@@ -721,7 +721,7 @@ const MAX_LOGO_BYTES = 280 * 1024;
 /**
  * The firm's logo and its two colours.
  *
- * Changes preview live — the whole interface recolours as the pickers move — so
+ * Changes preview live - the whole interface recolours as the pickers move - so
  * the choice is made against the real thing rather than a swatch. Nothing is
  * stored until Save, and leaving without saving restores what was there.
  */
@@ -770,7 +770,7 @@ function AppearanceAdmin({
       setError(
         `That image is ${Math.round(file.size / 1024)} kB. Please use one under ${Math.round(
           MAX_LOGO_BYTES / 1024,
-        )} kB — a logo does not need to be large, and every page load carries it.`,
+        )} kB - a logo does not need to be large, and every page load carries it.`,
       );
       return;
     }
@@ -845,7 +845,7 @@ function AppearanceAdmin({
         </div>
         <p className="hint">
           Shown beside the firm name in the sidebar and on the sign-in screen. A square
-          image works best. Keep it under 280 kB — it is not a photograph, and every
+          image works best. Keep it under 280 kB - it is not a photograph, and every
           page load carries it.
         </p>
       </div>
@@ -886,7 +886,7 @@ function AppearanceAdmin({
           <div className="h-full w-2/3 rounded-full bg-accent-500" />
         </div>
         <p className="hint mt-2">
-          The rest of the portal has already changed too — look at the sidebar. Nothing
+          The rest of the portal has already changed too - look at the sidebar. Nothing
           is saved until you press Save, and leaving this page undoes it.
         </p>
       </div>

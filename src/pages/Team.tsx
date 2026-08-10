@@ -332,7 +332,7 @@ function InviteModal({
             </Select>
           )}
         </Field>
-        <Field label="Job title" hint="Shown on their profile — optional.">
+        <Field label="Job title" hint="Shown on their profile - optional.">
           {(id) => (
             <TextInput
               id={id}
