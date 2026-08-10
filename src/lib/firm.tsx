@@ -16,6 +16,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useTheme } from "./theme";
 import {
   applyBranding,
   DEFAULT_PRIMARY,
@@ -26,6 +27,7 @@ import {
 const FALLBACK: Branding = {
   firm_name: "Kesmic Consulting",
   logo_data_url: "",
+  logo_dark_data_url: "",
   primary_color: DEFAULT_PRIMARY,
   secondary_color: DEFAULT_SECONDARY,
 };
@@ -80,10 +82,13 @@ export function useFirm(): FirmState {
  *    into a square box it shrinks to the box's width and ends up a third of the
  *    available height, which reads as an accident. So the slot fixes the height and
  *    lets the width run to a sensible maximum instead.
- * 2. **Colour.** Most logos are dark artwork meant for white paper, and two places
- *    in this portal are dark navy. Black on navy is invisible, so on a dark surface
- *    the logo is given a white plate to sit on. That works whether the uploaded file
- *    has a transparent background or a white one.
+ * 2. **Colour.** Most logos are dark artwork meant for white paper, and the portal
+ *    has dark surfaces: the sidebar and the sign-in panel are navy in every theme,
+ *    and in dark mode the pages themselves are dark. Dark ink on either is
+ *    unreadable, so a second logo can be uploaded in light ink. Where one exists it
+ *    is used on every dark surface and sits straight on it with nothing behind it,
+ *    which is what a designer would do. Where it does not, the main logo is set on
+ *    a bright plate instead, which keeps it legible at the cost of a visible box.
  * 3. **Duplication.** A wordmark already says the firm's name. Printing the name
  *    beside it says everything twice. `FirmName` below therefore renders nothing
  *    when a logo has been uploaded, and the name when one has not.
@@ -98,7 +103,7 @@ export function FirmLogo({
    */
   maxWidth = "max-w-[11rem]",
   maxHeight = "max-h-10",
-  /** Set on a dark background, which gives the artwork a white plate. */
+  /** Set where the logo sits on one of the navy surfaces. */
   onDark = false,
   labelled = false,
 }: {
@@ -108,8 +113,14 @@ export function FirmLogo({
   labelled?: boolean;
 }) {
   const { branding } = useFirm();
-  const custom = Boolean(branding.logo_data_url);
-  const source = branding.logo_data_url || "/icon.svg";
+  const { active } = useTheme();
+
+  // A dark background is either a surface that is always navy, or any surface at
+  // all once the theme is dark. Both want light ink.
+  const dark = onDark || active === "dark";
+  const lightInk = branding.logo_dark_data_url;
+  const custom = Boolean(branding.logo_data_url || lightInk);
+  const source = (dark && lightInk ? lightInk : branding.logo_data_url) || "/icon.svg";
 
   if (!custom) {
     // The product mark is square and designed for a dark background, so it needs
@@ -131,12 +142,21 @@ export function FirmLogo({
     />
   );
 
-  if (!onDark) return image;
+  // The plate exists only to rescue dark artwork on a dark surface, so it is drawn
+  // in exactly one case: the background is dark and there is no light-ink version to
+  // use instead. On a light page, and wherever the light-ink logo is available, the
+  // artwork sits bare, which is what a transparent file is for.
+  //
+  // `bg-white` rather than a slate step: the slate ramp reverses in dark mode, so
+  // `bg-slate-50` there would resolve to something dark and defeat the whole point.
+  // `w-fit self-start` matters too - inside a flex column the plate would otherwise
+  // stretch the full width of the panel and read as a white banner, not a logo.
+  if (!dark || lightInk) return image;
 
-  // `w-fit self-start` matters: inside a flex column the plate would otherwise
-  // stretch the full width of the panel and read as a white banner.
   return (
-    <span className={`inline-flex w-fit self-start items-center rounded-md bg-white p-2 ${maxWidth}`}>
+    <span
+      className={`inline-flex w-fit self-start items-center rounded-lg bg-white p-2 shadow-sm ${maxWidth}`}
+    >
       {image}
     </span>
   );
@@ -148,6 +168,6 @@ export function FirmLogo({
  */
 export function FirmName({ className = "" }: { className?: string }) {
   const { branding } = useFirm();
-  if (branding.logo_data_url) return null;
+  if (branding.logo_data_url || branding.logo_dark_data_url) return null;
   return <p className={className}>{branding.firm_name}</p>;
 }

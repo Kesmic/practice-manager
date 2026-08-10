@@ -15,6 +15,12 @@ const DEFAULTS: Record<string, string> = {
   welcome_message: "",
   /* Appearance. Empty means "use the built-in default". */
   logo_data_url: "",
+  /**
+   * A second version of the logo, drawn in light ink for the two navy surfaces
+   * (the sidebar and the sign-in panel). Empty means "there is only one logo",
+   * and the portal falls back to setting the main one on a bright plate.
+   */
+  logo_dark_data_url: "",
   primary_color: "",
   secondary_color: "",
 };
@@ -26,7 +32,13 @@ const EDITABLE = Object.keys(DEFAULTS);
  * without signing in, so the firm's logo and colours appear on the sign-in screen
  * itself. None of it is confidential - it is what every visitor would see anyway.
  */
-const PUBLIC_KEYS = ["firm_name", "logo_data_url", "primary_color", "secondary_color"];
+const PUBLIC_KEYS = [
+  "firm_name",
+  "logo_data_url",
+  "logo_dark_data_url",
+  "primary_color",
+  "secondary_color",
+];
 
 /** Longest value each setting may hold. */
 const MAX_LENGTH: Record<string, number> = {
@@ -34,6 +46,7 @@ const MAX_LENGTH: Record<string, number> = {
   // A data URI for the logo. 400,000 characters is roughly a 290 kB image, which
   // is generous for a logo and comfortably inside what a D1 row will hold.
   logo_data_url: 400_000,
+  logo_dark_data_url: 400_000,
 };
 
 /** Image types a browser will render from a data URI without any conversion. */
@@ -99,7 +112,9 @@ export function registerSettingsRoutes(router: Router<Env>): void {
       // The welcome message is long-form markdown and the logo is a data URI;
       // everything else is a short field.
       const value = optionalString(body[key], key, MAX_LENGTH[key] ?? 200) ?? "";
-      if (key === "logo_data_url") return { key, value: assertLogo(value) };
+      if (key === "logo_data_url" || key === "logo_dark_data_url") {
+        return { key, value: assertLogo(value) };
+      }
       if (key === "primary_color" || key === "secondary_color") {
         return { key, value: assertColour(value, key) };
       }

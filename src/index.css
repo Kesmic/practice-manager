@@ -1,5 +1,5 @@
 /*
- * Light and dark values for every colour. Generated — see the file's header.
+ * Light and dark values for every colour. Generated, so see the file's header.
  *
  * This has to be the first rule in the file: an @import that follows other rules
  * is invalid CSS and gets dropped silently, which leaves every colour undefined
@@ -14,7 +14,7 @@
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
-    /* Makes native controls — scrollbars, date pickers — follow the theme. */
+    /* Makes native controls (scrollbars, date pickers) follow the theme. */
     color-scheme: light;
   }
   html.dark {

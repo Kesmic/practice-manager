@@ -14,6 +14,8 @@
 export interface Branding {
   firm_name: string;
   logo_data_url: string;
+  /** The light-ink version, used on the navy surfaces. "" if there is only one. */
+  logo_dark_data_url: string;
   primary_color: string;
   secondary_color: string;
 }
