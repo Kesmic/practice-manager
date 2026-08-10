@@ -18,7 +18,7 @@ export function newId(): string {
  */
 export async function nextRef(
   env: Env,
-  counter: "task" | "client" | "engagement",
+  counter: "task" | "client" | "engagement" | "request",
   prefix: string,
   width: number,
 ): Promise<string> {

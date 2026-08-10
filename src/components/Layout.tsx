@@ -19,6 +19,12 @@ const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", section: "Work" },
   { to: "/tasks", label: "Deliverables", section: "Work" },
   { to: "/clients", label: "Clients", section: "Work" },
+  {
+    to: "/client-requests",
+    label: "Client requests",
+    minimum: "manager",
+    section: "Work",
+  },
   { to: "/engagements", label: "Engagements", section: "Work" },
   { to: "/templates", label: "Job templates", section: "Work" },
   { to: "/reports", label: "Reports", minimum: "manager", section: "Work" },

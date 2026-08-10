@@ -144,9 +144,15 @@ app is the version to build. Perhaps a day.
   a small screen.
 - **Time entries cannot be corrected**, only deleted and re-entered. Fine, but mildly
   irritating for a typo in a narrative.
-- **No client-facing view.** Clients cannot see the status of their own work or
-  supply information directly. That is a deliberate boundary rather than an
-  oversight, but it is worth deciding on rather than defaulting into.
+- **No client-facing view.** Clients can now ask for work through the two intake
+  links, but they still cannot see the status of anything once it is under way. That
+  is a deliberate boundary rather than an oversight, and the intake links are as far
+  through it as I would go without a decision from you.
+- **Nothing is sent to whoever submitted a request.** Accepting or declining records
+  the decision inside the portal and leaves writing back to a person. That is the
+  right default for a first version, since a template reply from a compliance firm
+  reads badly, but it does mean an enquiry can sit unanswered from the sender's point
+  of view while the queue says it was handled.
 - **Nothing links a deliverable to an invoice.** Time is recorded and budgets are
   tracked, and nothing turns that into a bill. If you intend to bill from this data
   rather than re-enter it elsewhere, that gap will matter.

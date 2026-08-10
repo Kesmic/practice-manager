@@ -18,6 +18,7 @@ import { registerDocumentRoutes } from "./routes/documents";
 import { registerEmployeeRoutes } from "./routes/employees";
 import { registerEngagementRoutes } from "./routes/engagements";
 import { registerInsightRoutes } from "./routes/insights";
+import { registerIntakeRoutes } from "./routes/intake";
 import { registerReviewRoutes } from "./routes/reviews";
 import { registerSettingsRoutes } from "./routes/settings";
 import { registerTaskItemRoutes } from "./routes/task-items";
@@ -41,6 +42,9 @@ registerReviewRoutes(router);
 registerTaskItemRoutes(router);
 registerTemplateRoutes(router);
 registerInsightRoutes(router);
+
+// Client intake: the two public request links and the queue they feed.
+registerIntakeRoutes(router);
 
 // Employee portal: HR records, onboarding and portal documents.
 registerEmployeeRoutes(router);

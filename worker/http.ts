@@ -18,6 +18,7 @@ export const unauthorized = (message = "Not signed in.") =>
 export const forbidden = (message: string) => new HttpError(403, message);
 export const notFound = (message = "Not found.") => new HttpError(404, message);
 export const conflict = (message: string) => new HttpError(409, message);
+export const tooMany = (message: string) => new HttpError(429, message);
 
 const SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
@@ -138,11 +139,27 @@ export class Router<Env> {
 
 export async function readJson<T = Record<string, unknown>>(
   request: Request,
+  options: { maxBytes?: number } = {},
 ): Promise<T> {
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     throw badRequest("Expected a JSON request body.");
   }
+
+  // Endpoints reachable without signing in pass a cap. The body is measured after
+  // reading rather than trusting Content-Length, which the sender controls.
+  if (options.maxBytes !== undefined) {
+    const text = await request.text();
+    if (new TextEncoder().encode(text).length > options.maxBytes) {
+      throw badRequest("That is more information than this form accepts.");
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw badRequest("Request body is not valid JSON.");
+    }
+  }
+
   try {
     return (await request.json()) as T;
   } catch {

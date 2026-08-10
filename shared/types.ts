@@ -26,6 +26,7 @@ import type {
   PayFrequency,
   SignatureAction,
 } from "./hr";
+import type { RequestKind, RequestStatus } from "./intake";
 
 export interface User {
   id: string;
@@ -78,6 +79,49 @@ export interface ClientSummary extends Client {
   open_tasks: number;
   overdue_tasks: number;
   engagements: number;
+}
+
+/**
+ * Something submitted through one of the two public intake links.
+ *
+ * Every text field here was typed by someone outside the firm, which is why the
+ * review screen presents them as a submission to be checked rather than as facts.
+ */
+export interface ClientRequest {
+  id: string;
+  reference: string;
+  kind: RequestKind;
+  status: RequestStatus;
+  organisation: string;
+  /** What an existing client believes its reference to be. Never matched on. */
+  client_ref: string | null;
+  /** Set by a person: matched to a file, or created when a new request is accepted. */
+  client_id: string | null;
+  entity_type: EntityType | null;
+  contact_name: string;
+  contact_email: string;
+  contact_phone: string | null;
+  tax_id: string | null;
+  registration_no: string | null;
+  industry: string | null;
+  fiscal_year_end: string | null;
+  address: string | null;
+  /** Service lines asked for, as submitted. */
+  services: ServiceLine[];
+  details: string | null;
+  preferred_start: string | null;
+  handled_by: string | null;
+  handled_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientRequestSummary extends ClientRequest {
+  /** The matched client's name, once someone has matched it. */
+  client_name: string | null;
+  client_code: string | null;
+  handled_by_name: string | null;
 }
 
 export interface Engagement {

@@ -49,6 +49,14 @@ Details in **[docs/PORTAL.md](docs/PORTAL.md)**.
 financial year end, risk rating, engagement partner and manager, and engagements
 that group deliverables under a signed letter, a fee and a budget.
 
+**Two public intake links** - one for prospective clients, one for existing clients
+asking for more work. Each is a single unguessable address the firm copies onto its
+website or into an email; submissions arrive in a queue with the whole firm's
+supervisors notified. Accepting a new-client enquiry creates the client record from
+what was submitted, as a prospect. Nothing is confirmed to the sender, so the form
+cannot be used to ask whether a given company is a client, and no record other than
+the request itself is created until a person accepts it.
+
 **Deliverables with a real review cycle** - separate internal target and
 statutory deadline dates, procedure checklists, priorities, budget hours, and a
 status lifecycle that runs from draft through review rounds to closure.
@@ -79,6 +87,9 @@ The workflow, the grades and the controls are documented in
 ## Controls worth knowing about
 
 - **Nobody reviews their own work.** No override exists, at any grade.
+- **An intake submission creates nothing but itself.** A client record appears only
+  when a Manager accepts the request, and an existing-client request has to be
+  matched to a file by hand - the portal will not guess from a typed name.
 - **Associates cannot be named reviewer** - reviewing needs Senior Associate grade.
 - **Mandatory procedures block submission** until they are complete.
 - **Rework requires at least one review point**, so the preparer knows what to fix.
@@ -115,6 +126,8 @@ shared/workflow.ts   the deliverable state machine, grades and gates - the singl
                      source of truth, imported by BOTH the Worker and the React app
 shared/hr.ts         portal domain: access thresholds, document rules, the
                      onboarding programme - likewise shared by both sides
+shared/intake.ts     client intake: the two links, request states, the field
+                     limits the public form and the server both enforce
 shared/types.ts      wire types shared across the boundary
 
 worker/              the API
@@ -123,13 +136,14 @@ worker/              the API
                      budget, optional pepper), database-backed sessions
   dates.ts           statutory deadline and recurrence arithmetic
   routes/            auth, users, clients, engagements, tasks, workflow,
-                     reviews, task-items, templates, insights,
+                     reviews, task-items, templates, insights, intake,
                      employees, documents, settings
 
 src/                 the React app (TypeScript, Vite, Tailwind)
   lib/               API client, session context, formatting
   components/        layout and shared UI
   pages/             dashboard, deliverables, task detail, clients, engagements,
+                     client requests, the two public intake forms,
                      templates, reports, team, inbox, account,
                      onboarding, handbook, document view, my details,
                      people, employee file, portal admin

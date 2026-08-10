@@ -295,6 +295,72 @@ An engagement is optional. A deliverable can belong directly to a client.
 
 ---
 
+## Client requests: the two links
+
+**Client requests**, at Manager grade and above, gives you two web addresses you can
+send to anyone. They are the way work comes in without somebody having to type it up
+from an email.
+
+- **The new client link** is for organisations that are not clients yet. Put it on the
+  website, in proposals, in email signatures and on a business card if you like. It
+  asks who they are, what they need, and, optionally, the registration details.
+- **The existing client link** is for clients who already have a file with you and
+  want something else done. It asks far less, because you already hold the rest.
+
+Press **Copy link** and paste it wherever you need it. **Preview** opens the form
+exactly as an outsider sees it, which is worth doing once before you send it out.
+
+### What happens when somebody submits one
+
+They get a reference, **REQ-0001** and upwards, on screen and to quote back at you.
+Nothing else is confirmed to them: the form never says whether a name they typed
+matches a client of the firm, because that would turn it into a way of asking whether
+a given company is a client of yours.
+
+Inside the portal, the request appears in the queue on this screen straight away, and
+everyone at Manager grade and above gets it in their inbox, and by email if email is
+set up. Nobody has to be watching for it.
+
+### Dealing with a request
+
+Open it, and you see everything that was submitted, with a warning at the top that
+every word of it was typed by somebody outside the firm. Treat a tax number here as a
+claim, not a fact.
+
+Then one of three things:
+
+- **I am looking at this** marks it as yours so two people do not both ring them.
+- **Decline** records the decision with your note. **Nothing is sent to the sender.**
+  Writing to them is your job, not the portal's.
+- **Accept** is the one that does something. For a **new client** it creates the
+  client record from what was submitted, as a **prospect**, and opens the file. For an
+  **existing client** you first choose which file it belongs to, because the portal
+  will not guess from a typed name; where the name is an exact match it suggests one
+  and still asks you to confirm.
+
+Accepting does not create the work itself. It gives you a client record with the
+details already in it, and you raise the deliverable or the engagement from there as
+usual. That is deliberate: what to actually do about an enquiry is a professional
+judgement, not a form submission.
+
+### Replacing a link
+
+**Replace** issues a new address and stops the old one working immediately. Do it if a
+link has been forwarded somewhere it should not have been, or if it is attracting
+rubbish. Requests you have already received are not affected, but anyone holding the
+old link, including on a printed proposal, will be told to ask you for a new one. The
+two links are independent, so replacing one leaves the other alone.
+
+### What stops the forms being abused
+
+The address itself is the protection: each contains a long random string, so the forms
+are not findable by anyone who was not given the link, and search engines will not
+index them. Beyond that, one sender can submit a handful of times an hour and no more,
+each link takes a bounded number an hour in total, and every field has a length limit.
+A submission creates nothing except its own record.
+
+---
+
 ## Your own records
 
 **My details** is yours to maintain. You can change your contact details, emergency
@@ -423,7 +489,7 @@ Grades cannot.
 | --- | --- |
 | **Associate** | Prepare work, tick procedures, log time, answer review points. Cannot create deliverables and cannot review. |
 | **Senior Associate** | The above, plus **create deliverables** and **review**: raise points, return for rework, approve. Can be named reviewer. |
-| **Manager** | Plus **assign work**, create clients and engagements, add and edit job templates, generate filings, **close** files, see reports and the people directory. |
+| **Manager** | Plus **assign work**, create clients and engagements, add and edit job templates, generate filings, **close** files, handle **client requests** and the two intake links, see reports and the people directory. |
 | **Partner** | Plus create and suspend accounts, reset passwords, publish handbook policies, edit the welcome and branding, see pay, and **reopen** a closed file. |
 | **Administrator** | The same as Partner, for whoever runs the system. |
 
@@ -440,7 +506,9 @@ To change what somebody can do, change their grade in **Accounts and grades**.
 ## Settings, notifications and appearance
 
 **Your inbox** carries a message whenever something needs you: work assigned,
-submitted, returned, approved, or commented on. The count sits in the top bar.
+submitted, returned, approved, or commented on. At Manager grade and above it also
+carries anything that arrives through the two client intake links. The count sits in
+the top bar.
 
 **Email** can be sent as well, if the firm has set it up. You are emailed about a
 deliverable when you are involved in it, meaning you are doing it, reviewing it,
