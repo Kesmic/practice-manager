@@ -257,6 +257,25 @@ if it lands there, the SPF or the domain verification is not right yet.
 
 ---
 
+## The portal will tell you what is wrong
+
+**Portal administration → Email**, at Partner grade. It reads the settings from the
+running system rather than from what anyone believes is set, and it shows:
+
+- whether email is configured at all
+- which provider is in use
+- whether an API key is present, and how many characters it has, which catches a
+  truncated paste without ever showing the key
+- the address it sends as, and where links point
+- how many active people would actually be emailed
+
+Anything missing is listed underneath, naming the setting and where it belongs.
+
+**Send a test email** goes to your own address and nowhere else, and reports what the
+provider answered, in the provider's own words. That is the difference between "nothing
+happened" and "SendGrid says the sender identity is not verified". Start here whenever
+somebody says email is not working.
+
 ## If it does not arrive
 
 The portal never fails because email failed, so a comment always saves whether or

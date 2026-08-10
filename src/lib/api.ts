@@ -384,6 +384,34 @@ export const api = {
 
   intakeLinks: () => request<{ links: IntakeLink[] }>("/api/intake-links"),
 
+  /**
+   * What the Worker can see of the email settings. The key is never returned, only
+   * whether one is present and how long it is.
+   */
+  emailStatus: () =>
+    request<{
+      email: {
+        configured: boolean;
+        provider: string;
+        provider_known: boolean;
+        from: string;
+        from_address: string;
+        portal_url: string;
+        key_present: boolean;
+        key_length: number;
+        problems: string[];
+      };
+      firm_name: string;
+      recipients: { active: number; opted_in: number };
+    }>("/api/email/status"),
+
+  /** Sends a test message to your own address and reports what the provider said. */
+  sendTestEmail: () =>
+    request<{ sent: boolean; status: number | null; detail: string; to: string }>(
+      "/api/email/test",
+      { method: "POST" },
+    ),
+
   intakeServices: () =>
     request<{ services: IntakeService[]; customised: boolean }>("/api/intake-services"),
 

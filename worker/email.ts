@@ -29,6 +29,127 @@ export function emailConfigured(env: Env): boolean {
 }
 
 /**
+ * What the Worker can see of the email settings, for the screen that reports it.
+ *
+ * This exists because of a failure that happened twice: email was doing nothing,
+ * silently, and neither the firm nor I could tell which of five possible causes it
+ * was without another round trip. Inertness is the right behaviour for a missing
+ * setting, but it must be visible somewhere, and the only place that can see the
+ * Worker's own environment is the Worker.
+ *
+ * The key itself is never returned, only whether one is present and how long it is:
+ * length is enough to catch a truncated paste, which is a real mistake, without
+ * putting the credential on a screen or in a browser's memory.
+ */
+export function emailDiagnosis(env: Env): {
+  configured: boolean;
+  provider: string;
+  provider_known: boolean;
+  from: string;
+  from_address: string;
+  portal_url: string;
+  key_present: boolean;
+  key_length: number;
+  problems: string[];
+} {
+  const provider = (env.EMAIL_PROVIDER ?? "resend").trim().toLowerCase();
+  const key = env.EMAIL_API_KEY ?? "";
+  const from = env.EMAIL_FROM ?? "";
+  const parsed = fromAddress(from);
+  const problems: string[] = [];
+
+  if (!key) {
+    problems.push(
+      "EMAIL_API_KEY is not set. Add it as a Secret in Cloudflare under Settings, Variables and Secrets, on the Production side, then deploy again.",
+    );
+  }
+  if (!from) {
+    problems.push("EMAIL_FROM is not set. It belongs in wrangler.toml under [vars].");
+  } else if (!parsed.email.includes("@")) {
+    problems.push(
+      `EMAIL_FROM does not contain an email address. It should read like: Kesmic Practice Manager <portal@kesmic.org>`,
+    );
+  }
+  if (!(provider in PROVIDERS)) {
+    problems.push(
+      `EMAIL_PROVIDER is "${provider}", which is not one of: ${Object.keys(PROVIDERS).join(", ")}.`,
+    );
+  }
+  if (!env.PORTAL_URL) {
+    problems.push(
+      "PORTAL_URL is not set, so links in emails will point at whichever address the portal was reached on. Harmless, but worth setting.",
+    );
+  }
+
+  return {
+    configured: emailConfigured(env),
+    provider,
+    provider_known: provider in PROVIDERS,
+    from,
+    from_address: parsed.email,
+    portal_url: env.PORTAL_URL ?? "",
+    key_present: Boolean(key),
+    key_length: key.length,
+    problems,
+  };
+}
+
+/**
+ * Sends one message and reports exactly what the provider said.
+ *
+ * Everything else here swallows failures on purpose, so that a broken mail provider
+ * cannot break the portal. That is right for a notification and useless for
+ * diagnosis, which is why this one path is allowed to be loud: it returns the
+ * provider's HTTP status and its own words, which is the difference between "nothing
+ * happens" and "SendGrid says the sender identity is not verified".
+ */
+export async function sendTestEmail(
+  env: Env,
+  to: { email: string; full_name: string },
+  firmName: string,
+  origin: string,
+): Promise<{ sent: boolean; status: number | null; detail: string }> {
+  if (!emailConfigured(env)) {
+    return {
+      sent: false,
+      status: null,
+      detail:
+        "Email is not configured on this deployment, so nothing was sent. See the settings above.",
+    };
+  }
+
+  const now = new Date().toISOString();
+  const message: Message = {
+    subject: `${firmName} Practice Manager: test message`,
+    headline:
+      "This is a test message from the portal. If you are reading it, notifications will reach you: assignments, submissions, review points, comments and client enquiries all use this same path.",
+    detail: `Sent at ${now}\nProvider: ${(env.EMAIL_PROVIDER ?? "resend").toLowerCase()}\nFrom: ${env.EMAIL_FROM}`,
+    link: `${portalUrl(env, origin)}/`,
+    linkLabel: "Open the portal",
+    firmName,
+    reason: "you asked the portal to send you a test message",
+  };
+
+  try {
+    const { text, html } = render(message, { id: "", ...to });
+    await deliver(env, to.email, message.subject, text, html);
+    return {
+      sent: true,
+      status: 202,
+      detail: `Accepted by the provider and addressed to ${to.email}. If it does not arrive within a few minutes, look in the spam folder, then in the provider's own activity log: from here on it is out of the portal's hands.`,
+    };
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    const status = Number.parseInt(/returned (\d{3})/.exec(raw)?.[1] ?? "", 10);
+    return {
+      sent: false,
+      status: Number.isFinite(status) ? status : null,
+      detail: raw,
+    };
+  }
+}
+
+/**
  * Where links in emails should point. Falls back to the request's own origin,
  * which is right in every case except a deployment reached by more than one name.
  */
