@@ -363,23 +363,33 @@ it per person, fill in their details, and issue it to them individually.
 **Logo and colours** is on the same screen. Pick a primary and secondary colour and
 the whole portal recolours, previewing live before you save.
 
-**The logo has two slots, and it is worth using both.** The portal has light pages
-and dark ones: the sidebar and the sign-in panel are navy whatever theme you are in,
-and in dark mode everything is dark. One logo cannot read well on both.
+**The logo has two slots, but you normally only fill one.** The portal has light
+pages and dark ones: the sidebar and the sign-in panel are navy whatever theme you
+are in, and in dark mode everything is dark. Dark artwork cannot be read on those, so
+a white version is needed as well.
 
 - **Logo** is your normal artwork, the dark-ink version, used on light pages.
-- **Logo for dark backgrounds** is the same logo in white or light ink, used on the
-  sidebar, the sign-in panel, and everywhere in dark mode.
+- **Logo for dark backgrounds** is the same logo in white, used on the sidebar, the
+  sign-in panel, and everywhere in dark mode.
 
-Save both as **PNG files with a transparent background**. If the file carries its own
-white rectangle, that rectangle shows as a white block anywhere the page behind it is
-not white. Crop the empty space from around the artwork too, since the portal cannot
-tell padding from logo and will shrink the whole thing to fit.
+Upload the first one and the portal makes the second for you, from the same file, and
+says so underneath it. Nothing else is needed. If you have a proper white version from
+your designer, upload it into the second slot and yours is kept instead: the portal
+never overwrites a file you supplied.
 
-If you fill only the first slot nothing breaks: on dark surfaces the portal puts your
-dark logo on a small white panel so it stays readable. It works, but the panel is
-visible, and the second slot is how you get rid of it. The two previews on the screen
-show you exactly which of the two is happening.
+**Save your logo as a PNG with a transparent background.** This is the one thing that
+matters. If the file carries its own white rectangle, that rectangle shows as a white
+block anywhere the page behind it is not white, and the white version cannot be made
+from it either, because there is no outline to work from. Crop the empty space from
+around the artwork too, since the portal cannot tell padding from logo and will shrink
+the whole thing to fit.
+
+Two cases where the portal will not make the white version, and tells you why: a file
+with a solid background, and a logo with colour in it, where turning everything white
+would throw the colour away. In both cases your logo still appears everywhere, set on
+a small white panel on the dark surfaces so it stays readable in every theme. That
+works perfectly well; the panel is simply visible. Uploading a white version of your
+own removes it.
 
 A wide logo is fine, and usually better, because the height is fixed and the width
 follows your artwork. If your logo already includes the firm's name, the portal stops

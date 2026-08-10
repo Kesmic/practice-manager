@@ -10,6 +10,7 @@ import {
 } from "@shared/hr";
 import { ApiRequestError, api } from "../lib/api";
 import { applyBranding, isHexColour } from "../lib/branding";
+import { deriveLightInk, whyNotDerivable } from "../lib/logo";
 import { useFirm } from "../lib/firm";
 import { Markdown } from "../components/Markdown";
 import {
@@ -735,6 +736,12 @@ function AppearanceAdmin({
   const { refresh } = useFirm();
   const [settings, setSettings] = useState<FirmSettings | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * Whether the dark-background logo currently in the form was made from the main
+   * one rather than uploaded. Only used to label it honestly - nothing about it is
+   * different once saved, and it can be replaced or removed like any upload.
+   */
+  const [madeForYou, setMadeForYou] = useState(false);
 
   useEffect(() => {
     api
@@ -782,8 +789,56 @@ function AppearanceAdmin({
         reader.onerror = () => reject(new Error("The file could not be read."));
         reader.readAsDataURL(file);
       });
-      setSettings({ ...settings, [key]: dataUrl });
+
+      if (key === "logo_dark_data_url") {
+        setMadeForYou(false);
+        setSettings({ ...settings, logo_dark_data_url: dataUrl });
+        return;
+      }
+
+      // A firm uploading its logo should not have to think about dark backgrounds at
+      // all. Where the artwork allows it, the white version is made here and now, so
+      // the common case needs one upload and shows no plate anywhere. An uploaded
+      // dark version is never overwritten - only one that was made here, or none.
+      const replaceable = !settings.logo_dark_data_url || madeForYou;
+      if (!replaceable) {
+        setSettings({ ...settings, logo_data_url: dataUrl });
+        return;
+      }
+      try {
+        const { derived } = await deriveLightInk(dataUrl);
+        setMadeForYou(Boolean(derived));
+        setSettings({
+          ...settings,
+          logo_data_url: dataUrl,
+          logo_dark_data_url: derived ?? "",
+        });
+      } catch {
+        // Nothing about this is essential; the plate is a perfectly good fallback.
+        setMadeForYou(false);
+        setSettings({ ...settings, logo_data_url: dataUrl });
+      }
     };
+
+  /**
+   * Offered when the main logo is already saved and the dark slot is empty, which is
+   * every firm that uploaded a logo before this existed.
+   */
+  const makeDarkVersion = async () => {
+    setError(null);
+    try {
+      const { derived, analysis } = await deriveLightInk(settings.logo_data_url);
+      if (!derived) {
+        setError(whyNotDerivable(analysis));
+        return;
+      }
+      setMadeForYou(true);
+      setSettings({ ...settings, logo_dark_data_url: derived });
+      setNotice("Made. Look at the preview, and press Save appearance to keep it.");
+    } catch {
+      setError("That logo could not be read well enough to make a white version.");
+    }
+  };
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -817,13 +872,17 @@ function AppearanceAdmin({
   return (
     <form className="card space-y-6 p-5" onSubmit={save}>
       {/*
-        Two slots, because one logo cannot serve both. The portal has light pages and
+        Two slots, because one file cannot serve both. The portal has light pages and
         dark ones - the sidebar and the sign-in panel are navy whatever the theme, and
-        in dark mode everything is dark. Dark artwork is unreadable there, so a second
-        version in light ink is uploaded here and the portal picks whichever suits the
-        surface. With only the first slot filled it falls back to a white plate behind
-        the artwork, which works but shows as a box; each preview below says which of
-        the two is happening.
+        in dark mode everything is dark. Dark artwork is unreadable there.
+
+        Ordinarily nobody has to think about the second slot: uploading the first fills
+        it automatically with a white version of the same artwork (see lib/logo.ts),
+        which is what a designer would supply. Where that cannot be done safely - a
+        logo with colour in it, or a file with no transparency - the slot stays empty
+        and the portal sets the dark artwork on a white plate instead. That is
+        readable in every theme and shows as a box, and the preview says so rather
+        than leaving it to be discovered.
       */}
       <div className="grid gap-5 sm:grid-cols-2">
         <LogoSlot
@@ -831,30 +890,43 @@ function AppearanceAdmin({
           hint="For light pages. Your normal artwork, usually dark ink."
           value={settings.logo_data_url}
           onChoose={chooseFile("logo_data_url")}
-          onClear={() => setSettings({ ...settings, logo_data_url: "" })}
+          onClear={() => {
+            setMadeForYou(false);
+            setSettings({
+              ...settings,
+              logo_data_url: "",
+              // A version made from a logo that is no longer there is just confusing.
+              logo_dark_data_url: madeForYou ? "" : settings.logo_dark_data_url,
+            });
+          }}
           surface="light"
         />
         <LogoSlot
           label="Logo for dark backgrounds"
-          hint="The same logo in white or light ink, for the sidebar, the sign-in panel and dark mode."
+          hint="The same logo in white, for the sidebar, the sign-in panel and dark mode."
           value={settings.logo_dark_data_url}
           onChoose={chooseFile("logo_dark_data_url")}
-          onClear={() => setSettings({ ...settings, logo_dark_data_url: "" })}
+          onClear={() => {
+            setMadeForYou(false);
+            setSettings({ ...settings, logo_dark_data_url: "" });
+          }}
           surface="dark"
           fallback={settings.logo_data_url}
+          madeForYou={madeForYou}
+          onMake={settings.logo_data_url ? makeDarkVersion : undefined}
         />
       </div>
 
       <p className="hint">
-        <strong>Save both as PNG files with a transparent background.</strong> A logo
+        <strong>Save your logo as a PNG with a transparent background.</strong> A file
         that carries its own white rectangle shows as a white block wherever the page
-        behind it is not white.
+        behind it is not white, and the white version cannot be made from it.
         <br />
         <strong>A wide logo is fine</strong>, and usually better: the height is fixed
         and the width follows your artwork. If your logo already includes the firm's
         name, the portal stops printing the name beside it so it is not said twice.
         <br />
-        Two things worth doing to each file first:{" "}
+        Two other things worth doing to the file first:{" "}
         <strong>crop the empty space</strong> from around the artwork, since the portal
         cannot tell padding from the logo and will shrink the whole thing to fit; and
         keep it under 280 kB, because every page load carries it.
@@ -926,6 +998,8 @@ function LogoSlot({
   onClear,
   surface,
   fallback = "",
+  madeForYou = false,
+  onMake,
 }: {
   label: string;
   hint: string;
@@ -934,6 +1008,10 @@ function LogoSlot({
   onClear: () => void;
   surface: "light" | "dark";
   fallback?: string;
+  /** True when this slot holds a version the portal made rather than an upload. */
+  madeForYou?: boolean;
+  /** Offered when the slot is empty and a version could be made from the main logo. */
+  onMake?: () => void | Promise<void>;
 }) {
   const plated = surface === "dark" && !value && Boolean(fallback);
   const shown = value || (plated ? fallback : "");
@@ -974,6 +1052,11 @@ function LogoSlot({
             onChange={(e) => void onChoose(e.target.files?.[0])}
           />
         </label>
+        {!value && onMake && (
+          <button type="button" className="btn-secondary btn-sm" onClick={() => void onMake()}>
+            Make one from my logo
+          </button>
+        )}
         {value && (
           <button type="button" className="btn-ghost btn-sm" onClick={onClear}>
             Remove
@@ -982,12 +1065,19 @@ function LogoSlot({
       </div>
       <p className="hint">
         {hint}
+        {madeForYou && (
+          <>
+            {" "}
+            <strong>The portal made this one from your logo.</strong> Replace it if you
+            have a white version of your own.
+          </>
+        )}
         {plated && (
           <>
             {" "}
-            <strong>Empty, so the portal is using your light-page logo on a white
-            panel</strong> to keep it readable. Upload a light-ink version and the panel
-            disappears.
+            <strong>Empty, so your logo is being set on a white panel here</strong> to
+            keep it readable in every theme. Upload a white version, or press Make one
+            from my logo, and the panel disappears.
           </>
         )}
       </p>
