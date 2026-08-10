@@ -112,10 +112,28 @@ export function registerClientRoutes(router: Router<Env>): void {
       .bind(params.id)
       .all();
 
+    // The client file comes back with the client so the page is one request rather
+    // than two, and so a client with no documents shows an empty file rather than a
+    // spinner that resolves to nothing.
+    const files = await env.DB.prepare(
+      `SELECT f.*, u.full_name AS added_by_name, e.name AS engagement_name
+         FROM client_files f
+         LEFT JOIN users u ON u.id = f.added_by
+         LEFT JOIN engagements e ON e.id = f.engagement_id
+        WHERE f.client_id = ?
+        ORDER BY CASE f.kind WHEN 'folder' THEN 0 ELSE 1 END,
+                 COALESCE(f.category, 'zzz'),
+                 f.period_label DESC,
+                 f.title`,
+    )
+      .bind(params.id)
+      .all();
+
     return json({
       client,
       engagements: engagements.results,
       tasks: tasks.results,
+      files: files.results,
     });
   });
 

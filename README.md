@@ -76,6 +76,12 @@ automatically when closed.
 **Time recording, document links, discussion and an append-only audit trail** on
 every deliverable.
 
+**The client file** - an index of each client's folders and documents as links into
+SharePoint, OneDrive or Google Drive, with the provider recognised from the address.
+The portal stores no document content, grants no access, and never fetches a link:
+following one means signing in to Microsoft or Google as yourself. What the portal adds
+is the answer to "where is it", which is what was actually missing.
+
 **Dashboards and practice reports** - personal work queues, overdue exposure,
 workload by person, service line summaries, and review quality by preparer.
 
@@ -87,6 +93,11 @@ The workflow, the grades and the controls are documented in
 ## Controls worth knowing about
 
 - **Nobody reviews their own work.** No override exists, at any grade.
+- **No client document is ever stored in the portal.** The client file holds links
+  only, and the Worker never fetches one: a Worker retrieving an address an employee
+  typed would make the firm's own infrastructure issue requests on someone else's
+  behalf. Links are restricted to http and https, so a client file cannot be used to
+  run something in a colleague's session.
 - **An intake submission creates nothing but itself.** A client record appears only
   when a Manager accepts the request, and an existing-client request has to be
   matched to a file by hand - the portal will not guess from a typed name.
@@ -128,6 +139,8 @@ shared/hr.ts         portal domain: access thresholds, document rules, the
                      onboarding programme - likewise shared by both sides
 shared/intake.ts     client intake: the two links, request states, the field
                      limits the public form and the server both enforce
+shared/files.ts      the client file: providers recognised from a link, what
+                     counts as a safe link, how a file is grouped
 shared/types.ts      wire types shared across the boundary
 
 worker/              the API
@@ -135,8 +148,8 @@ worker/              the API
   auth.ts            PBKDF2 passwords (work factor bounded by the Worker CPU
                      budget, optional pepper), database-backed sessions
   dates.ts           statutory deadline and recurrence arithmetic
-  routes/            auth, users, clients, engagements, tasks, workflow,
-                     reviews, task-items, templates, insights, intake,
+  routes/            auth, users, clients, client-files, engagements, tasks,
+                     workflow, reviews, task-items, templates, insights, intake,
                      employees, documents, settings
 
 src/                 the React app (TypeScript, Vite, Tailwind)

@@ -13,6 +13,7 @@
 import type { Env } from "./env";
 import { Router, errorResponse, json } from "./http";
 import { registerAuthRoutes } from "./routes/auth";
+import { registerClientFileRoutes } from "./routes/client-files";
 import { registerClientRoutes } from "./routes/clients";
 import { registerDocumentRoutes } from "./routes/documents";
 import { registerEmployeeRoutes } from "./routes/employees";
@@ -32,6 +33,8 @@ const router = new Router<Env>();
 registerAuthRoutes(router);
 registerUserRoutes(router);
 registerClientRoutes(router);
+// The client file: links to documents held in SharePoint, OneDrive or Google Drive.
+registerClientFileRoutes(router);
 registerEngagementRoutes(router);
 registerTaskRoutes(router);
 // Workflow, review and item routes are registered after tasks so that the more
