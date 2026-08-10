@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { ClientRequestSummary, ClientSummary } from "@shared/types";
 import {
+  MAX_SERVICES,
   REQUEST_KINDS,
   REQUEST_KIND_LABELS,
   REQUEST_KIND_PURPOSE,
@@ -10,13 +11,15 @@ import {
   REQUEST_STATUS_STYLES,
   acceptRequirement,
   isOpenRequest,
+  serviceKeyFrom,
+  type IntakeService,
   type RequestKind,
 } from "@shared/intake";
-import { ENTITY_TYPE_LABELS, SERVICE_LINE_LABELS } from "@shared/workflow";
+import { ENTITY_TYPE_LABELS, SERVICE_LINE_LABELS, type ServiceLine } from "@shared/workflow";
 import type { IntakeLink } from "@shared/intake";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
-import { formatDate, formatDateTime } from "../lib/format";
+import { formatDate, formatDateTime, humanise } from "../lib/format";
 import {
   DetailRow,
   EmptyState,
@@ -27,6 +30,7 @@ import {
   Spinner,
   SuccessBanner,
   TextArea,
+  TextInput,
 } from "../components/ui";
 
 /**
@@ -45,6 +49,27 @@ export function ClientRequests() {
   const [selected, setSelected] = useState<ClientRequestSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /**
+   * Service keys to the wording currently on the form. A request keeps the key it was
+   * submitted with, so a service the firm has since reworded or removed still has to
+   * display as something: the built-in label if it was one, and the key made readable
+   * if it was not. Never blank.
+   */
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  const labelFor = useCallback(
+    (key: string) =>
+      labels[key] ?? SERVICE_LINE_LABELS[key as ServiceLine] ?? humanise(key),
+    [labels],
+  );
+
+  useEffect(() => {
+    api
+      .intakeServices()
+      .then((res) =>
+        setLabels(Object.fromEntries(res.services.map((s) => [s.key, s.label]))),
+      )
+      .catch(() => setLabels({}));
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -82,6 +107,8 @@ export function ClientRequests() {
       <SuccessBanner message={notice} onDismiss={() => setNotice(null)} />
 
       <IntakeLinks setError={setError} setNotice={setNotice} />
+
+      <ServiceListEditor setError={setError} setNotice={setNotice} />
 
       <section className="card">
         <div className="card-header flex-wrap gap-2">
@@ -150,7 +177,7 @@ export function ClientRequests() {
                       </span>
                     </td>
                     <td className="min-w-40 text-xs">
-                      {req.services.map((s) => SERVICE_LINE_LABELS[s]).join(", ") || "-"}
+                      {req.services.map(labelFor).join(", ") || "-"}
                     </td>
                     <td className="whitespace-nowrap text-xs">
                       {formatDate(req.created_at)}
@@ -183,6 +210,7 @@ export function ClientRequests() {
       {selected && (
         <RequestModal
           request={selected}
+          labelFor={labelFor}
           onClose={() => setSelected(null)}
           onDone={async (message) => {
             setSelected(null);
@@ -328,14 +356,235 @@ function IntakeLinks({
 
 // ---------------------------------------------------------------------------
 
+/**
+ * The list of services the two public forms offer, editable by the firm.
+ *
+ * Wording matters more here than anywhere else in the portal: this is the only text a
+ * prospective client reads before deciding whether you do what they need. So it is
+ * the firm's to write, not mine, and it starts from the firm's service lines rather
+ * than from nothing.
+ *
+ * The reference beside each name is what gets stored on a request. It is generated
+ * from the name and then frozen, so rewording a service never orphans the requests
+ * already received.
+ */
+function ServiceListEditor({
+  setError,
+  setNotice,
+}: {
+  setError: (m: string | null) => void;
+  setNotice: (m: string | null) => void;
+}) {
+  const [services, setServices] = useState<IntakeService[] | null>(null);
+  const [customised, setCustomised] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .intakeServices()
+      .then((res) => {
+        setServices(res.services);
+        setCustomised(res.customised);
+      })
+      .catch((err) =>
+        setError(
+          err instanceof ApiRequestError ? err.message : "Could not load the service list.",
+        ),
+      );
+  }, [setError]);
+
+  if (!services) return <Spinner label="Loading the service list" />;
+
+  const edit = (index: number, label: string) =>
+    setServices(
+      services.map((s, i) =>
+        i === index
+          ? // A service already in use keeps its key; a new one takes a key from its
+            // name until it has been saved.
+            { key: s.key || serviceKeyFrom(label), label }
+          : s,
+      ),
+    );
+
+  const move = (index: number, by: number) => {
+    const next = [...services];
+    const to = index + by;
+    if (to < 0 || to >= next.length) return;
+    [next[index], next[to]] = [next[to], next[index]];
+    setServices(next);
+  };
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const cleaned = services
+        .map((s) => ({ ...s, label: s.label.trim() }))
+        .filter((s) => s.label);
+      const res = await api.setIntakeServices(cleaned);
+      setServices(res.services);
+      setCustomised(true);
+      setOpen(false);
+      setNotice("Saved. The two forms show this list from now on.");
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError ? err.message : "Could not save the service list.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restore = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.resetIntakeServices();
+      setServices(res.services);
+      setCustomised(false);
+      setNotice("The built-in list is back.");
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : "Could not restore the list.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="card p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="card-title">What the forms offer</h2>
+          <p className="hint mt-1">
+            The list under "What do you need help with?" on both forms.{" "}
+            {customised
+              ? "This is your own list."
+              : "These are the built-in service lines, which you can replace."}
+          </p>
+        </div>
+        <button type="button" className="btn-secondary btn-sm" onClick={() => setOpen(true)}>
+          Edit the list
+        </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {services.map((service) => (
+          <span key={service.key} className="pill bg-slate-100 text-slate-700 ring-slate-200">
+            {service.label}
+          </span>
+        ))}
+      </div>
+
+      <Modal
+        open={open}
+        title="What the forms offer"
+        onClose={() => setOpen(false)}
+        wide
+        footer={
+          <>
+            {customised && (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => void restore()}
+                disabled={busy}
+              >
+                Back to the built-in list
+              </button>
+            )}
+            <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void save()}
+              disabled={busy}
+            >
+              {busy ? "Saving…" : "Save the list"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Write these the way a client would describe what they want, not the way the
+            firm files it internally. The order here is the order on the form.
+          </p>
+
+          <div className="space-y-2">
+            {services.map((service, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <TextInput
+                  value={service.label}
+                  maxLength={80}
+                  onChange={(e) => edit(index, e.target.value)}
+                  aria-label={`Service ${index + 1}`}
+                />
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    onClick={() => move(index, -1)}
+                    disabled={index === 0}
+                    title="Move up"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    onClick={() => move(index, 1)}
+                    disabled={index === services.length - 1}
+                    title="Move down"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    onClick={() => setServices(services.filter((_, i) => i !== index))}
+                    title="Remove"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={() => setServices([...services, { key: "", label: "" }])}
+            disabled={services.length >= MAX_SERVICES}
+          >
+            Add a service
+          </button>
+
+          <p className="hint">
+            Removing a service does not alter requests already received: they keep what
+            was ticked at the time. Rewording one is always safe.
+          </p>
+        </div>
+      </Modal>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
 /** Everything one submission contains, and the three things you can do with it. */
 function RequestModal({
   request,
+  labelFor,
   onClose,
   onDone,
   setError,
 }: {
   request: ClientRequestSummary;
+  labelFor: (key: string) => string;
   onClose: () => void;
   onDone: (message: string) => Promise<void>;
   setError: (m: string | null) => void;
@@ -465,7 +714,7 @@ function RequestModal({
             {request.services.length ? (
               request.services.map((service) => (
                 <span key={service} className="pill bg-brand-50 text-link ring-brand-200">
-                  {SERVICE_LINE_LABELS[service]}
+                  {labelFor(service)}
                 </span>
               ))
             ) : (

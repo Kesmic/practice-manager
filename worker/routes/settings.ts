@@ -34,10 +34,17 @@ const DEFAULTS: Record<string, string> = {
    */
   intake_token_new: "",
   intake_token_existing: "",
+  /**
+   * The service list on the public intake forms, as JSON: [{key, label}, ...].
+   * Empty means "use the firm's service lines", which is what a new deployment
+   * gets. Edited through /api/intake-services rather than here, because the
+   * validation is specific and a malformed list breaks a public page.
+   */
+  intake_services: "",
 };
 
-/** Everything except the intake tokens, which have their own endpoint. */
-const EDITABLE = Object.keys(DEFAULTS).filter((key) => !key.startsWith("intake_token"));
+/** Everything except the intake settings, which have their own endpoints. */
+const EDITABLE = Object.keys(DEFAULTS).filter((key) => !key.startsWith("intake_"));
 
 /**
  * The subset of settings that describe how the portal looks. These are readable

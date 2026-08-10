@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import {
-  ENTITY_TYPES,
-  ENTITY_TYPE_LABELS,
-  SERVICE_LINES,
-  SERVICE_LINE_LABELS,
-} from "@shared/workflow";
+import { ENTITY_TYPES, ENTITY_TYPE_LABELS } from "@shared/workflow";
 import { REQUEST_LIMITS, type IntakeForm, type RequestKind } from "@shared/intake";
 import { ApiRequestError, api } from "../lib/api";
 import { FirmLogo, useFirm } from "../lib/firm";
@@ -382,11 +377,11 @@ function RequestForm({
         </h2>
         <p className="hint">Tick everything that applies. It decides who reads this.</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          {SERVICE_LINES.map((service) => {
-            const checked = state.services.includes(service);
+          {form.services.map((service) => {
+            const checked = state.services.includes(service.key);
             return (
               <label
-                key={service}
+                key={service.key}
                 className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors ${
                   checked
                     ? "border-brand-500 bg-brand-50 font-medium text-link"
@@ -397,9 +392,9 @@ function RequestForm({
                   type="checkbox"
                   className="h-4 w-4 shrink-0"
                   checked={checked}
-                  onChange={() => toggleService(service)}
+                  onChange={() => toggleService(service.key)}
                 />
-                {SERVICE_LINE_LABELS[service]}
+                {service.label}
               </label>
             );
           })}

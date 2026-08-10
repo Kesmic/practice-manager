@@ -264,6 +264,54 @@ async function deliver(
 }
 
 /**
+ * Emails one named person, for a message that is about them rather than about a
+ * deliverable: an invitation to the portal, most obviously.
+ *
+ * Unlike the other two, this one reports whether it managed to send, because the
+ * screen that creates an account needs to say "invitation sent" or "tell them
+ * yourself" rather than leaving the administrator guessing. It still cannot throw,
+ * and it still cannot fail the request that created the account.
+ */
+export async function sendToPerson(
+  env: Env,
+  input: {
+    to: { email: string; full_name: string };
+    subject: string;
+    headline: string;
+    detail?: string | null;
+    link: string;
+    linkLabel: string;
+    firmName: string;
+    reason: string;
+  },
+): Promise<{ sent: boolean; error?: string }> {
+  if (!emailConfigured(env)) {
+    return { sent: false, error: "Email is not set up on this portal." };
+  }
+  try {
+    const recipient = { id: "", email: input.to.email, full_name: input.to.full_name };
+    const { text, html } = render(
+      {
+        subject: input.subject,
+        headline: input.headline,
+        detail: input.detail ?? null,
+        link: input.link,
+        linkLabel: input.linkLabel,
+        firmName: input.firmName,
+        reason: input.reason,
+      },
+      recipient,
+    );
+    await deliver(env, recipient.email, input.subject, text, html);
+    return { sent: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Invitation email failed:", message);
+    return { sent: false, error: message };
+  }
+}
+
+/**
  * Everyone who can act on an incoming client request: Manager grade and above.
  *
  * Deliberately not "whoever is on duty" or a nominated inbox. A request from a

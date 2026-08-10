@@ -96,6 +96,9 @@ export class Router<Env> {
   get = (p: string, h: Handler<Env>) => this.add("GET", p, h);
   post = (p: string, h: Handler<Env>) => this.add("POST", p, h);
   patch = (p: string, h: Handler<Env>) => this.add("PATCH", p, h);
+  // PUT for the few endpoints that replace a whole collection, where PATCH would
+  // imply the server merges what it is sent. It does not; it substitutes.
+  put = (p: string, h: Handler<Env>) => this.add("PUT", p, h);
   delete = (p: string, h: Handler<Env>) => this.add("DELETE", p, h);
 
   /** Returns null when no route matches, so the caller can fall through. */

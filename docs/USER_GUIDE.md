@@ -351,6 +351,24 @@ rubbish. Requests you have already received are not affected, but anyone holding
 old link, including on a printed proposal, will be told to ask you for a new one. The
 two links are independent, so replacing one leaves the other alone.
 
+### Changing what the forms offer
+
+The list under "What do you need help with?" starts as the firm's eight service lines,
+and **What the forms offer** on this screen lets you replace it with your own wording.
+Write these the way a client would describe what they want, not the way you file it
+internally. The order on the screen is the order on the form.
+
+Two things are safe and worth knowing:
+
+- **Rewording a service never breaks anything.** Each one keeps a hidden reference
+  from the moment it is created, and requests already received hold that reference
+  rather than the words.
+- **Removing one leaves history intact.** An old request still shows what was ticked at
+  the time.
+
+There is a **Back to the built-in list** button if an edit goes wrong, and the list
+cannot be emptied, because a form with nothing to tick cannot be submitted.
+
 ### What stops the forms being abused
 
 The address itself is the protection: each contains a long random string, so the forms
@@ -389,12 +407,23 @@ originally agreed to.
 
 ### Adding someone
 
-**Accounts and grades → Add team member.** Set their grade carefully: it decides
-everything they can do. See [Who can do what](#who-can-do-what).
+**Accounts and grades → Add team member.** Name, email, grade, job title.
 
-A temporary password is shown **once**. Copy it and pass it on by phone or in
-person, never in the same email as the link. They will be required to replace it
-before they can reach anything.
+**Leave "Email them an invitation" ticked** and they get a message from the firm's own
+address with a temporary password and a link to sign in. **You are shown the temporary
+password either way**, because email is delayed or filtered often enough that relying
+on it alone would leave a new joiner locked out. If the invitation could not be sent,
+the screen says so plainly rather than implying it went.
+
+Untick it when you would rather hand the password over in person. Whichever you choose,
+they are made to set their own password the first time they sign in.
+
+**A password reset never emails.** Somebody who has lost their password has often lost
+the mailbox with it, so the new temporary password is shown to you to pass on yourself.
+
+Set the grade carefully: it decides everything they can do. See
+[Who can do what](#who-can-do-what). The temporary password is shown **once**, so if
+you are passing it on yourself, copy it before closing the dialog.
 
 ### The rest of their record
 
@@ -423,8 +452,29 @@ a published policy raises its version, which puts it back in front of everyone t
 acknowledge again. The previous acknowledgements are kept as the record of what was
 agreed before. Editing a draft changes nothing, because nobody has agreed to it yet.
 
-There is also a **Contract of Employment (template)**. Do not publish that one. Copy
-it per person, fill in their details, and issue it to them individually.
+### Contracts: why there is a template, and how to use it
+
+A fair question: why not just publish the contract like a handbook policy?
+
+Because a contract is not one document. Each person's differs in job title, salary,
+start date and notice period. Publishing one contract to everyone would ask every
+employee to sign somebody else's terms, and a signature against a shared document would
+be worthless.
+
+So the seeded **Contract of Employment (template)** stays an unpublished template, and
+you use it like this:
+
+1. Find it in the documents list and press **Issue to someone**.
+2. Choose the employee. The copy is named after them automatically.
+3. It appears as a **draft addressed to them alone**. Open it and fill in their terms.
+4. **Publish** it. Only they see it, and only they can sign it.
+
+The template is never altered, so you issue it again for the next joiner. Each copy is
+its own record with its own signature and its own version history, which is what you
+would want if a contract were ever disputed.
+
+The same button appears on any form in the documents list, for anything else that has
+to be issued individually.
 
 **Logo and colours** is on the same screen. Pick a primary and secondary colour and
 the whole portal recolours, previewing live before you save.
