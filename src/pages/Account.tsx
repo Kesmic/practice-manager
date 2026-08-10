@@ -66,6 +66,47 @@ export function Account() {
         </dl>
       </div>
 
+      <div className="card space-y-3 p-5">
+        <h2 className="card-title">Notifications</h2>
+        <label className="flex cursor-pointer items-start gap-3 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={user?.email_notifications === 1}
+            onChange={async (event) => {
+              const enabled = event.target.checked;
+              setError(null);
+              try {
+                await api.setEmailNotifications(enabled);
+                await refresh();
+                setDone(
+                  enabled
+                    ? "You will be emailed about the deliverables you are involved in."
+                    : "Email turned off. The portal inbox still shows everything.",
+                );
+              } catch (err) {
+                setError(
+                  err instanceof ApiRequestError
+                    ? err.message
+                    : "Could not change that setting.",
+                );
+              }
+            }}
+          />
+          <span>
+            <strong>Email me about my work.</strong> When someone comments on a
+            deliverable you are involved in, or its status changes, send me an email as
+            well as an inbox message. You count as involved if you are doing it,
+            reviewing it, created it, or have commented on it.
+          </span>
+        </label>
+        <p className="hint">
+          Turning this off never affects the portal inbox, which always shows
+          everything. If your firm has not set email up yet, nothing is sent either
+          way.
+        </p>
+      </div>
+
       <form onSubmit={submit} className="card space-y-4 p-5">
         <h2 className="card-title">Change password</h2>
         <ErrorBanner error={error} onDismiss={() => setError(null)} />

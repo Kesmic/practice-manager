@@ -1,5 +1,5 @@
 /**
- * Generates `src/theme.generated.css` — the light and dark values for every
+ * Generates `src/theme.generated.css` - the light and dark values for every
  * colour the app uses.
  *
  * Why generate rather than hand-write: the app refers to Tailwind colours at
@@ -9,7 +9,7 @@
  * `ring-slate-200` then does the right thing in both themes, and so does any
  * class written in future.
  *
- * The dark values are the light ramp reversed — 50 becomes 900, 100 becomes 800
+ * The dark values are the light ramp reversed - 50 becomes 900, 100 becomes 800
  * and so on. That is the correct transformation for how these palettes are used
  * here: pale shades are backgrounds and dark shades are text, and both need to
  * swap ends. `brand` is the exception, handled below.
@@ -121,7 +121,7 @@ for (const shade of SHADES) {
 /*
  * Semantic tokens, for the jobs a fixed palette shade cannot do in both themes.
  *
- * `panel` is the raised surface behind cards, inputs and table headers — white on
+ * `panel` is the raised surface behind cards, inputs and table headers - white on
  * a light page, a lifted slate on a dark one. `text-white` deliberately stays
  * literal white, because it sits on brand-coloured buttons in both themes.
  *
@@ -136,7 +136,7 @@ light.push(`    --c-link: ${channels(BRAND[700])};`);
 dark.push(`    --c-link: ${channels(BRAND[300])};`);
 
 const css = `/*
- * GENERATED FILE — do not edit.
+ * GENERATED FILE - do not edit.
  * Produced by scripts/build-theme-css.mjs; run \`npm run build:theme\`.
  *
  * Light values, then the same names redefined for dark mode. The administrator's

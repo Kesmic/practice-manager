@@ -1,4 +1,4 @@
--- Kesmic Practice Manager — initial schema (Cloudflare D1 / SQLite)
+-- Kesmic Practice Manager - initial schema (Cloudflare D1 / SQLite)
 --
 -- Applied automatically by the GitHub Actions deploy workflow via
 -- `wrangler d1 migrations apply`. Never edit an applied migration; add a new one.

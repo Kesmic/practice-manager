@@ -18,17 +18,17 @@ on **My onboarding**, which shows:
 1. **A progress bar** across three things: their own onboarding steps, the
    documents they owe a response to, and whether their personal details are
    complete.
-2. **The welcome message from the Managing Director** — markdown, edited in
+2. **The welcome message from the Managing Director** - markdown, edited in
    Portal administration, signed with the MD's name and title.
-3. **Documents to read and sign** — their contract first, then handbook policies.
-4. **Their personal details** — with a direct list of what is still missing.
-5. **Their own steps** — tickable.
-6. **What the firm is doing for them** — the HR-side steps, visible but not
+3. **Documents to read and sign** - their contract first, then handbook policies.
+4. **Their personal details** - with a direct list of what is still missing.
+5. **Their own steps** - tickable.
+6. **What the firm is doing for them** - the HR-side steps, visible but not
    tickable by them, so they can see the firm is doing its part.
-7. **Their signed documents** — a permanent record they can return to.
+7. **Their signed documents** - a permanent record they can return to.
 
 Until they set their own password, the API confines them to the account screen
-and their onboarding — a temporary password cannot be used to reach client work.
+and their onboarding - a temporary password cannot be used to reach client work.
 
 ---
 
@@ -40,7 +40,7 @@ require.
 | | Contract | Handbook policy |
 | --- | --- | --- |
 | `kind` | `contract` | `policy` |
-| `audience` | `individual` — one named employee | `all` |
+| `audience` | `individual` - one named employee | `all` |
 | Response | **Signature** | **Acknowledgement** |
 | Where it appears | Onboarding, then their document list | The handbook |
 
@@ -63,7 +63,7 @@ types their full name. The system:
 **Amendment is the interesting part.** Editing the text of a *published* document
 raises its version. Because outstanding-document queries compare signatures
 against the current version, the amended policy reappears in everyone's list and
-must be acknowledged again — while the earlier signatures survive as a record of
+must be acknowledged again - while the earlier signatures survive as a record of
 what was agreed before, provable against the stored hash. Editing a draft changes
 nothing, because nobody has agreed to it yet.
 
@@ -71,7 +71,7 @@ The seeded handbook covers: code of conduct and ethics, client confidentiality
 and data protection, independence and conflicts of interest, anti-money
 laundering, IT security and acceptable use, leave and absence, working hours and
 remote work, equal opportunity and anti-harassment, performance and development,
-grievance and disciplinary procedure — plus a contract of employment template to
+grievance and disciplinary procedure - plus a contract of employment template to
 copy per employee.
 
 ---
@@ -93,7 +93,7 @@ dates of birth. They have no working need for them.
 
 **Who maintains what.** The employee maintains their own contact details,
 emergency contact, next of kin and qualifications. They cannot change their own
-job title, grade, start date or pay — those are HR-controlled, and the API
+job title, grade, start date or pay - those are HR-controlled, and the API
 rejects the attempt rather than ignoring it.
 
 **The HR trail** (`hr_events`) is append-only and records employment record
@@ -138,7 +138,7 @@ delay that is often the firm's. If you want a hard block, the place to add it is
 | A document, with signing | `/documents/:id` | Whoever it is addressed to |
 | My details | `/my-profile` | Everyone |
 | People directory and onboarding progress | `/people` | Manager and above |
-| Personnel file | `/people/:id` | Self, manager, HR — by section |
+| Personnel file | `/people/:id` | Self, manager, HR - by section |
 | Handbook and welcome authoring | `/portal-admin` | Partner and above |
 | Accounts and grades | `/team` | Partner and above |
 
@@ -153,8 +153,8 @@ delay that is often the firm's. If you want a hard block, the place to add it is
 - **Complete the contract template** per employee and issue it as an individually
   addressed document. Do not publish the template itself to staff.
 - **Check whether typed-name signatures satisfy your jurisdiction** for
-  employment contracts. The record captured here — attestation, matched name,
-  timestamp, IP, and a hash of the exact text — is strong evidence of agreement,
+  employment contracts. The record captured here - attestation, matched name,
+  timestamp, IP, and a hash of the exact text - is strong evidence of agreement,
   but whether it constitutes a valid signature is a legal question, not a
   technical one.
 - **Certificates and identification are links**, not uploads. They point at your

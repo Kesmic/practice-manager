@@ -87,7 +87,7 @@ export function Setup() {
                 required
                 value={form.full_name}
                 onChange={set("full_name")}
-                placeholder="Michael Kesseh"
+                placeholder="Your full name"
               />
             )}
           </Field>

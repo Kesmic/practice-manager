@@ -4,7 +4,7 @@
 -- edited, not finished legal instruments. Every one of them must be reviewed
 -- against the employment law and professional standards that apply to the firm
 -- before it is published to staff. They are seeded as DRAFT for exactly that
--- reason — nothing here reaches an employee until a partner publishes it.
+-- reason - nothing here reaches an employee until a partner publishes it.
 
 INSERT INTO settings (key, value, updated_at) VALUES
   ('firm_name', 'Kesmic Consulting', datetime('now')),
@@ -61,17 +61,17 @@ with.
 
 We follow the fundamental principles of the professional accountancy bodies:
 
-- **Integrity** — be straightforward and honest in all professional and business
+- **Integrity** - be straightforward and honest in all professional and business
   relationships. Never be associated with a report, return or communication that
   you believe contains a materially false or misleading statement.
-- **Objectivity** — do not allow bias, conflict of interest or undue influence
+- **Objectivity** - do not allow bias, conflict of interest or undue influence
   to override professional judgement.
-- **Professional competence and due care** — maintain the knowledge and skill
+- **Professional competence and due care** - maintain the knowledge and skill
   the work requires, and act diligently in accordance with applicable technical
   and professional standards.
-- **Confidentiality** — respect the confidentiality of information acquired
+- **Confidentiality** - respect the confidentiality of information acquired
   through professional relationships.
-- **Professional behaviour** — comply with relevant laws and regulations, and
+- **Professional behaviour** - comply with relevant laws and regulations, and
   avoid conduct that discredits the profession.
 
 ## In practice
@@ -119,7 +119,7 @@ ends. It applies to the existence of an engagement, not only its contents.
 Client information may only be disclosed outside the firm where the client has
 authorised it, where there is a legal or professional duty to disclose, or where
 disclosure is required by a regulator or court. If you receive such a request,
-do not respond to it yourself — pass it to a partner.
+do not respond to it yourself - pass it to a partner.
 
 ## Personal data
 
@@ -381,7 +381,7 @@ to a client. Review is a quality control over the work, not a judgement of you.
 Expect review points, including on good work.
 
 When you receive review points, respond to each one on the portal, saying what
-you changed. If you disagree with a point, say so and explain why — that is a
+you changed. If you disagree with a point, say so and explain why - that is a
 legitimate and useful response, and reviewers get things wrong too. What is not
 acceptable is marking a point as addressed without addressing it.
 

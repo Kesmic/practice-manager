@@ -3,7 +3,7 @@
  *
  * Every call is same-origin and relies on the session cookie, so there is no
  * token handling here. Errors are normalised into `ApiRequestError` so screens
- * can show the server's own message — those messages are written to be read by
+ * can show the server's own message - those messages are written to be read by
  * the person using the system, not just by a developer.
  */
 
@@ -128,6 +128,12 @@ export const api = {
     full_name: string;
     password: string;
   }) => request<{ ok: true }>("/api/auth/bootstrap", { method: "POST", body: input }),
+
+  setEmailNotifications: (enabled: boolean) =>
+    request<{ email_notifications: boolean }>("/api/me/preferences", {
+      method: "PATCH",
+      body: { email_notifications: enabled },
+    }),
 
   changePassword: (current_password: string, new_password: string) =>
     request<{ ok: true }>("/api/auth/password", {

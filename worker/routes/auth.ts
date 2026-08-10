@@ -137,7 +137,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
     );
     const user = await env.DB.prepare(
       `SELECT id, email, full_name, role, title, status, must_change_password,
-              created_at, last_login_at
+              email_notifications, created_at, last_login_at
          FROM users WHERE id = ?`,
     )
       .bind(row.id)
@@ -164,9 +164,27 @@ export function registerAuthRoutes(router: Router<Env>): void {
     return json({ user: publicUser(user), unread_notifications: unread?.n ?? 0 });
   });
 
+  /**
+   * The caller's own notification preference. Separate from /api/me/profile,
+   * which writes the HR record rather than the account.
+   */
+  router.patch("/api/me/preferences", async ({ request, env }) => {
+    const user = await requireUser(env, request);
+    const body = await readJson<{ email_notifications?: unknown }>(request);
+    if (typeof body.email_notifications !== "boolean") {
+      throw badRequest('"email_notifications" must be true or false.');
+    }
+    await env.DB.prepare(
+      `UPDATE users SET email_notifications = ?, updated_at = ? WHERE id = ?`,
+    )
+      .bind(body.email_notifications ? 1 : 0, nowIso(), user.id)
+      .run();
+    return json({ email_notifications: body.email_notifications });
+  });
+
   /** Self-service password change. Requires the current password. */
   router.post("/api/auth/password", async ({ request, env }) => {
-    // Reachable while a forced password change is outstanding — that is the
+    // Reachable while a forced password change is outstanding - that is the
     // whole point of this endpoint.
     const user = await requireUser(env, request, { allowPasswordPending: true });
     const body = await readJson<{

@@ -59,7 +59,7 @@ export function ReviewStatusPill({ status }: { status: ReviewPointStatus }) {
 /** Due-date chip that colours itself by lateness. */
 export function DuePill({ date }: { date: string | null | undefined }) {
   const { text, tone } = describeDue(date);
-  if (tone === "none") return <span className="text-xs text-slate-400">—</span>;
+  if (tone === "none") return <span className="text-xs text-slate-400">-</span>;
   const styles: Record<string, string> = {
     late: "bg-rose-50 text-rose-700 ring-rose-200",
     soon: "bg-amber-50 text-amber-800 ring-amber-200",
@@ -345,7 +345,7 @@ export function Avatar({ name }: { name: string | null | undefined }) {
 
 /** Progress bar for checklist completion. */
 export function Progress({ done, total }: { done: number; total: number }) {
-  if (!total) return <span className="text-xs text-slate-400">—</span>;
+  if (!total) return <span className="text-xs text-slate-400">-</span>;
   const ratio = done / total;
   return (
     <div className="flex items-center gap-2">

@@ -35,7 +35,7 @@ jobs:
         run: npm run build
 
       # Copying a token out of a web page can silently carry invisible
-      # characters with it — a zero-width space (U+200B) is the usual culprit,
+      # characters with it - a zero-width space (U+200B) is the usual culprit,
       # and it makes Cloudflare reject the credential with an error that reads
       # as though the token itself were wrong. Both values are made only of
       # letters, digits, underscores and hyphens, so anything outside that set
@@ -76,7 +76,7 @@ jobs:
 
       # Migrations run before the new code goes out, so the schema is always at
       # least as new as the Worker reading it. Migrations must therefore be
-      # additive — never drop or rename a column a released Worker still uses.
+      # additive - never drop or rename a column a released Worker still uses.
       # Credentials come from the cleaning step above via the job environment.
       - name: Apply database migrations
         run: npx wrangler d1 migrations apply kesmic-practice --remote
@@ -91,7 +91,7 @@ jobs:
           if npx wrangler pages project list | grep -q 'kesmic-practice-manager'; then
             echo "Pages project already exists."
           else
-            echo "First deploy — creating the Pages project."
+            echo "First deploy - creating the Pages project."
             npx wrangler pages project create kesmic-practice-manager \
               --production-branch=main
           fi

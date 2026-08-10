@@ -1,5 +1,5 @@
 /**
- * Review points ("review notes") — the itemised findings a reviewer raises
+ * Review points ("review notes") - the itemised findings a reviewer raises
  * against a submitted deliverable, and the preparer's responses to them.
  *
  * A point moves: open → addressed (preparer responds) → resolved or waived
@@ -252,7 +252,7 @@ export function registerReviewRoutes(router: Router<Env>): void {
       ...notifyMany(env, recipients, actor.id, {
         taskId: task.id,
         kind: `review_point:${action}`,
-        title: `${task.ref} — ${detail}`,
+        title: `${task.ref} - ${detail}`,
         body: null,
       }),
     );

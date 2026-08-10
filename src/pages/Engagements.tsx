@@ -298,7 +298,7 @@ function NewEngagementModal({
                 <option value="">Select a client…</option>
                 {clients.map((client) => (
                   <option key={client.id} value={client.id}>
-                    {client.code} — {client.name}
+                    {client.code} - {client.name}
                   </option>
                 ))}
               </Select>
@@ -421,7 +421,7 @@ function NewEngagementModal({
                   .filter((user) => atLeast(user.role, "partner"))
                   .map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.full_name} — {ROLE_LABELS[user.role]}
+                      {user.full_name} - {ROLE_LABELS[user.role]}
                     </option>
                   ))}
               </Select>
@@ -439,7 +439,7 @@ function NewEngagementModal({
                   .filter((user) => atLeast(user.role, "manager"))
                   .map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.full_name} — {ROLE_LABELS[user.role]}
+                      {user.full_name} - {ROLE_LABELS[user.role]}
                     </option>
                   ))}
               </Select>

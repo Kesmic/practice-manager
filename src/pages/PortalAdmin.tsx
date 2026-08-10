@@ -187,7 +187,7 @@ function DocumentsAdmin({
                         )}
                       </td>
                       <td className="whitespace-nowrap text-xs">
-                        {doc.category ?? "—"}
+                        {doc.category ?? "-"}
                       </td>
                       <td className="whitespace-nowrap text-xs">
                         {doc.audience === "all"
@@ -293,7 +293,7 @@ function DocumentEditor({
   const [busy, setBusy] = useState(false);
   const [loadingBody, setLoadingBody] = useState(false);
 
-  // Load the existing text — list responses deliberately omit document bodies.
+  // Load the existing text - list responses deliberately omit document bodies.
   useEffect(() => {
     if (!target) return;
     if (target === "new") {
@@ -518,7 +518,7 @@ function DocumentEditor({
                 }
                 className="h-4 w-4 border-slate-300 text-link"
               />
-              Signature — for contracts and binding terms
+              Signature - for contracts and binding terms
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
@@ -534,7 +534,7 @@ function DocumentEditor({
                 }
                 className="h-4 w-4 border-slate-300 text-link"
               />
-              Acknowledgement — for handbook policies
+              Acknowledgement - for handbook policies
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
@@ -550,7 +550,7 @@ function DocumentEditor({
                 }
                 className="h-4 w-4 border-slate-300 text-link"
               />
-              None — reference only
+              None - reference only
             </label>
           </fieldset>
 
@@ -699,7 +699,7 @@ function WelcomeAdmin({
           />
         )}
         <p className="hint">
-          This is the first thing a new joiner reads. Write it in your own voice — a
+          This is the first thing a new joiner reads. Write it in your own voice - a
           seeded draft is provided, but it will read better rewritten.
         </p>
       </div>
@@ -721,7 +721,7 @@ const MAX_LOGO_BYTES = 280 * 1024;
 /**
  * The firm's logo and its two colours.
  *
- * Changes preview live — the whole interface recolours as the pickers move — so
+ * Changes preview live - the whole interface recolours as the pickers move - so
  * the choice is made against the real thing rather than a swatch. Nothing is
  * stored until Save, and leaving without saving restores what was there.
  */
@@ -770,7 +770,7 @@ function AppearanceAdmin({
       setError(
         `That image is ${Math.round(file.size / 1024)} kB. Please use one under ${Math.round(
           MAX_LOGO_BYTES / 1024,
-        )} kB — a logo does not need to be large, and every page load carries it.`,
+        )} kB - a logo does not need to be large, and every page load carries it.`,
       );
       return;
     }
@@ -816,12 +816,35 @@ function AppearanceAdmin({
     <form className="card space-y-6 p-5" onSubmit={save}>
       <div>
         <span className="label">Logo</span>
+        {/*
+          Two previews, because the logo has to work on both. Most logos are dark
+          artwork for white paper, and the sidebar is navy, so on dark surfaces the
+          portal sets the artwork on a white plate. Showing both here means the
+          administrator sees that before staff do.
+        */}
         <div className="flex flex-wrap items-center gap-4">
-          <img
-            src={settings.logo_data_url || "/icon.svg"}
-            alt=""
-            className="h-16 w-16 rounded-md bg-slate-100 object-contain p-1 ring-1 ring-slate-200"
-          />
+          <div className="flex items-center rounded-md bg-slate-100 px-3 py-2 ring-1 ring-slate-200">
+            <img
+              src={settings.logo_data_url || "/icon.svg"}
+              alt=""
+              className={`h-9 object-contain object-left ${
+                settings.logo_data_url ? "w-auto max-w-[13rem]" : "aspect-square"
+              }`}
+            />
+          </div>
+          <div className="flex items-center rounded-md bg-brand-900 px-3 py-2">
+            {settings.logo_data_url ? (
+              <span className="inline-flex items-center rounded bg-white px-2 py-1.5">
+                <img
+                  src={settings.logo_data_url}
+                  alt=""
+                  className="h-7 w-auto max-w-[11rem] object-contain object-left"
+                />
+              </span>
+            ) : (
+              <img src="/icon.svg" alt="" className="h-9 w-9 object-contain" />
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             <label className="btn-secondary btn-sm cursor-pointer">
               Choose an image
@@ -844,9 +867,15 @@ function AppearanceAdmin({
           </div>
         </div>
         <p className="hint">
-          Shown beside the firm name in the sidebar and on the sign-in screen. A square
-          image works best. Keep it under 280 kB — it is not a photograph, and every
-          page load carries it.
+          Shown in the sidebar and on the sign-in screen. <strong>A wide logo is
+          fine</strong>, and usually better: the height is fixed and the width follows
+          your artwork. If your logo already includes the firm's name, the portal stops
+          printing the name beside it so it is not said twice.
+          <br />
+          Two things worth doing to the file first: <strong>crop the empty space</strong>
+          from around the artwork, since the portal cannot tell padding from the logo
+          and will shrink the whole thing to fit; and keep it under 280 kB, because
+          every page load carries it. A PNG with a transparent background looks best.
         </p>
       </div>
 
@@ -886,7 +915,7 @@ function AppearanceAdmin({
           <div className="h-full w-2/3 rounded-full bg-accent-500" />
         </div>
         <p className="hint mt-2">
-          The rest of the portal has already changed too — look at the sidebar. Nothing
+          The rest of the portal has already changed too - look at the sidebar. Nothing
           is saved until you press Save, and leaving this page undoes it.
         </p>
       </div>

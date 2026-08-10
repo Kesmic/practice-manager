@@ -135,10 +135,10 @@ export function Clients() {
                       {ENTITY_TYPE_LABELS[client.entity_type]}
                     </td>
                     <td className="whitespace-nowrap text-xs">
-                      {client.partner_name ?? <span className="text-slate-400">—</span>}
+                      {client.partner_name ?? <span className="text-slate-400">-</span>}
                     </td>
                     <td className="whitespace-nowrap text-xs">
-                      {client.manager_name ?? <span className="text-slate-400">—</span>}
+                      {client.manager_name ?? <span className="text-slate-400">-</span>}
                     </td>
                     <td className="whitespace-nowrap">
                       <span
@@ -366,7 +366,7 @@ function NewClientModal({
                 <option value="">Not assigned</option>
                 {partners.map((user) => (
                   <option key={user.id} value={user.id}>
-                    {user.full_name} — {ROLE_LABELS[user.role]}
+                    {user.full_name} - {ROLE_LABELS[user.role]}
                   </option>
                 ))}
               </Select>
@@ -382,7 +382,7 @@ function NewClientModal({
                 <option value="">Not assigned</option>
                 {managers.map((user) => (
                   <option key={user.id} value={user.id}>
-                    {user.full_name} — {ROLE_LABELS[user.role]}
+                    {user.full_name} - {ROLE_LABELS[user.role]}
                   </option>
                 ))}
               </Select>

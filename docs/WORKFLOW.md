@@ -4,7 +4,7 @@ This describes how a client deliverable moves from assignment to closure, and
 which controls the system enforces rather than merely suggests.
 
 The model follows the prepare / review / clear-points / sign-off cycle used in
-accounting, tax and regulatory compliance practices — the same shape found in
+accounting, tax and regulatory compliance practices - the same shape found in
 Karbon, Canopy, TaxDome, Jetpack Workflow and Financial Cents, with the review
 loop made explicit rather than left to comments on a task.
 
@@ -72,14 +72,14 @@ Two thresholds carry most of the weight:
 | **Draft**               | Supervisor    | Being set up; the associate cannot see it as work yet |
 | **Not started**         | Preparer      | Released and waiting to begin                         |
 | **In progress**         | Preparer      | Actively being worked                                 |
-| **Awaiting client**     | Preparer      | Blocked on client information — the clock is paused   |
+| **Awaiting client**     | Preparer      | Blocked on client information - the clock is paused   |
 | **On hold**             | Preparer      | Suspended for an internal reason                      |
 | **Submitted for review**| Reviewer      | Handed over, not yet picked up                        |
 | **Under review**        | Reviewer      | Review round open; points being raised                |
 | **Rework required**     | Preparer      | Points issued; corrections needed                     |
 | **Approved**            | Supervisor    | Signed off, awaiting delivery and closure             |
-| **Closed**              | —             | Delivered and filed. Read-only.                       |
-| **Cancelled**           | —             | Abandoned, but retained for audit                     |
+| **Closed**              | -             | Delivered and filed. Read-only.                       |
+| **Cancelled**           | -             | Abandoned, but retained for audit                     |
 
 ---
 
@@ -90,7 +90,7 @@ explains why, but removing the button is not what stops it.
 
 **1. Nobody reviews their own work.**
 Whoever is the deliverable's assignee cannot begin its review, raise points on
-it, resolve points, or approve it — at any grade, including Administrator. This
+it, resolve points, or approve it - at any grade, including Administrator. This
 is the one rule with no override, because an override would defeat its purpose.
 
 **2. An Associate cannot be named reviewer.**
@@ -102,7 +102,7 @@ Template checklist steps marked mandatory block `submit` and `resubmit` until
 ticked. Only a Manager or above can delete a mandatory step.
 
 **4. Rework requires review points.**
-Returning a deliverable without raising at least one point is refused — a bare
+Returning a deliverable without raising at least one point is refused - a bare
 "redo this" gives the preparer nothing to act on.
 
 **5. Every must-fix point must be answered before resubmission.**
@@ -128,9 +128,9 @@ actor and timestamp.
 A review point is one itemised finding, numbered per round (`R2.3` is the third
 point of the second round). Each carries:
 
-- **Severity** — Must fix (blocks approval), Should fix, or Observation
-- **Reference** — the working paper, schedule or line item at issue
-- **Status** — `open` → `addressed` → `resolved` or `waived`
+- **Severity** - Must fix (blocks approval), Should fix, or Observation
+- **Reference** - the working paper, schedule or line item at issue
+- **Status** - `open` → `addressed` → `resolved` or `waived`
 
 The reviewer raises points while the deliverable is under review. The preparer
 responds to each. The reviewer then resolves or waives them. Only the reviewer
@@ -154,7 +154,7 @@ A deadline rule is `{ month_offset, day }` applied to the **end of the period
 being reported on**: `{ month_offset: 1, day: 15 }` against a period ending
 31 March gives 15 April. The internal target is set `internal_lead_days` earlier,
 so the firm has slack before the statutory date. The seeded values are sensible
-defaults, not legal advice — **check each one against your jurisdiction's current
+defaults, not legal advice - **check each one against your jurisdiction's current
 rules** and edit the template. No code change is needed.
 
 Two ways work gets scheduled:
@@ -164,7 +164,7 @@ Two ways work gets scheduled:
   calendar with deadlines computed per period. Re-running it skips periods that
   already exist, so a partial run is safe to repeat.
 - **Roll-forward on closure.** Closing a deliverable with a recurrence creates
-  the next period automatically — dates advanced, checklist copied and reset,
+  the next period automatically - dates advanced, checklist copied and reset,
   same preparer and reviewer. It will not create a period that already exists.
 
 The period label names the period covered, not the filing month: a March VAT
@@ -186,11 +186,11 @@ It is defined once, in [`worker/routes/task-sql.ts`](../worker/routes/task-sql.t
 
 ## Reports
 
-- **Work in progress by stage** — where the portfolio sits right now.
-- **Workload by person** — open items, overdue items, items in review, and budget
+- **Work in progress by stage** - where the portfolio sits right now.
+- **Workload by person** - open items, overdue items, items in review, and budget
   against logged hours.
-- **Service line summary** — volume and overdue exposure per service line.
-- **Review quality by preparer** — review rounds, how many came back, must-fix
+- **Service line summary** - volume and overdue exposure per service line.
+- **Review quality by preparer** - review rounds, how many came back, must-fix
   points answered, and a first-pass rate (the share of a preparer's reviewed
   deliverables never returned for rework).
 

@@ -1,7 +1,7 @@
 export interface Env {
   /** D1 binding declared in wrangler.toml. */
   DB: D1Database;
-  /** Static asset binding — serves the built React app. */
+  /** Static asset binding - serves the built React app. */
   ASSETS: Fetcher;
   /**
    * One-time secret that authorises creation of the very first administrator.
@@ -14,7 +14,7 @@ export interface Env {
   /**
    * PBKDF2 work factor for password hashing. Left unset it defaults to a value
    * that fits the 10 ms CPU budget of the Workers Free plan; raise it on the
-   * Paid plan. See the notes in `auth.ts` — the ceiling here is the CPU limit,
+   * Paid plan. See the notes in `auth.ts` - the ceiling here is the CPU limit,
    * not cryptography.
    */
   PASSWORD_ITERATIONS?: string;
@@ -25,4 +25,19 @@ export interface Env {
    * removed afterwards, or existing passwords stop verifying.
    */
   PASSWORD_PEPPER?: string;
+
+  /**
+   * Email notifications. All optional: with no EMAIL_API_KEY the portal sends
+   * nothing and behaves exactly as it does today, with the in-app inbox as the
+   * only channel. See docs/EMAIL.md.
+   */
+  EMAIL_API_KEY?: string;
+  /** The From address, e.g. "Kesmic Practice Manager <portal@kesmic.org>". */
+  EMAIL_FROM?: string;
+  /**
+   * Base address used for links in emails, e.g. https://portal.kesmic.org. Left
+   * unset, links use the origin the portal was reached on, which is right unless
+   * it answers to more than one name.
+   */
+  PORTAL_URL?: string;
 }

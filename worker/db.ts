@@ -91,7 +91,7 @@ export function notificationStatement(
 
 /**
  * Builds notification statements for a set of recipients, skipping duplicates
- * and skipping the actor — nobody needs telling about their own action.
+ * and skipping the actor - nobody needs telling about their own action.
  */
 export function notifyMany(
   env: Env,
@@ -255,7 +255,7 @@ export function buildUpdate(
 /**
  * Appends to the HR audit trail. Kept separate from `task_events` because the
  * two trails have different subjects, different readers and different retention
- * expectations — an employment record is not a client deliverable.
+ * expectations - an employment record is not a client deliverable.
  */
 export function hrEventStatement(
   env: Env,

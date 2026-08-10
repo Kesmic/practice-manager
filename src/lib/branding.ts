@@ -40,7 +40,7 @@ function mix(a: Rgb, b: Rgb, weight: number): Rgb {
 }
 
 const WHITE: Rgb = [255, 255, 255];
-const BLACK: Rgb = [15, 23, 42]; // slate-900 rather than pure black — less harsh.
+const BLACK: Rgb = [15, 23, 42]; // slate-900 rather than pure black - less harsh.
 
 /**
  * How far each step sits from the chosen colour: the pale end mixes toward white,
@@ -71,7 +71,7 @@ const channels = ([r, g, b]: Rgb) => `${r} ${g} ${b}`;
  * themes. Only the pale end, used for tinted backgrounds, flips.
  *
  * The secondary colour is only ever a tint or a highlight, so both of its ends
- * flip — otherwise `text-accent-800` on a `bg-accent-50` badge is dark text on a
+ * flip - otherwise `text-accent-800` on a `bg-accent-50` badge is dark text on a
  * dark background, and the badge disappears.
  */
 const PRIMARY_DARK: Record<number, number> = { 50: 900, 100: 800, 200: 700, 300: 600 };

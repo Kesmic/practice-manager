@@ -103,7 +103,7 @@ export const STATUS_STYLES: Record<TaskStatus, string> = {
   cancelled: "bg-slate-100 text-slate-500 ring-slate-200",
 };
 
-/** Statuses that represent live work — everything not finished or abandoned. */
+/** Statuses that represent live work - everything not finished or abandoned. */
 export const OPEN_STATUSES: TaskStatus[] = [
   "draft",
   "not_started",
@@ -173,7 +173,7 @@ export interface TransitionRule {
   hint: string;
   /**
    * When true the actor must NOT be the deliverable's assignee. This enforces
-   * segregation of duties — nobody signs off their own work, at any grade.
+   * segregation of duties - nobody signs off their own work, at any grade.
    */
   forbidSelfReview?: boolean;
   /** When true the UI collects a mandatory note before firing. */
@@ -227,7 +227,7 @@ export const TRANSITIONS: TransitionRule[] = [
     to: "in_progress",
     allow: ["assignee", "supervisor"],
     label: "Resume work",
-    hint: "The blocker is cleared — put the deliverable back into progress.",
+    hint: "The blocker is cleared - put the deliverable back into progress.",
     intent: "primary",
   },
   {
@@ -549,7 +549,7 @@ export type ReviewPointStatus = (typeof REVIEW_POINT_STATUSES)[number];
 
 export const REVIEW_POINT_STATUS_LABELS: Record<ReviewPointStatus, string> = {
   open: "Open",
-  addressed: "Addressed — awaiting reviewer",
+  addressed: "Addressed - awaiting reviewer",
   resolved: "Resolved",
   waived: "Waived",
 };

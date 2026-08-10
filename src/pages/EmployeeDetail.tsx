@@ -250,7 +250,7 @@ export function EmployeeDetail() {
                   <DetailRow key={key} label={PROFILE_FIELD_LABELS[key] ?? key}>
                     {key === "date_of_birth"
                       ? formatDate(value as string)
-                      : ((value as string) ?? "—")}
+                      : ((value as string) ?? "-")}
                   </DetailRow>
                 ))}
             </dl>
@@ -284,7 +284,7 @@ export function EmployeeDetail() {
                           <span className="font-medium">
                             {event.actor_name ?? "System"}
                           </span>{" "}
-                          — {event.kind.replace(/[:_]/g, " ")}
+                          - {event.kind.replace(/[:_]/g, " ")}
                         </p>
                         {event.detail && (
                           <p className="text-xs text-slate-600">{event.detail}</p>
@@ -339,18 +339,18 @@ function EmploymentTab({
   if (!editable) {
     return (
       <dl className="divide-y divide-slate-100">
-        <DetailRow label="Staff number">{profile?.staff_no ?? "—"}</DetailRow>
-        <DetailRow label="Job title">{profile?.job_title ?? "—"}</DetailRow>
-        <DetailRow label="Department">{profile?.department ?? "—"}</DetailRow>
+        <DetailRow label="Staff number">{profile?.staff_no ?? "-"}</DetailRow>
+        <DetailRow label="Job title">{profile?.job_title ?? "-"}</DetailRow>
+        <DetailRow label="Department">{profile?.department ?? "-"}</DetailRow>
         <DetailRow label="Employment type">
-          {profile ? EMPLOYMENT_TYPE_LABELS[profile.employment_type] : "—"}
+          {profile ? EMPLOYMENT_TYPE_LABELS[profile.employment_type] : "-"}
         </DetailRow>
         <DetailRow label="Start date">{formatDate(profile?.start_date)}</DetailRow>
         <DetailRow label="Probation ends">
           {formatDate(profile?.probation_end_date)}
         </DetailRow>
-        <DetailRow label="Line manager">{profile?.line_manager_id ? "On file" : "—"}</DetailRow>
-        <DetailRow label="Work location">{profile?.work_location ?? "—"}</DetailRow>
+        <DetailRow label="Line manager">{profile?.line_manager_id ? "On file" : "-"}</DetailRow>
+        <DetailRow label="Work location">{profile?.work_location ?? "-"}</DetailRow>
         <DetailRow label="Account email">{user.email}</DetailRow>
       </dl>
     );
@@ -441,7 +441,7 @@ function EmploymentTab({
                 .filter((c) => c.id !== user.id && atLeast(c.role, "senior_associate"))
                 .map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.full_name} — {ROLE_LABELS[c.role]}
+                    {c.full_name} - {ROLE_LABELS[c.role]}
                   </option>
                 ))}
             </Select>
@@ -682,16 +682,16 @@ function PayTab({
           {formatMoney(c?.annual_salary, c?.currency ?? "GHS")} per annum
         </DetailRow>
         <DetailRow label="Paid">
-          {c ? PAY_FREQUENCY_LABELS[c.pay_frequency] : "—"}
+          {c ? PAY_FREQUENCY_LABELS[c.pay_frequency] : "-"}
         </DetailRow>
-        <DetailRow label="Bank">{c?.bank_name ?? "—"}</DetailRow>
+        <DetailRow label="Bank">{c?.bank_name ?? "-"}</DetailRow>
         <DetailRow label="Account">
-          {c?.account_number ? `•••• ${c.account_number.slice(-4)}` : "—"}
+          {c?.account_number ? `•••• ${c.account_number.slice(-4)}` : "-"}
         </DetailRow>
         <DetailRow label="Tax identification">
-          {c?.tax_identification_no ?? "—"}
+          {c?.tax_identification_no ?? "-"}
         </DetailRow>
-        <DetailRow label="Social security">{c?.social_security_no ?? "—"}</DetailRow>
+        <DetailRow label="Social security">{c?.social_security_no ?? "-"}</DetailRow>
       </dl>
     );
   }

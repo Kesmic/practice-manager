@@ -200,7 +200,7 @@ export function NewTaskModal({
                   <option value="">Select a client…</option>
                   {clients.map((client) => (
                     <option key={client.id} value={client.id}>
-                      {client.code} — {client.name}
+                      {client.code} - {client.name}
                     </option>
                   ))}
                 </Select>
@@ -208,7 +208,7 @@ export function NewTaskModal({
             </Field>
           )}
 
-          <Field label="Engagement" hint="Optional — links the job to a signed engagement.">
+          <Field label="Engagement" hint="Optional - links the job to a signed engagement.">
             {(id) => (
               <Select
                 id={id}
@@ -219,7 +219,7 @@ export function NewTaskModal({
                 <option value="">No engagement</option>
                 {engagements.map((engagement) => (
                   <option key={engagement.id} value={engagement.id}>
-                    {engagement.code} — {engagement.name}
+                    {engagement.code} - {engagement.name}
                   </option>
                 ))}
               </Select>
@@ -254,7 +254,7 @@ export function NewTaskModal({
               required
               value={form.title}
               onChange={(e) => set("title")(e.target.value)}
-              placeholder="Monthly VAT Return — Mar 2026"
+              placeholder="Monthly VAT Return - Mar 2026"
             />
           )}
         </Field>
@@ -318,7 +318,7 @@ export function NewTaskModal({
                 <option value="">Unassigned</option>
                 {users.map((user) => (
                   <option key={user.id} value={user.id}>
-                    {user.full_name} — {ROLE_LABELS[user.role]}
+                    {user.full_name} - {ROLE_LABELS[user.role]}
                   </option>
                 ))}
               </Select>
@@ -339,7 +339,7 @@ export function NewTaskModal({
                   .filter((user) => user.id !== form.assignee_id)
                   .map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.full_name} — {ROLE_LABELS[user.role]}
+                      {user.full_name} - {ROLE_LABELS[user.role]}
                     </option>
                   ))}
               </Select>
@@ -426,8 +426,8 @@ export function NewTaskModal({
                   value={form.status}
                   onChange={(e) => set("status")(e.target.value)}
                 >
-                  <option value="not_started">Released — not started</option>
-                  <option value="draft">Draft — release later</option>
+                  <option value="not_started">Released - not started</option>
+                  <option value="draft">Draft - release later</option>
                 </Select>
               )}
             </Field>

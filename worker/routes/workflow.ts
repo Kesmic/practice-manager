@@ -1,8 +1,8 @@
 /**
  * The single write path for deliverable status changes.
  *
- * Every transition is authorised by `shared/workflow.can()` — the same function
- * the UI uses to decide which buttons to render — and then applied together
+ * Every transition is authorised by `shared/workflow.can()` - the same function
+ * the UI uses to decide which buttons to render - and then applied together
  * with its audit event and notifications in one D1 batch.
  */
 
@@ -18,6 +18,8 @@ import {
   requireEnum,
 } from "../db";
 import { Router, badRequest, forbidden, json, notFound, readJson } from "../http";
+import { notifyWatchers } from "../email";
+import { readSettings } from "./settings";
 import {
   STATUS_LABELS,
   WORKFLOW_ACTIONS,
@@ -62,7 +64,7 @@ interface WorkflowRow {
 }
 
 export function registerWorkflowRoutes(router: Router<Env>): void {
-  router.post("/api/tasks/:id/transition", async ({ request, env, params }) => {
+  router.post("/api/tasks/:id/transition", async ({ request, env, params, url, waitUntil }) => {
     const actor = await requireUser(env, request);
     const body = await readJson<{ action?: string; note?: string }>(request);
     const action = requireEnum(body.action, "action", WORKFLOW_ACTIONS);
@@ -94,7 +96,7 @@ export function registerWorkflowRoutes(router: Router<Env>): void {
     const timestamp = nowIso();
     const statements: D1PreparedStatement[] = [];
     const recipients: Array<string | null> = [];
-    let notificationTitle = `${task.ref} — ${rule.label.toLowerCase()}`;
+    let notificationTitle = `${task.ref} - ${rule.label.toLowerCase()}`;
 
     // Columns updated in addition to status/updated_at, per action.
     const extra: Record<string, unknown> = {};
@@ -242,6 +244,22 @@ export function registerWorkflowRoutes(router: Router<Env>): void {
 
     await env.DB.batch(statements);
 
+    /*
+     * The same people who get an inbox entry get an email, if email is set up.
+     * After the batch, so nothing is emailed about a change that failed to save,
+     * and scheduled rather than awaited, so the provider cannot slow this down.
+     */
+    await notifyWatchers(env, waitUntil, {
+      taskId: task.id,
+      taskRef: task.ref,
+      actorId: actor.id,
+      origin: url.origin,
+      firmName: (await readSettings(env)).firm_name,
+      subject: notificationTitle,
+      headline: `${actor.full_name} marked ${task.ref} "${task.title}" as ${STATUS_LABELS[rule.to].toLowerCase()}.`,
+      detail: note ?? null,
+    });
+
     // Closing a recurring job rolls the next period forward automatically.
     let nextOccurrence: string | null = null;
     if (action === "close" && RECURRENCE_MONTHS[task.recurrence] > 0) {
@@ -331,7 +349,7 @@ async function createNextOccurrence(
 
   /*
    * The label names the period being reported on, which is not the same as the
-   * filing deadline — a March VAT return is filed in April. So prefer the stored
+   * filing deadline - a March VAT return is filed in April. So prefer the stored
    * period end, fall back to advancing the existing label, and only as a last
    * resort derive it from the rolled deadline.
    */
@@ -340,7 +358,7 @@ async function createNextOccurrence(
     (task.period_label && advancePeriodLabel(task.period_label, task.recurrence)) ||
     periodLabel(nextStatutory ?? nextInternal!, task.recurrence);
 
-  // Never create the same period twice — closing and reopening must be safe.
+  // Never create the same period twice - closing and reopening must be safe.
   const clash = await env.DB.prepare(
     `SELECT id FROM tasks
       WHERE client_id = ? AND title = ? AND period_label = ? AND recurrence = ?`,
@@ -406,7 +424,7 @@ async function createNextOccurrence(
     ...notifyMany(env, [task.assignee_id], actor.id, {
       taskId: id,
       kind: "assigned",
-      title: `${ref} — ${label} is now open`,
+      title: `${ref} - ${label} is now open`,
       body: task.title,
     }),
   ];

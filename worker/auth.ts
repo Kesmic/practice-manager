@@ -3,7 +3,7 @@
  *
  * The session cookie holds a random token; only its SHA-256 digest is stored,
  * so a database leak does not hand over live sessions. Cookies are HttpOnly,
- * Secure and SameSite=Lax — the API and the app are served from the same origin
+ * Secure and SameSite=Lax - the API and the app are served from the same origin
  * by the same Worker, so no cross-site cookie relaxation is needed.
  */
 
@@ -16,7 +16,7 @@ import { atLeast, type Role } from "../shared/workflow";
  * what caps it is not cryptography but the Worker's CPU budget. Cloudflare
  * allows **10 ms of CPU per request on the Workers Free plan**, and
  * PBKDF2-SHA256 costs roughly 0.45 ms per thousand iterations, so the 600,000
- * iterations OWASP currently recommends — about 280 ms — is only reachable on
+ * iterations OWASP currently recommends - about 280 ms - is only reachable on
  * the Paid plan. Exceeding the budget does not fail gracefully: the request is
  * killed, so signing in becomes impossible rather than slow.
  *
@@ -118,7 +118,7 @@ async function derive(
  * Mixes the deployment's pepper into a password before the KDF runs.
  *
  * The pepper lives in Worker secrets and never in D1, so a leaked database
- * export — a mislaid backup, an over-scoped API token — cannot be attacked
+ * export - a mislaid backup, an over-scoped API token - cannot be attacked
  * offline at all, whatever the work factor. That is what makes an iteration
  * count trimmed to fit the CPU budget defensible. One HMAC costs microseconds.
  */
@@ -191,7 +191,7 @@ export async function verifyPassword(
  * same PBKDF2 time as a registered one and response latency does not reveal
  * which addresses exist. It is built at the deployment's *current* work factor:
  * a constant with an iteration count baked in would leak the difference through
- * timing, and — if that count were higher — would spend the CPU budget on
+ * timing, and - if that count were higher - would spend the CPU budget on
  * requests that could never succeed.
  */
 export function decoyHash(env: Env): string {
@@ -253,6 +253,8 @@ export interface AuthenticatedUser {
   role: Role;
   title: string | null;
   must_change_password: 0 | 1;
+  /** Whether this person wants email as well as the in-app inbox. */
+  email_notifications: 0 | 1;
   /** Digest of the caller's own session token, so it can be exempted from
    *  bulk session revocation. Never sent to the client. */
   session_id: string;
@@ -319,7 +321,7 @@ export async function currentUser(
   const id = await digest(token);
   const row = await env.DB.prepare(
     `SELECT u.id, u.email, u.full_name, u.role, u.title, u.must_change_password,
-            u.status, s.expires_at
+            u.email_notifications, u.status, s.expires_at
        FROM sessions s
        JOIN users u ON u.id = s.user_id
       WHERE s.id = ?`,
@@ -332,6 +334,7 @@ export async function currentUser(
       role: Role;
       title: string | null;
       must_change_password: 0 | 1;
+      email_notifications: 0 | 1;
       status: string;
       expires_at: string;
     }>();
@@ -352,6 +355,7 @@ export async function currentUser(
     role: row.role,
     title: row.title,
     must_change_password: row.must_change_password,
+    email_notifications: row.email_notifications,
     session_id: id,
   };
 }

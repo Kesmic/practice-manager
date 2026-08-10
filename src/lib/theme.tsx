@@ -53,7 +53,7 @@ export function applyTheme(choice: ThemeChoice): void {
 
 interface ThemeState {
   choice: ThemeChoice;
-  /** What is on screen — differs from `choice` when following the device. */
+  /** What is on screen - differs from `choice` when following the device. */
   active: "light" | "dark";
   setChoice: (choice: ThemeChoice) => void;
 }

@@ -24,7 +24,7 @@ const EDITABLE = Object.keys(DEFAULTS);
 /**
  * The subset of settings that describe how the portal looks. These are readable
  * without signing in, so the firm's logo and colours appear on the sign-in screen
- * itself. None of it is confidential — it is what every visitor would see anyway.
+ * itself. None of it is confidential - it is what every visitor would see anyway.
  */
 const PUBLIC_KEYS = ["firm_name", "logo_data_url", "primary_color", "secondary_color"];
 
@@ -85,7 +85,7 @@ export function registerSettingsRoutes(router: Router<Env>): void {
     return json({ branding });
   });
 
-  /** Readable by any signed-in user — the welcome message is for everyone. */
+  /** Readable by any signed-in user - the welcome message is for everyone. */
   router.get("/api/settings", async ({ request, env }) => {
     await requireUser(env, request);
     return json({ settings: await readSettings(env) });

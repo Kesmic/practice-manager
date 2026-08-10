@@ -13,11 +13,15 @@ import {
   requireString,
 } from "../db";
 import { Router, badRequest, forbidden, json, notFound, readJson } from "../http";
+import { notifyWatchers } from "../email";
+import { readSettings } from "./settings";
 import { MIN_SUPERVISOR_ROLE, atLeast, type TaskStatus } from "../../shared/workflow";
 
 interface TaskRow {
   id: string;
   ref: string;
+  /** Carried so notifications can name the deliverable, not just its reference. */
+  title: string;
   status: TaskStatus;
   assignee_id: string | null;
   reviewer_id: string | null;
@@ -127,7 +131,7 @@ export function registerTaskItemRoutes(router: Router<Env>): void {
   // Comments
   // -------------------------------------------------------------------------
 
-  router.post("/api/tasks/:id/comments", async ({ request, env, params }) => {
+  router.post("/api/tasks/:id/comments", async ({ request, env, params, url, waitUntil }) => {
     const actor = await requireUser(env, request);
     const task = await loadTask(env, params.id);
 
@@ -143,10 +147,23 @@ export function registerTaskItemRoutes(router: Router<Env>): void {
       ...notifyMany(env, [task.assignee_id, task.reviewer_id], actor.id, {
         taskId: task.id,
         kind: "comment",
-        title: `${task.ref} — new comment from ${actor.full_name}`,
+        title: `${task.ref} - new comment from ${actor.full_name}`,
         body: text.slice(0, 200),
       }),
     ]);
+
+    // Emailed after the write, and scheduled rather than awaited: a comment must
+    // save and return whether or not the mail provider is reachable.
+    await notifyWatchers(env, waitUntil, {
+      taskId: task.id,
+      taskRef: task.ref,
+      actorId: actor.id,
+      origin: url.origin,
+      firmName: (await readSettings(env)).firm_name,
+      subject: `${task.ref} - new comment from ${actor.full_name}`,
+      headline: `${actor.full_name} commented on ${task.ref} "${task.title}".`,
+      detail: text,
+    });
 
     const comment = await env.DB.prepare(
       `SELECT tc.*, u.full_name AS author_name
@@ -282,7 +299,7 @@ export function registerTaskItemRoutes(router: Router<Env>): void {
 
 async function loadTask(env: Env, id: string): Promise<TaskRow> {
   const task = await env.DB.prepare(
-    `SELECT id, ref, status, assignee_id, reviewer_id FROM tasks WHERE id = ?`,
+    `SELECT id, ref, title, status, assignee_id, reviewer_id FROM tasks WHERE id = ?`,
   )
     .bind(id)
     .first<TaskRow>();

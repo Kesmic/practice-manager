@@ -213,17 +213,17 @@ export function ClientDetail() {
             <h2 className="card-title mb-2">Client details</h2>
             <dl className="divide-y divide-slate-100">
               <DetailRow label="Engagement partner">
-                {client.partner_name ?? "—"}
+                {client.partner_name ?? "-"}
               </DetailRow>
-              <DetailRow label="Client manager">{client.manager_name ?? "—"}</DetailRow>
-              <DetailRow label="Tax ID">{client.tax_id ?? "—"}</DetailRow>
+              <DetailRow label="Client manager">{client.manager_name ?? "-"}</DetailRow>
+              <DetailRow label="Tax ID">{client.tax_id ?? "-"}</DetailRow>
               <DetailRow label="Registration no.">
-                {client.registration_no ?? "—"}
+                {client.registration_no ?? "-"}
               </DetailRow>
               <DetailRow label="Financial year end">
-                {client.fiscal_year_end ?? "—"}
+                {client.fiscal_year_end ?? "-"}
               </DetailRow>
-              <DetailRow label="Industry">{client.industry ?? "—"}</DetailRow>
+              <DetailRow label="Industry">{client.industry ?? "-"}</DetailRow>
               <DetailRow label="Onboarded">{formatDate(client.onboarded_on)}</DetailRow>
             </dl>
           </div>
@@ -231,17 +231,17 @@ export function ClientDetail() {
           <div className="card p-4">
             <h2 className="card-title mb-2">Contact</h2>
             <dl className="divide-y divide-slate-100">
-              <DetailRow label="Name">{client.contact_name ?? "—"}</DetailRow>
+              <DetailRow label="Name">{client.contact_name ?? "-"}</DetailRow>
               <DetailRow label="Email">
                 {client.contact_email ? (
                   <a href={`mailto:${client.contact_email}`} className="link">
                     {client.contact_email}
                   </a>
                 ) : (
-                  "—"
+                  "-"
                 )}
               </DetailRow>
-              <DetailRow label="Phone">{client.contact_phone ?? "—"}</DetailRow>
+              <DetailRow label="Phone">{client.contact_phone ?? "-"}</DetailRow>
             </dl>
           </div>
 

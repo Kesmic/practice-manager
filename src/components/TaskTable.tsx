@@ -149,7 +149,7 @@ export function TaskTable({
                       {task.open_review_points} open
                     </span>
                   ) : (
-                    <span className="text-xs text-slate-400">—</span>
+                    <span className="text-xs text-slate-400">-</span>
                   )}
                 </td>
               )}

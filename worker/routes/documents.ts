@@ -4,7 +4,7 @@
  *
  * A signature stores the SHA-256 of the exact text agreed to and is keyed to the
  * document version. Amending a published document raises its version, which
- * makes existing signatures historical rather than current — so an amended
+ * makes existing signatures historical rather than current - so an amended
  * policy is put back in front of staff instead of silently inheriting consent.
  */
 
@@ -51,7 +51,7 @@ interface DocumentRow {
   updated_at: string;
 }
 
-/** Columns for list views — deliberately excludes the document body. */
+/** Columns for list views - deliberately excludes the document body. */
 const LIST_COLUMNS = `d.id, d.kind, d.category, d.title, d.summary, d.version, d.status,
   d.requires_signature, d.requires_acknowledgement, d.audience, d.assigned_user_id,
   d.effective_from, d.position, d.published_at, d.created_at, d.updated_at,
@@ -109,7 +109,7 @@ export function registerDocumentRoutes(router: Router<Env>): void {
     /*
      * Placeholders are numbered explicitly rather than positional. The viewer's
      * own id is referenced from the SELECT subqueries as well as the WHERE
-     * clause, and SQLite numbers a bare `?` by textual position — mixing the two
+     * clause, and SQLite numbers a bare `?` by textual position - mixing the two
      * styles silently shifts every index. `?1` is always the viewer.
      */
     const binds: unknown[] = [actor.id];
@@ -564,7 +564,7 @@ async function readDocumentFields(
     position: optionalNumber(body.position, "position", { max: 10_000 }),
     // `optionalId` already turns an absent value into null, which is what the
     // INSERT needs. Mapping it back to `undefined` here would bind undefined to
-    // D1 and fail the whole request — an all-staff policy, which is the ordinary
+    // D1 and fail the whole request - an all-staff policy, which is the ordinary
     // case, carries no assigned employee. Updates are handled by the loop below.
     assigned_user_id: assignedUserId,
   };

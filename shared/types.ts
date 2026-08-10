@@ -35,6 +35,8 @@ export interface User {
   title: string | null;
   status: "active" | "suspended";
   must_change_password: 0 | 1;
+  /** Whether this person receives email as well as the in-app inbox. */
+  email_notifications: 0 | 1;
   created_at: string;
   last_login_at: string | null;
 }
@@ -451,9 +453,9 @@ export interface PortalDocument {
 export interface PortalDocumentDetail extends PortalDocument {
   body: string;
   my_signature: DocumentSignature | null;
-  /** Signatures across the firm — HR administrators only. */
+  /** Signatures across the firm - HR administrators only. */
   signatures?: DocumentSignature[];
-  /** Employees who have not yet responded — HR administrators only. */
+  /** Employees who have not yet responded - HR administrators only. */
   outstanding?: Array<{ user_id: string; full_name: string }>;
 }
 

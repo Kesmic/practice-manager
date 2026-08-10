@@ -103,7 +103,7 @@ export function periodLabel(periodEnd: string, recurrence: Recurrence): string {
 /**
  * Advances an existing period label by one recurrence interval.
  *
- * Used when a recurring job carries a label but no stored period end — the
+ * Used when a recurring job carries a label but no stored period end - the
  * label describes the period being reported on, so it cannot be re-derived from
  * the filing deadline (a March return filed in April would otherwise be
  * relabelled as an April one). Returns null when the label is free text we do

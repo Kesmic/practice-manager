@@ -39,8 +39,7 @@ CREATE TABLE employee_profiles (
   line_manager_id     TEXT REFERENCES users(id) ON DELETE SET NULL,
   work_location       TEXT,
 
-  -- Personal details. Visible to the employee and to HR administrators only —
-  -- deliberately not to a line manager.
+  -- Personal details. Visible to the employee and to HR administrators only, -- deliberately not to a line manager.
   date_of_birth                  TEXT,
   gender                         TEXT,
   marital_status                 TEXT,

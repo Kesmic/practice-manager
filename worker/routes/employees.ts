@@ -40,13 +40,13 @@ import {
 import { OUTSTANDING_DOCUMENTS_SQL } from "./documents";
 import { readSettings } from "./settings";
 
-/** Employment columns — safe for anyone with directory access. */
+/** Employment columns - safe for anyone with directory access. */
 const EMPLOYMENT_COLUMNS = `p.user_id, p.staff_no, p.job_title, p.department,
   p.employment_type, p.employment_status, p.start_date, p.probation_end_date,
   p.confirmed_on, p.exit_date, p.line_manager_id, p.work_location,
   p.profile_completed_at, p.created_at, p.updated_at`;
 
-/** Personal columns — the employee themselves, or an HR administrator. */
+/** Personal columns - the employee themselves, or an HR administrator. */
 const PERSONAL_COLUMNS = `p.date_of_birth, p.gender, p.marital_status,
   p.personal_email, p.phone, p.residential_address, p.emergency_contact_name,
   p.emergency_contact_phone, p.emergency_contact_relationship,
@@ -85,7 +85,7 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
   /**
    * Self-service update of personal details. An employee may maintain their own
    * contact and next-of-kin information but not their own job title, grade,
-   * start date or pay — those are HR-controlled.
+   * start date or pay - those are HR-controlled.
    */
   router.patch("/api/me/profile", async ({ request, env }) => {
     const actor = await requireUser(env, request, { allowPasswordPending: true });
@@ -506,7 +506,7 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
         timestamp,
         actor.id,
       ),
-      // The values are not written to the trail — only the fact of the change.
+      // The values are not written to the trail - only the fact of the change.
       hrEventStatement(env, {
         subjectId: params.id,
         actorId: actor.id,

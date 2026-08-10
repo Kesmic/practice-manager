@@ -29,6 +29,7 @@ export function registerUserRoutes(router: Router<Env>): void {
 
     const { results } = await env.DB.prepare(
       `SELECT id, email, full_name, role, title, status, must_change_password,
+              email_notifications,
               created_at, last_login_at
          FROM users
         ${includeSuspended ? "" : "WHERE status = 'active'"}
@@ -208,6 +209,7 @@ export function registerUserRoutes(router: Router<Env>): void {
 
     const user = await env.DB.prepare(
       `SELECT id, email, full_name, role, title, status, must_change_password,
+              email_notifications,
               created_at, last_login_at
          FROM users WHERE id = ?`,
     )
