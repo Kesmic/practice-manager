@@ -6,12 +6,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/build-worker.mjs",
+    "build": "node scripts/build-theme-css.mjs && tsc --noEmit && vite build && node scripts/build-worker.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "wrangler pages dev",
     "deploy": "wrangler pages deploy",
     "db:migrate:local": "wrangler d1 migrations apply kesmic-practice --local",
-    "db:migrate:remote": "wrangler d1 migrations apply kesmic-practice --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply kesmic-practice --remote",
+    "build:theme": "node scripts/build-theme-css.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

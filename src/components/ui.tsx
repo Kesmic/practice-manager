@@ -258,7 +258,7 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className={`relative w-full ${wide ? "max-w-3xl" : "max-w-xl"} rounded-lg bg-white shadow-xl`}
+        className={`relative w-full ${wide ? "max-w-3xl" : "max-w-xl"} rounded-lg bg-panel shadow-xl`}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
           <h2 className="text-sm font-semibold text-slate-900">{title}</h2>

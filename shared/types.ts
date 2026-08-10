@@ -541,4 +541,9 @@ export interface FirmSettings {
   md_name: string;
   md_title: string;
   welcome_message: string;
+  /** The firm's logo as a data URI, or "" to use the built-in mark. */
+  logo_data_url: string;
+  /** Six-digit hex, or "" for the default. Recolours the whole interface. */
+  primary_color: string;
+  secondary_color: string;
 }

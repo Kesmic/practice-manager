@@ -124,7 +124,7 @@ export function Handbook() {
                     <div className="min-w-0">
                       <Link
                         to={`/documents/${doc.id}`}
-                        className="text-sm font-medium text-slate-800 hover:text-brand-700"
+                        className="text-sm font-medium text-slate-800 hover:text-link"
                       >
                         {doc.title}
                       </Link>

@@ -85,7 +85,7 @@ export function People() {
               onClick={() => setTab(key)}
               className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                 tab === key
-                  ? "border-brand-600 text-brand-700"
+                  ? "border-brand-600 text-link"
                   : "border-transparent text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -147,7 +147,7 @@ export function People() {
                           >
                             <Avatar name={person.full_name} />
                             <span>
-                              <span className="font-medium text-brand-700 hover:underline">
+                              <span className="font-medium text-link hover:underline">
                                 {person.full_name}
                               </span>
                               <p className="text-xs text-slate-500">{person.email}</p>

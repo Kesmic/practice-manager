@@ -213,7 +213,7 @@ export function Onboarding() {
                   type="checkbox"
                   checked={item.is_done === 1}
                   onChange={(event) => void toggle(item.id, event.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600"
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-link"
                   aria-label={item.label}
                 />
                 <div className="min-w-0 flex-1">

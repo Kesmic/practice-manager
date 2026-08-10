@@ -114,7 +114,7 @@ export function DocumentView() {
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <div>
-        <Link to="/handbook" className="text-xs text-slate-500 hover:text-brand-700">
+        <Link to="/handbook" className="text-xs text-slate-500 hover:text-link">
           ← Back to the handbook
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -179,7 +179,7 @@ export function DocumentView() {
               checked={confirmed}
               disabled={!readToEnd}
               onChange={(event) => setConfirmed(event.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600"
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-link"
             />
             <span>{ATTESTATION[action]}</span>
           </label>

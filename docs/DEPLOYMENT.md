@@ -271,8 +271,17 @@ do.
 5. In **Variable name**, type exactly: `BOOTSTRAP_SECRET`
 6. In **Value**, paste your phrase
 7. Click **Deploy** (or **Save**)
+8. **Now publish again — this step is easy to miss and nothing works without it.**
+   Go to **https://github.com/Kesmic/practice-manager/actions**, click **Deploy**
+   in the left-hand list, then the **Run workflow** button on the right, and
+   **Run workflow** again to confirm. Wait for the green tick, about a minute.
 
-📋 **Keep the phrase in your note for the next two minutes.**
+   Why: a Pages project only picks up a new secret when it is next published. The
+   phrase is stored safely the moment you save it, but the running copy of the
+   portal was built before it existed and cannot see it. Skip this and `/setup`
+   will tell you the secret is not configured even though you just added it.
+
+📋 **Keep the phrase in your note for the next few minutes.**
 
 ### 5b(ii). Add the password protection key — recommended
 
@@ -293,6 +302,10 @@ your database could not work out anybody's password without it.
 4. In **Value**, paste a long random phrase — **different** from the one above,
    at least 30 characters. For example: `27-harbour-thimble-glass-mango-64-slate`
 5. Click **Deploy** (or **Save**)
+
+If you are adding this at the same time as the phrase above, one publish covers
+both — do it once, after adding the second one. If you are adding it later on its
+own, publish again as described in step 8 above, or it will not take effect.
 
 > ⚠️ **This one is permanent.** Write it down somewhere safe and never change or
 > delete it. Everyone's password is checked against it, so removing it locks the
@@ -334,6 +347,13 @@ Now that your account exists, remove the setup phrase so that page is dead for g
 > ⚠️ **Delete `BOOTSTRAP_SECRET` only.** If you also added `PASSWORD_PEPPER` in
 > Part 5b(ii), leave it exactly where it is. Read the names carefully — they sit
 > next to each other, and deleting the wrong one locks everybody out.
+
+Deleting it here does not take effect until the portal is next published, for the
+same reason adding it did not. **You do not need to rush a publish for this**, and
+here is why: `/setup` refuses to run at all once any account exists. It closed
+itself the moment you created yours, secret or no secret. Removing the phrase is
+belt and braces, and it will take effect on its own the next time anything is
+published.
 
 You can now cross the setup phrase out of your note. Keep the `PASSWORD_PEPPER`
 phrase somewhere safe and permanent.
@@ -434,6 +454,12 @@ abandoned halfway through. It would have stopped every sign-in too, not just thi
 page. Nothing was damaged and no half-made account was left behind — the account
 is only written once the whole step succeeds. Make sure the green tick has
 appeared on the **Actions** page for the newest change, then try 5c again.
+
+**`/setup` says the secret is not configured, but you just added it.** A Pages
+project only picks up a new secret when it is next published. Go to
+**https://github.com/Kesmic/practice-manager/actions**, click **Deploy**, then
+**Run workflow → Run workflow**, wait for the green tick, and try again. Nothing is
+wrong with the phrase you saved.
 
 **`/setup` says the secret is incorrect.** The phrase in Cloudflare and the
 phrase you typed do not match. Check for a trailing space when you pasted it.

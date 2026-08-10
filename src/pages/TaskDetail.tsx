@@ -250,7 +250,7 @@ export function TaskDetail() {
                   onClick={() => setTab(key)}
                   className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
                     tab === key
-                      ? "border-brand-600 text-brand-700"
+                      ? "border-brand-600 text-link"
                       : "border-transparent text-slate-500 hover:text-slate-800"
                   }`}
                 >
@@ -524,7 +524,7 @@ function ReviewPanel({ data, onChanged, setError }: PanelProps) {
       {data.reviews.length > 0 && (
         <div className="space-y-2">
           {data.reviews.map((round) => (
-            <div key={round.id} className="rounded-md bg-white p-3 text-sm ring-1 ring-slate-200">
+            <div key={round.id} className="rounded-md bg-panel p-3 text-sm ring-1 ring-slate-200">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-semibold text-slate-800">Round {round.round}</span>
                 <span className="text-xs text-slate-500">
@@ -625,7 +625,7 @@ function ReviewPointCard({
   const disposed = isDisposed(point.status);
 
   return (
-    <li className="rounded-md bg-white p-3 ring-1 ring-slate-200">
+    <li className="rounded-md bg-panel p-3 ring-1 ring-slate-200">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs text-slate-500">
@@ -825,7 +825,7 @@ function ChecklistPanel({ data, onChanged, setError }: PanelProps) {
               checked={item.is_done === 1}
               disabled={!editable}
               onChange={(event) => void toggle(item.id, event.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-link focus:ring-brand-500"
               aria-label={item.label}
             />
             <div className="min-w-0 flex-1">
@@ -877,7 +877,7 @@ function ChecklistPanel({ data, onChanged, setError }: PanelProps) {
               type="checkbox"
               checked={mandatory}
               onChange={(event) => setMandatory(event.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-brand-600"
+              className="h-4 w-4 rounded border-slate-300 text-link"
             />
             Mandatory
           </label>
