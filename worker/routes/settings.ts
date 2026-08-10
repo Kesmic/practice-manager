@@ -23,9 +23,21 @@ const DEFAULTS: Record<string, string> = {
   logo_dark_data_url: "",
   primary_color: "",
   secondary_color: "",
+  /**
+   * The unguessable part of the two client intake links. Empty until the links are
+   * created. Held here rather than in their own table because they are exactly what
+   * settings are: one firm-wide value each, replaced rather than accumulated.
+   *
+   * Not editable through /api/settings and not public: they are issued and rotated
+   * through /api/intake-links, which is the only place that should be able to
+   * change an address the firm has already given out.
+   */
+  intake_token_new: "",
+  intake_token_existing: "",
 };
 
-const EDITABLE = Object.keys(DEFAULTS);
+/** Everything except the intake tokens, which have their own endpoint. */
+const EDITABLE = Object.keys(DEFAULTS).filter((key) => !key.startsWith("intake_token"));
 
 /**
  * The subset of settings that describe how the portal looks. These are readable
@@ -74,6 +86,20 @@ function assertColour(value: string, field: string): string {
   return value.toLowerCase();
 }
 
+/**
+ * Drops the intake tokens on the way out.
+ *
+ * They are part of two addresses the firm gives to outsiders, so they belong on the
+ * screen that issues and rotates them, not in the settings blob every screen loads.
+ */
+function withoutTokens(settings: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(settings)) {
+    if (!key.startsWith("intake_token")) out[key] = value;
+  }
+  return out;
+}
+
 export async function readSettings(env: Env): Promise<Record<string, string>> {
   const { results } = await env.DB.prepare(
     `SELECT key, value FROM settings`,
@@ -101,7 +127,7 @@ export function registerSettingsRoutes(router: Router<Env>): void {
   /** Readable by any signed-in user - the welcome message is for everyone. */
   router.get("/api/settings", async ({ request, env }) => {
     await requireUser(env, request);
-    return json({ settings: await readSettings(env) });
+    return json({ settings: withoutTokens(await readSettings(env)) });
   });
 
   router.patch("/api/settings", async ({ request, env }) => {
@@ -136,6 +162,28 @@ export function registerSettingsRoutes(router: Router<Env>): void {
       ),
     );
 
-    return json({ settings: await readSettings(env) });
+    return json({ settings: withoutTokens(await readSettings(env)) });
   });
+}
+
+/**
+ * Writes one setting. Used by the intake-link endpoint, which owns values that
+ * /api/settings deliberately refuses to touch.
+ */
+export async function writeSetting(
+  env: Env,
+  key: string,
+  value: string,
+  actorId: string,
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO settings (key, value, updated_at, updated_by)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (key) DO UPDATE
+       SET value = excluded.value,
+           updated_at = excluded.updated_at,
+           updated_by = excluded.updated_by`,
+  )
+    .bind(key, value, nowIso(), actorId)
+    .run();
 }

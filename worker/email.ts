@@ -94,6 +94,12 @@ interface Message {
   link: string;
   linkLabel: string;
   firmName: string;
+  /**
+   * Why this person is being written to, completing the sentence "You are receiving
+   * this because ...". Stating it accurately is what separates a notification from
+   * unsolicited mail, so it is required rather than defaulted.
+   */
+  reason: string;
 }
 
 /**
@@ -111,7 +117,7 @@ function render(message: Message, recipient: Recipient) {
     `${message.linkLabel}: ${message.link}`,
     "",
     `${message.firmName} Practice Manager`,
-    "You are receiving this because you are involved in this deliverable.",
+    `You are receiving this because ${message.reason}.`,
     "To stop these emails, turn them off under My account in the portal.",
   ].join("\n");
 
@@ -136,7 +142,7 @@ function render(message: Message, recipient: Recipient) {
     <hr style="border:0;border-top:1px solid #e2e8f0;margin:0 0 16px">
     <p style="margin:0;font-size:12px;line-height:1.5;color:#64748b">
       ${escapeHtml(message.firmName)} Practice Manager.
-      You are receiving this because you are involved in this deliverable.
+      You are receiving this because ${escapeHtml(message.reason)}.
       To stop these emails, turn them off under My account in the portal.
     </p>
   </div>
@@ -177,6 +183,84 @@ async function deliver(
 }
 
 /**
+ * Everyone who can act on an incoming client request: Manager grade and above.
+ *
+ * Deliberately not "whoever is on duty" or a nominated inbox. A request from a
+ * prospective client that nobody sees is the worst outcome here, so it goes to
+ * everybody who could accept it, and the first person to look at it marks it as
+ * theirs. There is no actor to exclude, because the sender has no account.
+ */
+async function supervisors(env: Env): Promise<Recipient[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT u.id, u.email, u.full_name
+       FROM users u
+      WHERE u.status = 'active'
+        AND u.email_notifications = 1
+        AND u.role IN ('manager','partner','admin')
+      ORDER BY u.full_name`,
+  ).all<Recipient>();
+  return results;
+}
+
+/**
+ * Emails the firm about something that arrived through a public intake link.
+ *
+ * Same guarantees as everything else here: inert without configuration, sent after
+ * the response, and never able to fail the submission. A prospective client must not
+ * see an error because the firm's mail provider is having a bad afternoon.
+ */
+export async function notifyIntake(
+  env: Env,
+  waitUntil: (promise: Promise<unknown>) => void,
+  input: {
+    reference: string;
+    origin: string;
+    firmName: string;
+    subject: string;
+    headline: string;
+    detail?: string | null;
+  },
+): Promise<void> {
+  if (!emailConfigured(env)) return;
+
+  waitUntil(
+    (async () => {
+      try {
+        const recipients = await supervisors(env);
+        if (!recipients.length) return;
+
+        const message: Message = {
+          subject: input.subject,
+          headline: input.headline,
+          detail: input.detail ?? null,
+          link: `${portalUrl(env, input.origin)}/client-requests`,
+          linkLabel: `Open ${input.reference}`,
+          firmName: input.firmName,
+          reason: "you are at Manager grade or above and client requests come to you",
+        };
+
+        const results = await Promise.allSettled(
+          recipients.map((recipient) => {
+            const { text, html } = render(message, recipient);
+            return deliver(env, recipient.email, message.subject, text, html);
+          }),
+        );
+
+        const failed = results.filter((r) => r.status === "rejected");
+        if (failed.length) {
+          console.error(
+            `Email: ${failed.length} of ${results.length} failed for ${input.reference}.`,
+            (failed[0] as PromiseRejectedResult).reason,
+          );
+        }
+      } catch (err) {
+        console.error("Client request email failed entirely:", err);
+      }
+    })(),
+  );
+}
+
+/**
  * Emails everyone involved in a deliverable. Safe to call unconditionally: it
  * returns immediately when email is not configured, and it never throws.
  *
@@ -212,6 +296,7 @@ export async function notifyWatchers(
           link: `${portalUrl(env, input.origin)}/tasks/${input.taskId}`,
           linkLabel: `Open ${input.taskRef}`,
           firmName: input.firmName,
+          reason: "you are involved in this deliverable",
         };
 
         // Sent one at a time rather than as a single message with many

@@ -4,12 +4,14 @@ import { Spinner } from "./components/ui";
 import { useSession } from "./lib/auth";
 import { Account } from "./pages/Account";
 import { ClientDetail } from "./pages/ClientDetail";
+import { ClientRequests } from "./pages/ClientRequests";
 import { Clients } from "./pages/Clients";
 import { Dashboard } from "./pages/Dashboard";
 import { DocumentView } from "./pages/DocumentView";
 import { EmployeeDetail } from "./pages/EmployeeDetail";
 import { Engagements } from "./pages/Engagements";
 import { Handbook } from "./pages/Handbook";
+import { Intake } from "./pages/Intake";
 import { Login } from "./pages/Login";
 import { MyProfile } from "./pages/MyProfile";
 import { Onboarding } from "./pages/Onboarding";
@@ -63,6 +65,13 @@ export function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/setup" element={<Setup />} />
 
+      {/*
+        Public, outside the Layout and outside Protected: the two client intake
+        links open here. The unguessable token in the path is what stands in for a
+        sign-in, and the Worker is what checks it.
+      */}
+      <Route path="/request/:kind/:token" element={<Intake />} />
+
       <Route
         element={
           <Protected>
@@ -75,6 +84,14 @@ export function App() {
         <Route path="/tasks/:id" element={<TaskDetail />} />
         <Route path="/clients" element={<Clients />} />
         <Route path="/clients/:id" element={<ClientDetail />} />
+        <Route
+          path="/client-requests"
+          element={
+            <Protected minimum="manager">
+              <ClientRequests />
+            </Protected>
+          }
+        />
         <Route path="/engagements" element={<Engagements />} />
         <Route path="/templates" element={<Templates />} />
         <Route path="/notifications" element={<Notifications />} />

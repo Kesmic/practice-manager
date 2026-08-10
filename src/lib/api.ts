@@ -19,6 +19,7 @@ import type {
   PortalDocument,
   PortalDocumentDetail,
   Client,
+  ClientRequestSummary,
   ClientSummary,
   Dashboard,
   Engagement,
@@ -35,6 +36,7 @@ import type {
   User,
 } from "@shared/types";
 import type { WorkflowAction } from "@shared/workflow";
+import type { IntakeForm, IntakeLink } from "@shared/intake";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -319,6 +321,45 @@ export const api = {
       created: Array<{ id: string; ref: string; client: string; period: string }>;
       skipped: Array<{ client: string; period: string }>;
     }>(`/api/templates/${id}/generate`, { method: "POST", body: input }),
+
+  // ---------------------------------------------------------- client intake
+  /** Public: checks a link is live and says which of the two forms to show. */
+  intakeForm: (kind: string, token: string) =>
+    request<{ form: IntakeForm }>(
+      `/api/intake/${encodeURIComponent(kind)}/${encodeURIComponent(token)}`,
+    ),
+
+  /** Public: sends a request. Answers with the reference and nothing else. */
+  submitIntake: (kind: string, token: string, input: Record<string, unknown>) =>
+    request<{ reference: string }>(
+      `/api/intake/${encodeURIComponent(kind)}/${encodeURIComponent(token)}`,
+      { method: "POST", body: input },
+    ),
+
+  clientRequests: (params: Record<string, string | undefined> = {}) =>
+    request<{ requests: ClientRequestSummary[]; open: number }>(
+      `/api/client-requests${qs(params)}`,
+    ),
+
+  updateClientRequest: (id: string, input: Record<string, unknown>) =>
+    request<{ request: ClientRequestSummary }>(`/api/client-requests/${id}`, {
+      method: "PATCH",
+      body: input,
+    }),
+
+  acceptClientRequest: (id: string, input: Record<string, unknown> = {}) =>
+    request<{
+      request: ClientRequestSummary;
+      client_id: string;
+      created_client: boolean;
+    }>(`/api/client-requests/${id}/accept`, { method: "POST", body: input }),
+
+  intakeLinks: () => request<{ links: IntakeLink[] }>("/api/intake-links"),
+
+  rotateIntakeLink: (kind: string) =>
+    request<{ link: IntakeLink }>(`/api/intake-links/${kind}/rotate`, {
+      method: "POST",
+    }),
 
   // --------------------------------------------------------------- insights
   dashboard: () => request<Dashboard>("/api/dashboard"),
