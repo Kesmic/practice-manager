@@ -520,6 +520,17 @@ would want if a contract were ever disputed.
 The same button appears on any form in the documents list, for anything else that has
 to be issued individually.
 
+**Email**, on the same screen, answers "is email working?" without anyone having to
+guess. It reports what the running portal can see of its own settings, and **Send a test
+email** puts a message on the same path every notification takes, then repeats exactly
+what the mail provider said about it. If somebody tells you notifications are not
+arriving, look here first.
+
+Three reasons an email legitimately does not arrive, all listed on that screen:
+**you did it yourself** (the portal never emails you about your own action), **they
+turned email off** under My account, or **they are not involved** in that deliverable.
+The inbox inside the portal is the record either way, so nothing is ever lost.
+
 **Logo and colours** is on the same screen. Pick a primary and secondary colour and
 the whole portal recolours, previewing live before you save.
 

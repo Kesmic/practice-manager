@@ -5,6 +5,7 @@ import { requireRole, requireUser } from "../auth";
 import { nowIso, optionalString } from "../db";
 import { Router, badRequest, json, readJson } from "../http";
 import { MIN_HR_ADMIN_ROLE } from "../../shared/hr";
+import { emailDiagnosis, sendTestEmail } from "../email";
 
 /** The settings the portal reads, with the defaults used before they are set. */
 const DEFAULTS: Record<string, string> = {
@@ -135,6 +136,55 @@ export function registerSettingsRoutes(router: Router<Env>): void {
   router.get("/api/settings", async ({ request, env }) => {
     await requireUser(env, request);
     return json({ settings: withoutTokens(await readSettings(env)) });
+  });
+
+  /**
+   * What the Worker can see of the email settings, and who would be emailed.
+   *
+   * Restricted to the grade that can change these settings, and it never returns the
+   * API key. It exists because email failing silently is the correct behaviour for a
+   * missing setting and a terrible experience: without this, "no email arrived" has
+   * five possible causes and no way to tell them apart from inside the firm.
+   */
+  router.get("/api/email/status", async ({ request, env }) => {
+    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const settings = await readSettings(env);
+    const diagnosis = emailDiagnosis(env);
+
+    const counts = await env.DB.prepare(
+      `SELECT
+         SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+         SUM(CASE WHEN status = 'active' AND email_notifications = 1 THEN 1 ELSE 0 END) AS opted_in
+       FROM users`,
+    ).first<{ active: number; opted_in: number }>();
+
+    return json({
+      email: diagnosis,
+      firm_name: settings.firm_name,
+      recipients: {
+        active: counts?.active ?? 0,
+        opted_in: counts?.opted_in ?? 0,
+      },
+    });
+  });
+
+  /**
+   * Sends one test message to whoever asked for it, and reports what the provider
+   * said.
+   *
+   * To the caller's own address only: not a field, so this cannot be turned into a
+   * way of sending mail from the firm's domain to an address of somebody's choosing.
+   */
+  router.post("/api/email/test", async ({ request, env, url }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const settings = await readSettings(env);
+    const result = await sendTestEmail(
+      env,
+      { email: actor.email, full_name: actor.full_name },
+      settings.firm_name,
+      url.origin,
+    );
+    return json({ ...result, to: actor.email });
   });
 
   router.patch("/api/settings", async ({ request, env }) => {

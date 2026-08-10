@@ -14,6 +14,7 @@ import { deriveLightInk, whyNotDerivable } from "../lib/logo";
 import { useFirm } from "../lib/firm";
 import { Markdown } from "../components/Markdown";
 import {
+  DetailRow,
   EmptyState,
   ErrorBanner,
   Field,
@@ -27,7 +28,7 @@ import {
 } from "../components/ui";
 import { formatDate } from "../lib/format";
 
-type Tab = "documents" | "welcome" | "appearance";
+type Tab = "documents" | "welcome" | "appearance" | "email";
 
 /** Authoring surface for the handbook, contracts and the welcome message. */
 export function PortalAdmin() {
@@ -51,6 +52,7 @@ export function PortalAdmin() {
             ["documents", "Documents and handbook"],
             ["welcome", "Welcome message and firm details"],
             ["appearance", "Logo and colours"],
+            ["email", "Email"],
           ] as Array<[Tab, string]>
         ).map(([key, label]) => (
           <button
@@ -75,6 +77,8 @@ export function PortalAdmin() {
         <DocumentsAdmin setError={setError} setNotice={setNotice} />
       ) : tab === "appearance" ? (
         <AppearanceAdmin setError={setError} setNotice={setNotice} />
+      ) : tab === "email" ? (
+        <EmailAdmin setError={setError} setNotice={setNotice} />
       ) : (
         <WelcomeAdmin setError={setError} setNotice={setNotice} />
       )}
@@ -1244,6 +1248,177 @@ function LogoSlot({
           </>
         )}
       </p>
+    </div>
+  );
+}
+
+/**
+ * What the portal can see of its own email settings, and a button to prove it.
+ *
+ * This screen exists because of a specific failure, twice over: notifications were
+ * doing nothing and there was no way to tell which of five causes it was. Email being
+ * inert when unconfigured is the right behaviour, but invisible inertness is a trap.
+ * So the portal now reports its own configuration and will send a test message that
+ * repeats the provider's exact words.
+ */
+function EmailAdmin({
+  setError,
+  setNotice,
+}: {
+  setError: (m: string | null) => void;
+  setNotice: (m: string | null) => void;
+}) {
+  const [status, setStatus] = useState<Awaited<ReturnType<typeof api.emailStatus>> | null>(
+    null,
+  );
+  const [result, setResult] = useState<
+    Awaited<ReturnType<typeof api.sendTestEmail>> | null
+  >(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .emailStatus()
+      .then(setStatus)
+      .catch((err) =>
+        setError(
+          err instanceof ApiRequestError ? err.message : "Could not read the email settings.",
+        ),
+      );
+  }, [setError]);
+
+  if (!status) return <Spinner label="Reading the email settings" />;
+  const { email, recipients } = status;
+
+  const test = async () => {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await api.sendTestEmail();
+      setResult(res);
+      if (res.sent) setNotice(`Sent to ${res.to}. Check your inbox, and the spam folder.`);
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : "The test could not be run.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <section className="card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="card-title">Can the portal send email?</h2>
+            <p className="hint mt-1">
+              Read from the running system, not from what anyone believes is set. The API
+              key is never shown.
+            </p>
+          </div>
+          <span
+            className={`pill ${
+              email.configured
+                ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                : "bg-rose-50 text-rose-700 ring-rose-200"
+            }`}
+          >
+            {email.configured ? "Configured" : "Not configured"}
+          </span>
+        </div>
+
+        <dl className="mt-4 divide-y divide-slate-100">
+          <DetailRow label="Provider">
+            {email.provider}
+            {!email.provider_known && " (not recognised)"}
+          </DetailRow>
+          <DetailRow label="API key">
+            {email.key_present ? `present, ${email.key_length} characters` : "missing"}
+          </DetailRow>
+          <DetailRow label="Sends as">{email.from || "not set"}</DetailRow>
+          <DetailRow label="Links point at">{email.portal_url || "not set"}</DetailRow>
+          <DetailRow label="Would be emailed">
+            {recipients.opted_in} of {recipients.active} active people
+          </DetailRow>
+        </dl>
+
+        {email.problems.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {email.problems.map((problem) => (
+              <li
+                key={problem}
+                className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200"
+              >
+                {problem}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="card p-5">
+        <h2 className="card-title">Send yourself a test</h2>
+        <p className="hint mt-1">
+          Goes to your own address and nowhere else, and reports exactly what the provider
+          answered. This is the same path every notification takes, so if the test arrives,
+          assignments and comments will too.
+        </p>
+        <button
+          type="button"
+          className="btn-primary btn-sm mt-3"
+          onClick={() => void test()}
+          disabled={busy}
+        >
+          {busy ? "Sending…" : "Send a test email"}
+        </button>
+
+        {result && (
+          <div
+            className={`mt-4 rounded-md px-3 py-2 text-sm ring-1 ${
+              result.sent
+                ? "bg-emerald-50 text-emerald-900 ring-emerald-200"
+                : "bg-rose-50 text-rose-900 ring-rose-200"
+            }`}
+          >
+            <p className="font-medium">
+              {result.sent ? "The provider accepted it" : "The provider refused it"}
+              {result.status ? ` (${result.status})` : ""}
+            </p>
+            {/* The provider's own words, unedited: they name the actual problem. */}
+            <p className="mt-1 whitespace-pre-wrap break-words">{result.detail}</p>
+          </div>
+        )}
+
+        <p className="hint mt-3">
+          <strong>Nothing arrives and the test says it was accepted?</strong> The portal has
+          done its part. Look in the spam folder, then in the provider's own activity log,
+          which records every message it took and what became of it.
+        </p>
+      </section>
+
+      <section className="card p-5">
+        <h2 className="card-title">Why an email might not arrive</h2>
+        <ul className="mt-2 space-y-2 text-sm text-slate-600">
+          <li>
+            <strong>You did it yourself.</strong> The portal never emails you about your own
+            action. Assign work to a colleague and they are told; assign it to yourself and
+            nobody is, because you already know.
+          </li>
+          <li>
+            <strong>They turned it off.</strong> Anyone can switch email off under My
+            account. The count above shows how many have it on.
+          </li>
+          <li>
+            <strong>They are not involved.</strong> Notifications go to the people on a
+            deliverable: whoever is doing it, whoever is reviewing it, whoever created it,
+            and anyone who has commented. Not the whole firm.
+          </li>
+          <li>
+            <strong>The inbox is the system of record either way.</strong> Email is a copy.
+            If it fails, nothing is lost: the message is in the portal.
+          </li>
+        </ul>
+      </section>
     </div>
   );
 }
