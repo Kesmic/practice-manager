@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { ROLE_LABELS } from "@shared/workflow";
 import { useSession } from "../lib/auth";
-import { FirmLogo, useFirm } from "../lib/firm";
+import { FirmLogo, FirmName } from "../lib/firm";
 import { ThemeToggle } from "./ThemeToggle";
 import { Avatar } from "./ui";
 
@@ -39,7 +39,6 @@ const NAV: NavItem[] = [
 
 export function Layout() {
   const { user, unread, signOut, can } = useSession();
-  const { branding } = useFirm();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -62,14 +61,16 @@ export function Layout() {
           menuOpen ? "block" : "hidden"
         } shrink-0 border-b border-slate-800 bg-brand-900 lg:block lg:w-60 lg:border-b-0`}
       >
-        <div className="flex items-center gap-2.5 px-5 py-4">
-          <FirmLogo className="h-9 w-9 bg-panel/10 p-1" />
-          <div className="min-w-0 leading-tight">
-            <p className="truncate text-sm font-semibold text-white">
-              {branding.firm_name}
-            </p>
-            <p className="text-[11px] text-white/60">Practice Manager</p>
-          </div>
+        {/*
+          The sidebar is 15rem wide, so a wordmark gets 10rem and the rest is
+          breathing room. On this navy the logo needs its white plate.
+        */}
+        <div className="flex flex-col gap-1.5 px-5 py-4">
+          <FirmLogo maxWidth="max-w-[9.5rem]" maxHeight="max-h-12" onDark labelled />
+          <FirmName className="truncate text-sm font-semibold text-white" />
+          <p className="text-[11px] uppercase tracking-wider text-white/50">
+            Practice Manager
+          </p>
         </div>
 
         <nav className="px-2 pb-4">

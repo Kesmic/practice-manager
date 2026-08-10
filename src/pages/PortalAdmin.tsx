@@ -816,12 +816,35 @@ function AppearanceAdmin({
     <form className="card space-y-6 p-5" onSubmit={save}>
       <div>
         <span className="label">Logo</span>
+        {/*
+          Two previews, because the logo has to work on both. Most logos are dark
+          artwork for white paper, and the sidebar is navy, so on dark surfaces the
+          portal sets the artwork on a white plate. Showing both here means the
+          administrator sees that before staff do.
+        */}
         <div className="flex flex-wrap items-center gap-4">
-          <img
-            src={settings.logo_data_url || "/icon.svg"}
-            alt=""
-            className="h-16 w-16 rounded-md bg-slate-100 object-contain p-1 ring-1 ring-slate-200"
-          />
+          <div className="flex items-center rounded-md bg-slate-100 px-3 py-2 ring-1 ring-slate-200">
+            <img
+              src={settings.logo_data_url || "/icon.svg"}
+              alt=""
+              className={`h-9 object-contain object-left ${
+                settings.logo_data_url ? "w-auto max-w-[13rem]" : "aspect-square"
+              }`}
+            />
+          </div>
+          <div className="flex items-center rounded-md bg-brand-900 px-3 py-2">
+            {settings.logo_data_url ? (
+              <span className="inline-flex items-center rounded bg-white px-2 py-1.5">
+                <img
+                  src={settings.logo_data_url}
+                  alt=""
+                  className="h-7 w-auto max-w-[11rem] object-contain object-left"
+                />
+              </span>
+            ) : (
+              <img src="/icon.svg" alt="" className="h-9 w-9 object-contain" />
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             <label className="btn-secondary btn-sm cursor-pointer">
               Choose an image
@@ -844,9 +867,15 @@ function AppearanceAdmin({
           </div>
         </div>
         <p className="hint">
-          Shown beside the firm name in the sidebar and on the sign-in screen. A square
-          image works best. Keep it under 280 kB - it is not a photograph, and every
-          page load carries it.
+          Shown in the sidebar and on the sign-in screen. <strong>A wide logo is
+          fine</strong>, and usually better: the height is fixed and the width follows
+          your artwork. If your logo already includes the firm's name, the portal stops
+          printing the name beside it so it is not said twice.
+          <br />
+          Two things worth doing to the file first: <strong>crop the empty space</strong>
+          from around the artwork, since the portal cannot tell padding from the logo
+          and will shrink the whole thing to fit; and keep it under 280 kB, because
+          every page load carries it. A PNG with a transparent background looks best.
         </p>
       </div>
 

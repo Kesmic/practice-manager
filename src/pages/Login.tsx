@@ -23,7 +23,7 @@ import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiRequestError } from "../lib/api";
 import { useSession } from "../lib/auth";
-import { FirmLogo, useFirm } from "../lib/firm";
+import { FirmLogo, FirmName, useFirm } from "../lib/firm";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { ErrorBanner, Field, Spinner, TextInput } from "../components/ui";
 
@@ -92,14 +92,12 @@ export function Login() {
           <div className="absolute -bottom-32 right-[-10%] h-[28rem] w-[28rem] rounded-full bg-accent-500/20 blur-3xl" />
         </div>
 
-        <div className="relative flex items-center gap-3">
-          <FirmLogo className="h-12 w-12 bg-white/10 p-1.5" labelled />
-          <div className="leading-tight">
-            <p className="text-base font-semibold text-white">{branding.firm_name}</p>
-            <p className="text-xs uppercase tracking-[0.18em] text-white/50">
-              Practice Manager
-            </p>
-          </div>
+        <div className="relative flex flex-col gap-2.5">
+          <FirmLogo maxWidth="max-w-[16rem]" maxHeight="max-h-20" onDark labelled />
+          <FirmName className="text-base font-semibold text-white" />
+          <p className="text-xs uppercase tracking-[0.18em] text-white/50">
+            Practice Manager
+          </p>
         </div>
 
         <div className="relative max-w-lg">
@@ -145,16 +143,12 @@ export function Login() {
       <main className="flex min-h-screen flex-col px-5 py-8 sm:px-10 lg:justify-center lg:px-14">
         <div className="mb-8 flex w-full items-start justify-between gap-3 lg:absolute lg:right-8 lg:top-6 lg:mb-0 lg:w-auto">
           {/* On small screens the logo has no left panel to live in. */}
-          <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
-            <FirmLogo className="h-10 w-10" labelled />
-            <div className="min-w-0 leading-tight">
-              <p className="truncate text-sm font-semibold text-slate-900">
-                {branding.firm_name}
-              </p>
-              <p className="text-[11px] uppercase tracking-wider text-slate-500">
-                Practice Manager
-              </p>
-            </div>
+          <div className="flex min-w-0 flex-col gap-1 lg:hidden">
+            <FirmLogo maxWidth="max-w-[11rem]" maxHeight="max-h-14" labelled />
+            <FirmName className="truncate text-sm font-semibold text-slate-900" />
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">
+              Practice Manager
+            </p>
           </div>
           <ThemeToggle compact />
         </div>
