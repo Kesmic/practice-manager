@@ -265,6 +265,9 @@ end. Note that `npm run build` must run first, and again after any change to
 - **Email notifications are optional and inert until configured.** The in-app inbox
   is always the system of record. Set `EMAIL_API_KEY` and `EMAIL_FROM` and the same
   events also send email, via `worker/email.ts`; with no key nothing is sent and
-  nothing fails. Sending happens in `waitUntil`, so a slow or broken provider cannot
+  nothing fails. `EMAIL_PROVIDER` chooses between Postmark, SendGrid and Resend,
+  because the choice is forced by DNS rather than preference: Resend verifies a domain
+  by requiring an MX record on a subdomain, which registrars including Wix refuse to
+  create, while the other two verify with TXT and CNAME alone. Sending happens in `waitUntil`, so a slow or broken provider cannot
   affect a request, and every failure is logged rather than raised. Setup, including
   the DNS work, is in **[docs/EMAIL.md](docs/EMAIL.md)**.
