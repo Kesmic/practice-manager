@@ -35,6 +35,8 @@ export interface User {
   title: string | null;
   status: "active" | "suspended";
   must_change_password: 0 | 1;
+  /** Whether this person receives email as well as the in-app inbox. */
+  email_notifications: 0 | 1;
   created_at: string;
   last_login_at: string | null;
 }

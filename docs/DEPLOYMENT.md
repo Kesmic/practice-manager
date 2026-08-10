@@ -489,6 +489,12 @@ allow a domain registered with it to use anyone else's nameservers, and Cloudfla
 will only serve your own name if it manages the domain's DNS. That page sets out
 the three ways round it and what each one costs.
 
+**Email notifications.** Staff currently see new comments and status changes in
+their portal inbox. They can be emailed as well, which reaches people who are not
+looking at the portal. It needs a sending service and three DNS records, and it
+starts by fixing the duplicate SPF record on your domain. See
+**[docs/EMAIL.md](./EMAIL.md)**.
+
 **Backups.** Cloudflare keeps your information safely, but there is no automatic
 copy you hold yourself. For records about clients and employees, you want one.
 Ask me and I will set up automatic backups for you - it is not something you

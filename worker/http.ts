@@ -64,6 +64,12 @@ export interface RouteContext<Env> {
   env: Env;
   params: Params;
   url: URL;
+  /**
+   * Schedules work to continue after the response has been sent. Required rather
+   * than optional so that anything slow, email in particular, cannot be put in
+   * the request path by accident.
+   */
+  waitUntil: (promise: Promise<unknown>) => void;
 }
 
 export type Handler<Env> = (ctx: RouteContext<Env>) => Promise<Response>;

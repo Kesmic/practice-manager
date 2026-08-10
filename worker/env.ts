@@ -25,4 +25,19 @@ export interface Env {
    * removed afterwards, or existing passwords stop verifying.
    */
   PASSWORD_PEPPER?: string;
+
+  /**
+   * Email notifications. All optional: with no EMAIL_API_KEY the portal sends
+   * nothing and behaves exactly as it does today, with the in-app inbox as the
+   * only channel. See docs/EMAIL.md.
+   */
+  EMAIL_API_KEY?: string;
+  /** The From address, e.g. "Kesmic Practice Manager <portal@kesmic.org>". */
+  EMAIL_FROM?: string;
+  /**
+   * Base address used for links in emails, e.g. https://portal.kesmic.org. Left
+   * unset, links use the origin the portal was reached on, which is right unless
+   * it answers to more than one name.
+   */
+  PORTAL_URL?: string;
 }

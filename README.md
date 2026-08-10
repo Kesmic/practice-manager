@@ -242,6 +242,9 @@ end. Note that `npm run build` must run first, and again after any change to
 - **Documents are linked, not stored.** Deliverables and personnel files hold
   links into your existing document store rather than file uploads. Cloudflare R2
   would be the natural place to add real uploads later.
-- **Notifications are in-app only.** There is an inbox with unread counts, but no
-  email is sent. Email would need a provider (Resend, Postmark, MailChannels)
-  wired into the notification writes in `worker/db.ts`.
+- **Email notifications are optional and inert until configured.** The in-app inbox
+  is always the system of record. Set `EMAIL_API_KEY` and `EMAIL_FROM` and the same
+  events also send email, via `worker/email.ts`; with no key nothing is sent and
+  nothing fails. Sending happens in `waitUntil`, so a slow or broken provider cannot
+  affect a request, and every failure is logged rather than raised. Setup, including
+  the DNS work, is in **[docs/EMAIL.md](docs/EMAIL.md)**.

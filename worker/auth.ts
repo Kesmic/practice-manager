@@ -253,6 +253,8 @@ export interface AuthenticatedUser {
   role: Role;
   title: string | null;
   must_change_password: 0 | 1;
+  /** Whether this person wants email as well as the in-app inbox. */
+  email_notifications: 0 | 1;
   /** Digest of the caller's own session token, so it can be exempted from
    *  bulk session revocation. Never sent to the client. */
   session_id: string;
@@ -319,7 +321,7 @@ export async function currentUser(
   const id = await digest(token);
   const row = await env.DB.prepare(
     `SELECT u.id, u.email, u.full_name, u.role, u.title, u.must_change_password,
-            u.status, s.expires_at
+            u.email_notifications, u.status, s.expires_at
        FROM sessions s
        JOIN users u ON u.id = s.user_id
       WHERE s.id = ?`,
@@ -332,6 +334,7 @@ export async function currentUser(
       role: Role;
       title: string | null;
       must_change_password: 0 | 1;
+      email_notifications: 0 | 1;
       status: string;
       expires_at: string;
     }>();
@@ -352,6 +355,7 @@ export async function currentUser(
     role: row.role,
     title: row.title,
     must_change_password: row.must_change_password,
+    email_notifications: row.email_notifications,
     session_id: id,
   };
 }

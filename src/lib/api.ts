@@ -129,6 +129,12 @@ export const api = {
     password: string;
   }) => request<{ ok: true }>("/api/auth/bootstrap", { method: "POST", body: input }),
 
+  setEmailNotifications: (enabled: boolean) =>
+    request<{ email_notifications: boolean }>("/api/me/preferences", {
+      method: "PATCH",
+      body: { email_notifications: enabled },
+    }),
+
   changePassword: (current_password: string, new_password: string) =>
     request<{ ok: true }>("/api/auth/password", {
       method: "POST",

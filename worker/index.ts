@@ -77,7 +77,7 @@ async function serveApp(request: Request, env: Env): Promise<Response> {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (!url.pathname.startsWith("/api/")) {
@@ -89,7 +89,13 @@ export default {
       if (!match) {
         return json({ error: `No API endpoint at ${url.pathname}` }, 404);
       }
-      return await match.handler({ request, env, params: match.params, url });
+      return await match.handler({
+        request,
+        env,
+        params: match.params,
+        url,
+        waitUntil: (promise) => ctx.waitUntil(promise),
+      });
     } catch (err) {
       return errorResponse(err);
     }

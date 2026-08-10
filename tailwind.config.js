@@ -6,7 +6,8 @@
  * redefining variables instead of by editing hundreds of class names. The values
  * live in src/theme.generated.css (see scripts/build-theme-css.mjs).
  *
- * `<alpha-value>` is what lets Tailwind's opacity modifiers - bg-slate-900/50, * keep working against a variable.
+ * `<alpha-value>` is what lets Tailwind's opacity modifiers, such as
+ * bg-slate-900/50, keep working against a variable.
  */
 const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900];
 
