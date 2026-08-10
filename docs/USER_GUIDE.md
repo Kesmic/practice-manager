@@ -360,9 +360,30 @@ agreed before. Editing a draft changes nothing, because nobody has agreed to it 
 There is also a **Contract of Employment (template)**. Do not publish that one. Copy
 it per person, fill in their details, and issue it to them individually.
 
-**Logo and colours** is on the same screen. Upload the firm's logo and pick a
-primary and secondary colour; the whole portal recolours, and the changes preview
-live before you save.
+**Logo and colours** is on the same screen. Pick a primary and secondary colour and
+the whole portal recolours, previewing live before you save.
+
+**The logo has two slots, and it is worth using both.** The portal has light pages
+and dark ones: the sidebar and the sign-in panel are navy whatever theme you are in,
+and in dark mode everything is dark. One logo cannot read well on both.
+
+- **Logo** is your normal artwork, the dark-ink version, used on light pages.
+- **Logo for dark backgrounds** is the same logo in white or light ink, used on the
+  sidebar, the sign-in panel, and everywhere in dark mode.
+
+Save both as **PNG files with a transparent background**. If the file carries its own
+white rectangle, that rectangle shows as a white block anywhere the page behind it is
+not white. Crop the empty space from around the artwork too, since the portal cannot
+tell padding from logo and will shrink the whole thing to fit.
+
+If you fill only the first slot nothing breaks: on dark surfaces the portal puts your
+dark logo on a small white panel so it stays readable. It works, but the panel is
+visible, and the second slot is how you get rid of it. The two previews on the screen
+show you exactly which of the two is happening.
+
+A wide logo is fine, and usually better, because the height is fixed and the width
+follows your artwork. If your logo already includes the firm's name, the portal stops
+printing the name beside it so it is not said twice.
 
 ---
 

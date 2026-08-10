@@ -760,29 +760,30 @@ function AppearanceAdmin({
   const pickColour = (key: "primary_color" | "secondary_color") => (value: string) =>
     preview({ ...settings, [key]: value });
 
-  const chooseFile = async (file: File | undefined) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("That is not an image. Choose a PNG, JPEG, SVG or WebP file.");
-      return;
-    }
-    if (file.size > MAX_LOGO_BYTES) {
-      setError(
-        `That image is ${Math.round(file.size / 1024)} kB. Please use one under ${Math.round(
-          MAX_LOGO_BYTES / 1024,
-        )} kB - a logo does not need to be large, and every page load carries it.`,
-      );
-      return;
-    }
-    setError(null);
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error("The file could not be read."));
-      reader.readAsDataURL(file);
-    });
-    setSettings({ ...settings, logo_data_url: dataUrl });
-  };
+  const chooseFile =
+    (key: "logo_data_url" | "logo_dark_data_url") => async (file: File | undefined) => {
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        setError("That is not an image. Choose a PNG, JPEG, SVG or WebP file.");
+        return;
+      }
+      if (file.size > MAX_LOGO_BYTES) {
+        setError(
+          `That image is ${Math.round(file.size / 1024)} kB. Please use one under ${Math.round(
+            MAX_LOGO_BYTES / 1024,
+          )} kB - a logo does not need to be large, and every page load carries it.`,
+        );
+        return;
+      }
+      setError(null);
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("The file could not be read."));
+        reader.readAsDataURL(file);
+      });
+      setSettings({ ...settings, [key]: dataUrl });
+    };
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -797,6 +798,7 @@ function AppearanceAdmin({
     try {
       const res = await api.updateSettings({
         logo_data_url: settings.logo_data_url,
+        logo_dark_data_url: settings.logo_dark_data_url,
         primary_color: settings.primary_color,
         secondary_color: settings.secondary_color,
       });
@@ -814,70 +816,49 @@ function AppearanceAdmin({
 
   return (
     <form className="card space-y-6 p-5" onSubmit={save}>
-      <div>
-        <span className="label">Logo</span>
-        {/*
-          Two previews, because the logo has to work on both. Most logos are dark
-          artwork for white paper, and the sidebar is navy, so on dark surfaces the
-          portal sets the artwork on a white plate. Showing both here means the
-          administrator sees that before staff do.
-        */}
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center rounded-md bg-slate-100 px-3 py-2 ring-1 ring-slate-200">
-            <img
-              src={settings.logo_data_url || "/icon.svg"}
-              alt=""
-              className={`h-9 object-contain object-left ${
-                settings.logo_data_url ? "w-auto max-w-[13rem]" : "aspect-square"
-              }`}
-            />
-          </div>
-          <div className="flex items-center rounded-md bg-brand-900 px-3 py-2">
-            {settings.logo_data_url ? (
-              <span className="inline-flex items-center rounded bg-white px-2 py-1.5">
-                <img
-                  src={settings.logo_data_url}
-                  alt=""
-                  className="h-7 w-auto max-w-[11rem] object-contain object-left"
-                />
-              </span>
-            ) : (
-              <img src="/icon.svg" alt="" className="h-9 w-9 object-contain" />
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <label className="btn-secondary btn-sm cursor-pointer">
-              Choose an image
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                className="hidden"
-                onChange={(e) => void chooseFile(e.target.files?.[0])}
-              />
-            </label>
-            {settings.logo_data_url && (
-              <button
-                type="button"
-                className="btn-ghost btn-sm"
-                onClick={() => setSettings({ ...settings, logo_data_url: "" })}
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        </div>
-        <p className="hint">
-          Shown in the sidebar and on the sign-in screen. <strong>A wide logo is
-          fine</strong>, and usually better: the height is fixed and the width follows
-          your artwork. If your logo already includes the firm's name, the portal stops
-          printing the name beside it so it is not said twice.
-          <br />
-          Two things worth doing to the file first: <strong>crop the empty space</strong>
-          from around the artwork, since the portal cannot tell padding from the logo
-          and will shrink the whole thing to fit; and keep it under 280 kB, because
-          every page load carries it. A PNG with a transparent background looks best.
-        </p>
+      {/*
+        Two slots, because one logo cannot serve both. The portal has light pages and
+        dark ones - the sidebar and the sign-in panel are navy whatever the theme, and
+        in dark mode everything is dark. Dark artwork is unreadable there, so a second
+        version in light ink is uploaded here and the portal picks whichever suits the
+        surface. With only the first slot filled it falls back to a white plate behind
+        the artwork, which works but shows as a box; each preview below says which of
+        the two is happening.
+      */}
+      <div className="grid gap-5 sm:grid-cols-2">
+        <LogoSlot
+          label="Logo"
+          hint="For light pages. Your normal artwork, usually dark ink."
+          value={settings.logo_data_url}
+          onChoose={chooseFile("logo_data_url")}
+          onClear={() => setSettings({ ...settings, logo_data_url: "" })}
+          surface="light"
+        />
+        <LogoSlot
+          label="Logo for dark backgrounds"
+          hint="The same logo in white or light ink, for the sidebar, the sign-in panel and dark mode."
+          value={settings.logo_dark_data_url}
+          onChoose={chooseFile("logo_dark_data_url")}
+          onClear={() => setSettings({ ...settings, logo_dark_data_url: "" })}
+          surface="dark"
+          fallback={settings.logo_data_url}
+        />
       </div>
+
+      <p className="hint">
+        <strong>Save both as PNG files with a transparent background.</strong> A logo
+        that carries its own white rectangle shows as a white block wherever the page
+        behind it is not white.
+        <br />
+        <strong>A wide logo is fine</strong>, and usually better: the height is fixed
+        and the width follows your artwork. If your logo already includes the firm's
+        name, the portal stops printing the name beside it so it is not said twice.
+        <br />
+        Two things worth doing to each file first:{" "}
+        <strong>crop the empty space</strong> from around the artwork, since the portal
+        cannot tell padding from the logo and will shrink the whole thing to fit; and
+        keep it under 280 kB, because every page load carries it.
+      </p>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <ColourField
@@ -926,6 +907,91 @@ function AppearanceAdmin({
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * One logo upload with a preview on the surface that logo is actually for, so the
+ * administrator judges it against a navy panel rather than against white.
+ *
+ * The dark slot also shows what happens when it is left empty: the light-page logo
+ * on a white plate. That is the fallback, and seeing it is the clearest argument for
+ * filling the slot.
+ */
+function LogoSlot({
+  label,
+  hint,
+  value,
+  onChoose,
+  onClear,
+  surface,
+  fallback = "",
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  onChoose: (file: File | undefined) => void | Promise<void>;
+  onClear: () => void;
+  surface: "light" | "dark";
+  fallback?: string;
+}) {
+  const plated = surface === "dark" && !value && Boolean(fallback);
+  const shown = value || (plated ? fallback : "");
+
+  const image = (
+    <img
+      src={shown || "/icon.svg"}
+      alt=""
+      className={`h-9 object-contain object-left ${shown ? "w-auto max-w-[12rem]" : "aspect-square"}`}
+    />
+  );
+
+  return (
+    <div>
+      <span className="label">{label}</span>
+      <div
+        className={`flex min-h-[4.5rem] items-center rounded-md px-3 py-2 ${
+          surface === "dark"
+            ? "bg-brand-900"
+            : "bg-white ring-1 ring-slate-200"
+        }`}
+      >
+        {plated ? (
+          <span className="inline-flex items-center rounded-lg bg-white p-2 shadow-sm">
+            <img src={fallback} alt="" className="h-7 w-auto max-w-[11rem] object-contain" />
+          </span>
+        ) : (
+          image
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <label className="btn-secondary btn-sm cursor-pointer">
+          {value ? "Replace" : "Choose an image"}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/svg+xml,image/webp"
+            className="hidden"
+            onChange={(e) => void onChoose(e.target.files?.[0])}
+          />
+        </label>
+        {value && (
+          <button type="button" className="btn-ghost btn-sm" onClick={onClear}>
+            Remove
+          </button>
+        )}
+      </div>
+      <p className="hint">
+        {hint}
+        {plated && (
+          <>
+            {" "}
+            <strong>Empty, so the portal is using your light-page logo on a white
+            panel</strong> to keep it readable. Upload a light-ink version and the panel
+            disappears.
+          </>
+        )}
+      </p>
+    </div>
   );
 }
 

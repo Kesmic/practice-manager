@@ -545,6 +545,11 @@ export interface FirmSettings {
   welcome_message: string;
   /** The firm's logo as a data URI, or "" to use the built-in mark. */
   logo_data_url: string;
+  /**
+   * The same logo drawn in light ink, for the navy sidebar and sign-in panel.
+   * "" means there is only one, and the portal plates the main logo instead.
+   */
+  logo_dark_data_url: string;
   /** Six-digit hex, or "" for the default. Recolours the whole interface. */
   primary_color: string;
   secondary_color: string;
