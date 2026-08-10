@@ -43,41 +43,36 @@ stops and treats the check as failed rather than picking one.
 
 ## Where kesmic.org stands
 
-Checked live. There is now **one SPF record**, and it already carries Amazon SES,
-which is what Resend sends through:
+Checked live, and in good order. **One SPF record**, correctly formed:
 
 ```
-v=spf1 include:spf.protection.outlook.com include:amazonses.com -all
+v=spf1 include:spf.protection.outlook.com -all
 ```
 
-That is correct and needs no further change for sending. Two things to be aware of:
-
-**Zoho Books has dropped out.** The record used to include
-`include:sender.zohobooks.com`. It does not any more, and the record ends in `-all`,
-which is a hard fail. If you still send invoices or statements from Zoho Books using
-an `@kesmic.org` address, those are now failing SPF and some will be rejected
-outright. If you do, put it back:
-
-```
-v=spf1 include:spf.protection.outlook.com include:amazonses.com include:sender.zohobooks.com -all
-```
-
-If you have stopped using Zoho for mail, leave it out. A shorter SPF record is a
-better one.
-
-**DMARC still has the angle brackets in it.** It currently reads:
-
-```
-v=DMARC1; p=none; rua=mailto:<michael@kesmic.org>
-```
-
-The address is right now, but `<` and `>` are not allowed inside a DMARC `rua`, so
-most reporting services will discard the whole URI and you will receive nothing. Edit
-the TXT record on the name `_dmarc` and remove the two brackets:
+SendGrid does not belong in it (see Part 3), so this needs no change for the portal.
+DMARC is valid too, having had a stray pair of angle brackets removed:
 
 ```
 v=DMARC1; p=none; rua=mailto:michael@kesmic.org
 ```
+
+**One thing still open: Zoho Books.** The SPF record used to include
+`include:sender.zohobooks.com` and no longer does, against a record that ends in
+`-all`, a hard fail. If invoices or statements still go out from Zoho Books using an
+`@kesmic.org` address, that mail is failing SPF today and some of it will be rejected
+outright. If Zoho is still in use, make it:
+
+```
+v=spf1 include:spf.protection.outlook.com include:sender.zohobooks.com -all
+```
+
+If you have stopped using Zoho for mail, leave it out. A shorter SPF record is a
+better one, and every `include:` spends one of the ten lookups the standard allows.
+
+**`p=none` in DMARC means "watch, do not enforce".** That is the right place to start.
+Once you have had reports for a month and can see that Microsoft 365 and SendGrid are
+both passing, tighten it to `p=quarantine` and later `p=reject`. Doing that before the
+reports look clean would send your own legitimate mail to junk.
 
 ---
 
@@ -92,21 +87,17 @@ records."
 
 Three ways out, in the order I would try them:
 
-**1. Use Postmark or SendGrid instead.** Both verify a domain with **TXT and CNAME
+**1. Use SendGrid or Postmark instead.** Both verify a domain with **TXT and CNAME
 records only**, which Wix does support: `portal.kesmic.org` is already a CNAME at
 Wix, so we know it works. This changes nothing about the portal except one setting,
-because the portal speaks to all three. **This is the recommended route** and the
-rest of this guide assumes it.
+because the portal speaks to all three. **This is the route Kesmic took**, with
+SendGrid, and it is what the rest of this guide describes.
 
 | | Verifies with | Free allowance |
 | --- | --- | --- |
+| **SendGrid** (in use) | three `CNAME` records | 100 a day |
 | **Postmark** | DKIM `TXT`, plus an optional return-path `CNAME` | 100 a month, then paid |
-| **SendGrid** | three `CNAME` records | 100 a day |
 | Resend | `TXT` + `CNAME` + **`MX` on a subdomain** | 3,000 a month |
-
-Postmark is the better of the two for this purpose: it is built for transactional
-mail, its deliverability is excellent, and a compliance practice will send tens of
-notifications a day rather than thousands.
 
 **2. Move DNS hosting to Cloudflare, keeping the domain registered at Wix.** If Wix
 offers to change your nameservers, pointing them at Cloudflare gives you a DNS
@@ -124,72 +115,125 @@ gives an application the ability to send as your firm. I would not start here.
 
 ## Part 1 - Create a sending account
 
-Sign up at **https://postmarkapp.com** and confirm your email address. Postmark asks
-what you will use it for; "transactional notifications for our own staff" is the
-honest answer and the one that gets approved.
+Sign up at **https://sendgrid.com** and confirm your email address. It asks what you
+will use it for; "transactional notifications for our own staff" is the honest answer
+and the one that gets approved.
 
-If you would rather use SendGrid, sign up at **https://sendgrid.com** instead and
-follow the same shape of steps. Everything below applies to both.
+If you would rather use Postmark, sign up at **https://postmarkapp.com** instead. It
+gives you a DKIM `TXT` record and an optional `pm-bounces` return-path `CNAME`, both
+of which Wix accepts, and Part 5 is the same but with `EMAIL_PROVIDER = "postmark"`.
 
-## Part 2 - Tell it that it may send as kesmic.org
+## Part 2 - Tell SendGrid it may send as kesmic.org
 
-In Postmark: **Sender Signatures → Add Domain**, enter `kesmic.org`, and it shows you:
+**Settings → Sender Authentication → Authenticate Your Domain.** DNS host **Other**,
+domain `kesmic.org`.
 
-- one **TXT** record, with a name beginning `pm-` or ending `._domainkey` (this is
-  DKIM, and it is the one that matters)
-- one optional **CNAME** record, `pm-bounces`, pointing at `pm.mtasv.net`
+**Before you finish the wizard, open Advanced Settings and set a custom DKIM
+selector.** This step is not optional here, and skipping it is a dead end:
 
-Add both in Wix under **Domains → ⋯ next to kesmic.org → Manage DNS records**,
-matching the type, name and value exactly. Add the CNAME as well as the TXT: it is
-optional for verification and it noticeably helps deliverability, and unlike Resend's
-MX record, Wix will accept it.
+> SendGrid always generates the selectors `s1` and `s2`, so the records it asks for
+> are `s1._domainkey.kesmic.org` and `s2._domainkey.kesmic.org`. **Wix already owns
+> both.** Wix Email Marketing, which is itself built on SendGrid, has published them
+> pointing at `s006.ascendbywix.com`. Wix will refuse your records with "You already
+> added a record with this value", and no amount of retrying will change that: two
+> SendGrid accounts cannot share one selector on one domain.
 
-Then click **Verify** in Postmark. It usually takes a few minutes and occasionally a
-few hours. **Do not skip it.** An unverified domain means every email is refused.
+Enter one to three characters of your own. Kesmic uses **`kpm`**, which gives
+`kpm._domainkey` and `kpm2._domainkey` and collides with nothing. The option only
+appears while you are first creating the domain authentication, so if you have already
+created it with the defaults, **delete it and start again**.
+
+SendGrid then shows three `CNAME` records: one beginning `em`, which is the return
+path, and the two DKIM records. Add all three in Wix under **Domains → ⋯ next to
+kesmic.org → Manage DNS records**, matching name and value exactly. Then click
+**Verify**. It usually takes minutes and occasionally hours.
+
+**Do not skip verification.** An unverified domain means every email is refused.
+
+What is live on kesmic.org today, for reference:
+
+```
+kpm._domainkey.kesmic.org   CNAME  kpm.domainkey.u112335505.wl006.sendgrid.net
+kpm2._domainkey.kesmic.org  CNAME  kpm2.domainkey.u112335505.wl006.sendgrid.net
+```
+
+Leave Wix's `s1` and `s2` records alone. They belong to Wix Email Marketing, and
+deleting them would break it for whoever is using it.
 
 ## Part 3 - Leave your SPF record alone
 
-This is the pleasant part. With the return-path CNAME in place, SPF is checked
-against `pm-bounces.kesmic.org`, which resolves to Postmark's own record. **You do not
-need to add Postmark to kesmic.org's SPF at all**, and you should not: every extra
+This is the pleasant part. The `em` CNAME from Part 2 is the return path, so SPF is
+checked against that subdomain, which resolves to SendGrid's own record. **You do not
+need to add SendGrid to kesmic.org's SPF at all**, and you should not: every extra
 `include:` costs one of the ten DNS lookups SPF allows before it fails.
 
-The `include:amazonses.com` already in your record is only needed if something else
-sends through Amazon SES. If Postmark is your only new sender, you can shorten it to:
+The record is currently, correctly:
 
 ```
 v=spf1 include:spf.protection.outlook.com -all
 ```
 
-Add `include:sender.zohobooks.com` back if Zoho Books still sends as `@kesmic.org`.
-Whatever you end up with, keep it as **one** record with `-all` at the end, once.
+Add `include:sender.zohobooks.com` back if Zoho Books still sends as `@kesmic.org`;
+it was dropped at some point, and against a record ending in `-all` that mail will be
+failing. Whatever you end up with, keep it as **one** record with `-all` at the end,
+exactly once.
+
+While you are in the DNS editor, delete the leftover `resend._domainkey` TXT record.
+It holds a signing key for an account no longer in use and only misleads whoever reads
+your DNS next.
 
 ## Part 4 - Create the key
 
-In Postmark, open your server, go to **API Tokens**, and copy the **Server API
-token**. In SendGrid it is **Settings → API Keys → Create API Key**, with **Mail
-Send** permission.
+**Settings → API Keys → Create API Key.** Name it `Kesmic Practice Manager` and give
+it **Restricted Access** with **Mail Send** only. Nothing else in the portal needs
+SendGrid, so nothing else should be permitted.
 
-Copy it now; both show it once.
+Copy it now; SendGrid shows it once.
 
 ## Part 5 - Give the portal its four settings
 
-In Cloudflare: **Workers & Pages → kesmic-practice-manager → Settings → Variables
-and Secrets**, on the **Production** side. Add four:
+**Only one of the four goes in the Cloudflare dashboard.** The other three are in
+`wrangler.toml` in the repository, and are already set. If you open the dashboard you
+will see it say so:
+
+> Environment variables for this project are being managed through wrangler.toml.
+> Only Secrets (encrypted variables) can be managed via the Dashboard.
+
+That is correct and is how it should be. Ordinary settings are configuration and
+belong in version control, where a change is reviewable and cannot be lost with a
+browser tab. Only the API key is secret.
+
+**The one to add by hand.** In Cloudflare: **Workers & Pages →
+kesmic-practice-manager → Settings → Variables and Secrets**, **Production** side,
+**Add → Secret**:
 
 | Type | Name | Value |
 | --- | --- | --- |
 | Secret | `EMAIL_API_KEY` | the token from Part 4 |
-| Text | `EMAIL_FROM` | `Kesmic Practice Manager <portal@kesmic.org>` |
-| Text | `EMAIL_PROVIDER` | `postmark`, or `sendgrid`, or `resend` |
-| Text | `PORTAL_URL` | `https://portal.kesmic.org`, or your `.pages.dev` address |
 
-Notes on those:
+**The three already set**, in `wrangler.toml` under `[vars]`:
 
-- `EMAIL_PROVIDER` is the only thing that changes if you switch services later. Leave
-  it out and the portal assumes Resend, which is what it did before this setting
-  existed. A name it does not recognise is refused with a message saying so, rather
-  than quietly sending to the wrong place.
+| Name | Value |
+| --- | --- |
+| `EMAIL_PROVIDER` | `sendgrid` |
+| `EMAIL_FROM` | `Kesmic Practice Manager <portal@kesmic.org>` |
+| `PORTAL_URL` | `https://portal.kesmic.org` |
+
+To change any of those three, edit `wrangler.toml` and push. Trying to add them in
+the dashboard will not work, and that is the message you are seeing.
+
+Notes:
+
+- **Change `EMAIL_FROM` if you would rather use a different mailbox.** Any address at
+  a domain you authenticated in Part 2 will do. It does not have to be a real inbox
+  to send from, but making it one means replies are not silently lost.
+- `EMAIL_PROVIDER` is the only thing that changes if you switch services later. Left
+  out, the portal assumes Resend, which is what it did before this setting existed. A
+  name it does not recognise is refused with a message saying so, rather than quietly
+  sending to the wrong place.
+- Your existing secrets, `BOOTSTRAP_SECRET` and `PASSWORD_PEPPER`, are untouched by
+  this. Secrets are stored separately from the plain variables and a deploy does not
+  disturb them.
 
 - `EMAIL_FROM` must use a domain you verified in Part 2. The mailbox part,
   `portal@`, does not need to exist as a real inbox to send from. Consider making
