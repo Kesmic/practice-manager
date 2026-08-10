@@ -293,6 +293,50 @@ relationship, or compare fee to time spent.
 
 An engagement is optional. A deliverable can belong directly to a client.
 
+### The client file
+
+Every client page has a **Client file**: an index of that client's folders and
+documents, wherever your firm keeps them. **Nothing is stored in the portal.** Each
+entry is a link, and clicking it takes you to SharePoint, OneDrive or Google Drive,
+where you sign in as yourself.
+
+**Add a link** and paste the address. In SharePoint, open the folder or document, press
+**Share** or **Copy link**, and paste that. The portal works out from the address
+whether it is SharePoint, OneDrive or Google Drive and labels it, so you never have to
+tell it.
+
+Fill in the rest as it suits you:
+
+- **What is it?** A folder or a document. Folders are listed first, because the way in
+  to the client's folder is what people reach for most.
+- **Title.** What a colleague needs to recognise it. Not the file name, if the file
+  name is unhelpful.
+- **Filed under.** Groups the entry. Type your own or take one of the suggestions; the
+  suggestions exist so that two people filing the same thing are likely to agree.
+- **Period** and **engagement** are optional, and worth using once a client has a few
+  years of work behind it.
+
+**The practice worth adopting:** add the client's folder as the first entry on the day
+the client is created. One link, and everybody can find everything.
+
+### Three things the client file deliberately does not do
+
+Worth knowing, because a quiet version of any of them would mislead somebody:
+
+1. **It does not hold your documents.** Your document store keeps the retention rules,
+   the version history and the permissions your firm decided on. Copying documents into
+   the portal would fork the truth and double the places a leak could come from.
+2. **It grants nobody access.** Following a link means signing in to Microsoft or Google
+   as yourself. If you have no access there, you are refused there. Adding a link to the
+   portal cannot widen anybody's reach.
+3. **It never checks the link.** If a document is moved or renamed, the portal will not
+   know until somebody clicks and finds out. Nothing is fetched, ever.
+
+Anyone signed in can add and edit links, because indexing the work is part of doing it.
+**Removing one needs Manager grade**, and removes the link only: nothing in SharePoint
+is touched and nobody's access changes. A client file with things quietly missing from
+it is worse than one with something stale in it.
+
 ---
 
 ## Client requests: the two links

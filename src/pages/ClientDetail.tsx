@@ -13,8 +13,10 @@ import {
   ENTITY_TYPE_LABELS,
   SERVICE_LINE_LABELS,
 } from "@shared/workflow";
+import type { ClientFile } from "@shared/files";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
+import { ClientFileCard } from "../components/ClientFileCard";
 import { NewTaskModal } from "../components/NewTaskModal";
 import { TaskTable } from "../components/TaskTable";
 import {
@@ -34,6 +36,7 @@ export function ClientDetail() {
   const [client, setClient] = useState<ClientSummary | null>(null);
   const [engagements, setEngagements] = useState<EngagementSummary[]>([]);
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [files, setFiles] = useState<ClientFile[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +48,7 @@ export function ClientDetail() {
       setClient(result.client);
       setEngagements(result.engagements);
       setTasks(result.tasks);
+      setFiles(result.files ?? []);
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Could not load the client.");
     }
@@ -144,6 +148,14 @@ export function ClientDetail() {
               emptyDescription="Create one, or generate a filing calendar from a job template."
             />
           </section>
+
+          <ClientFileCard
+            clientId={id}
+            files={files}
+            engagements={engagements}
+            onChanged={load}
+            setError={setError}
+          />
 
           <section className="card">
             <div className="card-header">

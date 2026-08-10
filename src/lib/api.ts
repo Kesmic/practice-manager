@@ -37,6 +37,7 @@ import type {
 } from "@shared/types";
 import type { WorkflowAction } from "@shared/workflow";
 import type { IntakeForm, IntakeLink, IntakeService } from "@shared/intake";
+import type { ClientFile } from "@shared/files";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -174,7 +175,32 @@ export const api = {
       client: ClientSummary;
       engagements: EngagementSummary[];
       tasks: TaskSummary[];
+      files: ClientFile[];
     }>(`/api/clients/${id}`),
+
+  // ------------------------------------------------------------ client file
+  /**
+   * Links to documents in SharePoint, OneDrive or Google Drive. The portal holds the
+   * reference; the document stays where the firm keeps it.
+   */
+  clientFiles: (clientId: string) =>
+    request<{ files: ClientFile[] }>(`/api/clients/${clientId}/files`),
+
+  addClientFile: (clientId: string, input: Record<string, unknown>) =>
+    request<{ file: ClientFile }>(`/api/clients/${clientId}/files`, {
+      method: "POST",
+      body: input,
+    }),
+
+  updateClientFile: (id: string, input: Record<string, unknown>) =>
+    request<{ file: ClientFile }>(`/api/client-files/${id}`, {
+      method: "PATCH",
+      body: input,
+    }),
+
+  /** Removes the reference only. The document itself is untouched. */
+  removeClientFile: (id: string) =>
+    request<void>(`/api/client-files/${id}`, { method: "DELETE" }),
 
   createClient: (input: Record<string, unknown>) =>
     request<{ client: Client }>("/api/clients", { method: "POST", body: input }),
