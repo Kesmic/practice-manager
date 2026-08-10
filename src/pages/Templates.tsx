@@ -371,7 +371,7 @@ function GenerateModal({
                         type="checkbox"
                         checked={selected.includes(client.id)}
                         onChange={() => toggle(client.id)}
-                        className="h-4 w-4 rounded border-slate-300 text-brand-600"
+                        className="h-4 w-4 rounded border-slate-300 text-link"
                       />
                       <span className="font-mono text-xs text-slate-500">{client.code}</span>
                       <span className="text-slate-800">{client.name}</span>

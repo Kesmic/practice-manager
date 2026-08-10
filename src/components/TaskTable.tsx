@@ -91,7 +91,7 @@ export function TaskTable({
                 <td className="min-w-64">
                   <Link
                     to={`/tasks/${task.id}`}
-                    className="font-medium text-slate-800 hover:text-brand-700"
+                    className="font-medium text-slate-800 hover:text-link"
                   >
                     {task.title}
                   </Link>

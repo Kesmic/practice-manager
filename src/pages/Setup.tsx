@@ -57,7 +57,7 @@ export function Setup() {
         <h1 className="mb-1 text-center text-xl font-semibold text-white">
           First-run setup
         </h1>
-        <p className="mb-6 text-center text-sm text-brand-200">
+        <p className="mb-6 text-center text-sm text-white/60">
           Create the initial administrator account for this deployment.
         </p>
 

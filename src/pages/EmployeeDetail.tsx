@@ -155,7 +155,7 @@ export function EmployeeDetail() {
               onClick={() => setTab(key)}
               className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
                 tab === key
-                  ? "border-brand-600 text-brand-700"
+                  ? "border-brand-600 text-link"
                   : "border-transparent text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -208,7 +208,7 @@ export function EmployeeDetail() {
                             );
                           }
                         }}
-                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600"
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-link"
                         aria-label={item.label}
                       />
                       <div className="min-w-0 flex-1">

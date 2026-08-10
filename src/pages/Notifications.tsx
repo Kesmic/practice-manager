@@ -103,7 +103,7 @@ export function Notifications() {
                     {item.task_id ? (
                       <Link
                         to={`/tasks/${item.task_id}`}
-                        className="hover:text-brand-700"
+                        className="hover:text-link"
                         onClick={() => void markOne(item.id)}
                       >
                         {item.title}

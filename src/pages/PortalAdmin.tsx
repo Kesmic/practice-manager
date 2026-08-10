@@ -9,6 +9,8 @@ import {
   type DocumentKind,
 } from "@shared/hr";
 import { ApiRequestError, api } from "../lib/api";
+import { applyBranding, isHexColour } from "../lib/branding";
+import { useFirm } from "../lib/firm";
 import { Markdown } from "../components/Markdown";
 import {
   EmptyState,
@@ -24,7 +26,7 @@ import {
 } from "../components/ui";
 import { formatDate } from "../lib/format";
 
-type Tab = "documents" | "welcome";
+type Tab = "documents" | "welcome" | "appearance";
 
 /** Authoring surface for the handbook, contracts and the welcome message. */
 export function PortalAdmin() {
@@ -37,7 +39,8 @@ export function PortalAdmin() {
       <div>
         <h1 className="section-title">Portal administration</h1>
         <p className="muted mt-0.5">
-          The handbook, contracts and the welcome message new joiners see first.
+          The handbook, contracts, the welcome message new joiners see first, and how
+          the portal looks.
         </p>
       </div>
 
@@ -46,6 +49,7 @@ export function PortalAdmin() {
           [
             ["documents", "Documents and handbook"],
             ["welcome", "Welcome message and firm details"],
+            ["appearance", "Logo and colours"],
           ] as Array<[Tab, string]>
         ).map(([key, label]) => (
           <button
@@ -54,7 +58,7 @@ export function PortalAdmin() {
             onClick={() => setTab(key)}
             className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
               tab === key
-                ? "border-brand-600 text-brand-700"
+                ? "border-brand-600 text-link"
                 : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
@@ -68,6 +72,8 @@ export function PortalAdmin() {
 
       {tab === "documents" ? (
         <DocumentsAdmin setError={setError} setNotice={setNotice} />
+      ) : tab === "appearance" ? (
+        <AppearanceAdmin setError={setError} setNotice={setNotice} />
       ) : (
         <WelcomeAdmin setError={setError} setNotice={setNotice} />
       )}
@@ -510,7 +516,7 @@ function DocumentEditor({
                     requires_acknowledgement: false,
                   })
                 }
-                className="h-4 w-4 border-slate-300 text-brand-600"
+                className="h-4 w-4 border-slate-300 text-link"
               />
               Signature — for contracts and binding terms
             </label>
@@ -526,7 +532,7 @@ function DocumentEditor({
                     requires_acknowledgement: true,
                   })
                 }
-                className="h-4 w-4 border-slate-300 text-brand-600"
+                className="h-4 w-4 border-slate-300 text-link"
               />
               Acknowledgement — for handbook policies
             </label>
@@ -542,7 +548,7 @@ function DocumentEditor({
                     requires_acknowledgement: false,
                   })
                 }
-                className="h-4 w-4 border-slate-300 text-brand-600"
+                className="h-4 w-4 border-slate-300 text-link"
               />
               None — reference only
             </label>
@@ -560,7 +566,7 @@ function DocumentEditor({
               </button>
             </div>
             {preview ? (
-              <div className="max-h-80 overflow-y-auto rounded-md bg-white px-4 py-3 ring-1 ring-inset ring-slate-300">
+              <div className="max-h-80 overflow-y-auto rounded-md bg-panel px-4 py-3 ring-1 ring-inset ring-slate-300">
                 <Markdown>{form.body || "_Nothing to preview yet._"}</Markdown>
               </div>
             ) : (
@@ -681,7 +687,7 @@ function WelcomeAdmin({
           </button>
         </div>
         {preview ? (
-          <div className="rounded-md bg-white px-4 py-3 ring-1 ring-inset ring-slate-300">
+          <div className="rounded-md bg-panel px-4 py-3 ring-1 ring-inset ring-slate-300">
             <Markdown>{settings.welcome_message || "_Nothing to preview yet._"}</Markdown>
           </div>
         ) : (
@@ -704,5 +710,228 @@ function WelcomeAdmin({
         </button>
       </div>
     </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/** Largest logo accepted, before base64 encoding inflates it by about a third. */
+const MAX_LOGO_BYTES = 280 * 1024;
+
+/**
+ * The firm's logo and its two colours.
+ *
+ * Changes preview live — the whole interface recolours as the pickers move — so
+ * the choice is made against the real thing rather than a swatch. Nothing is
+ * stored until Save, and leaving without saving restores what was there.
+ */
+function AppearanceAdmin({
+  setError,
+  setNotice,
+}: {
+  setError: (message: string | null) => void;
+  setNotice: (message: string | null) => void;
+}) {
+  const { refresh } = useFirm();
+  const [settings, setSettings] = useState<FirmSettings | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .settings()
+      .then((res) => setSettings(res.settings))
+      .catch((err) =>
+        setError(
+          err instanceof ApiRequestError ? err.message : "Could not load settings.",
+        ),
+      );
+  }, [setError]);
+
+  // Whatever was previewed but not saved is discarded on the way out.
+  useEffect(() => () => void refresh(), [refresh]);
+
+  if (!settings) return <Spinner label="Loading appearance" />;
+
+  const preview = (next: FirmSettings) => {
+    setSettings(next);
+    applyBranding(next);
+  };
+
+  const pickColour = (key: "primary_color" | "secondary_color") => (value: string) =>
+    preview({ ...settings, [key]: value });
+
+  const chooseFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("That is not an image. Choose a PNG, JPEG, SVG or WebP file.");
+      return;
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      setError(
+        `That image is ${Math.round(file.size / 1024)} kB. Please use one under ${Math.round(
+          MAX_LOGO_BYTES / 1024,
+        )} kB — a logo does not need to be large, and every page load carries it.`,
+      );
+      return;
+    }
+    setError(null);
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("The file could not be read."));
+      reader.readAsDataURL(file);
+    });
+    setSettings({ ...settings, logo_data_url: dataUrl });
+  };
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    for (const key of ["primary_color", "secondary_color"] as const) {
+      if (settings[key] && !isHexColour(settings[key])) {
+        setError("Colours must look like #1a2b3c.");
+        return;
+      }
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.updateSettings({
+        logo_data_url: settings.logo_data_url,
+        primary_color: settings.primary_color,
+        secondary_color: settings.secondary_color,
+      });
+      setSettings(res.settings);
+      await refresh();
+      setNotice("Saved. Everyone sees this the next time they load the portal.");
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError ? err.message : "Could not save the appearance.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="card space-y-6 p-5" onSubmit={save}>
+      <div>
+        <span className="label">Logo</span>
+        <div className="flex flex-wrap items-center gap-4">
+          <img
+            src={settings.logo_data_url || "/icon.svg"}
+            alt=""
+            className="h-16 w-16 rounded-md bg-slate-100 object-contain p-1 ring-1 ring-slate-200"
+          />
+          <div className="flex flex-wrap gap-2">
+            <label className="btn-secondary btn-sm cursor-pointer">
+              Choose an image
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                className="hidden"
+                onChange={(e) => void chooseFile(e.target.files?.[0])}
+              />
+            </label>
+            {settings.logo_data_url && (
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => setSettings({ ...settings, logo_data_url: "" })}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+        <p className="hint">
+          Shown beside the firm name in the sidebar and on the sign-in screen. A square
+          image works best. Keep it under 280 kB — it is not a photograph, and every
+          page load carries it.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <ColourField
+          label="Primary colour"
+          hint="Buttons, links, the sidebar and anything the eye should go to first."
+          value={settings.primary_color}
+          onChange={pickColour("primary_color")}
+        />
+        <ColourField
+          label="Secondary colour"
+          hint="Progress bars and supporting highlights. Choose something that sits beside the primary rather than competing with it."
+          value={settings.secondary_color}
+          onChange={pickColour("secondary_color")}
+        />
+      </div>
+
+      <div className="rounded-md bg-slate-100 p-4">
+        <p className="label">Preview</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-primary btn-sm">
+            Primary action
+          </button>
+          <button type="button" className="btn-secondary btn-sm">
+            Secondary
+          </button>
+          <span className="pill bg-brand-50 text-link ring-brand-200">Status</span>
+          <span className="pill bg-accent-50 text-accent-800 ring-accent-200">
+            Secondary
+          </span>
+          <a href="#preview" className="link text-sm" onClick={(e) => e.preventDefault()}>
+            A link
+          </a>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+          <div className="h-full w-2/3 rounded-full bg-accent-500" />
+        </div>
+        <p className="hint mt-2">
+          The rest of the portal has already changed too — look at the sidebar. Nothing
+          is saved until you press Save, and leaving this page undoes it.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-end gap-2">
+        <button type="submit" className="btn-primary" disabled={busy}>
+          {busy ? "Saving…" : "Save appearance"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** A colour picker with the hex value beside it, because both are useful. */
+function ColourField({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Field label={label} hint={hint}>
+      {(id) => (
+        <div className="flex items-center gap-2">
+          <input
+            id={id}
+            type="color"
+            value={isHexColour(value) ? value : "#255291"}
+            onChange={(e) => onChange(e.target.value)}
+            className="h-9 w-12 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
+            aria-label={label}
+          />
+          <TextInput
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="#255291"
+            spellCheck={false}
+          />
+        </div>
+      )}
+    </Field>
   );
 }
