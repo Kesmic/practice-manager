@@ -36,7 +36,18 @@ Cloudflare knows about the name gives visitors an error page rather than the
 portal.
 
 1. Sign in at **https://dash.cloudflare.com**
-2. Go to **Workers & Pages** and click **kesmic-practice-manager**
+2. Go to **Workers & Pages**. You will see **two** entries called
+   **kesmic-practice-manager** — the old Worker and the new Pages project. Look at
+   the type shown beside each and **click the one that says Pages.**
+
+   > If you open the wrong one you will know: the Worker's page says **Worker URL**
+   > at the top, and its domain dialog says "Connect your *Worker* to a domain in
+   > your account" and then "No zones match portal.kesmic.org". That is the dead
+   > end this whole page exists to avoid — click **Cancel**, never **Onboard
+   > domain**, which would start moving the whole domain to Cloudflare.
+   >
+   > The Pages project shows an address ending **.pages.dev** instead.
+
 3. Open the **Custom domains** tab
 4. Click **Set up a custom domain**
 5. Type `portal.kesmic.org` and continue
@@ -84,6 +95,17 @@ The `.pages.dev` address keeps working as well, so nobody's bookmark breaks.
 
 Removing it later is the reverse: delete the custom domain in Cloudflare, delete
 the CNAME at Wix. Nothing else is affected.
+
+### Step 4 — Delete the old Worker
+
+Once the new address works, remove the old Worker so there is only one of
+everything and no chance of opening the wrong one again. In **Workers & Pages**,
+click the **kesmic-practice-manager** that says **Worker**, then **Settings →
+Delete**.
+
+This does not touch the database — the Worker is only a front door, and the
+records live separately. Both front doors read the same data, which is why nothing
+is lost.
 
 ---
 
