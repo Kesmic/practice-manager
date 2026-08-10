@@ -631,6 +631,15 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
 
   router.post("/api/employees/:id/documents", async ({ request, env, params }) => {
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+
+    // Checked up front so an unknown employee is a 404 rather than a foreign-key
+    // violation surfacing as "Internal server error", as every other route here
+    // does.
+    const exists = await env.DB.prepare(`SELECT id FROM users WHERE id = ?`)
+      .bind(params.id)
+      .first<{ id: string }>();
+    if (!exists) throw notFound("That employee does not exist.");
+
     const body = await readJson<Record<string, unknown>>(request);
     const label = requireString(body.label, "label", { max: 200 });
     const url = requireString(body.url, "url", { max: 2000 });

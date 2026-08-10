@@ -83,8 +83,24 @@ jobs:
         env:
           CI: "true"
 
-      - name: Deploy Worker and static assets
-        run: npx wrangler deploy
+      # Creating the project is done here rather than by hand so there is one
+      # less thing to get exactly right in a dashboard. It only ever happens once.
+      - name: Make sure the Pages project exists
+        run: |
+          set -euo pipefail
+          if npx wrangler pages project list | grep -q 'kesmic-practice-manager'; then
+            echo "Pages project already exists."
+          else
+            echo "First deploy — creating the Pages project."
+            npx wrangler pages project create kesmic-practice-manager \
+              --production-branch=main
+          fi
+
+      # --branch is explicit because Pages decides production versus preview from
+      # the branch name, and a deploy that quietly lands as a preview would leave
+      # the real address serving the previous version.
+      - name: Deploy the app and the Worker
+        run: npx wrangler pages deploy --branch=main
 
       - name: Summarise
         run: |

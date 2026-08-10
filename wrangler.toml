@@ -1,23 +1,25 @@
 name = "kesmic-practice-manager"
-main = "worker/index.ts"
+
+# A Cloudflare **Pages** project, not a Worker.
+#
+# The reason is the custom domain: portal.kesmic.org has to be pointed at this
+# from Wix's DNS, because Wix does not let a domain registered with it use anyone
+# else's nameservers, and a Worker can only answer on a hostname whose DNS
+# Cloudflare manages. Pages accepts a CNAME from external DNS; Workers does not.
+# See docs/DOMAIN.md.
+#
+# `dist/` holds the built React app plus `dist/_worker.js` — the same Worker as
+# before, bundled by scripts/build-worker.mjs. Pages hands every request to that
+# file (advanced mode), which is why /api/* and the app can share one origin.
+pages_build_output_dir = "./dist"
+
 compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
-
-# The built React app. `run_worker_first` keeps /api/* out of the static asset
-# resolver, while `single-page-application` makes every other unmatched path
-# fall back to index.html so client-side routing works on a hard refresh.
-[assets]
-directory = "./dist"
-binding = "ASSETS"
-not_found_handling = "single-page-application"
-run_worker_first = ["/api/*"]
-
-[observability]
-enabled = true
 
 # Created once with:
 #   wrangler d1 create kesmic-practice
 # then paste the returned database_id below and commit it (it is not a secret).
+# The database is unchanged by the move from Workers to Pages — same data, same id.
 [[d1_databases]]
 binding = "DB"
 database_name = "kesmic-practice"
@@ -29,23 +31,21 @@ SESSION_TTL_DAYS = "7"
 
 # Password hashing work factor. Left unset, the Worker uses 8,000 PBKDF2
 # iterations (~4 ms of CPU), which fits the 10 ms per-request CPU budget of the
-# Workers **Free** plan. Exceeding that budget does not degrade gracefully —
-# Cloudflare kills the request, so signing in becomes impossible rather than
-# slow, which is why this is deliberately low.
+# **Free** plan. Exceeding that budget does not degrade gracefully — Cloudflare
+# kills the request, so signing in becomes impossible rather than slow, which is
+# why this is deliberately low.
 #
-# On the Workers **Paid** plan there is no such constraint: uncomment both lines
-# below for the 600,000 iterations OWASP currently recommends (~290 ms).
-# Existing passwords keep working either way, because every hash records the
-# count it was created with; change or reset a password to move it to the new one.
+# On the **Paid** plan there is no such constraint: uncomment the line below for
+# the 600,000 iterations OWASP currently recommends (~290 ms). Existing passwords
+# keep working either way, because every hash records the count it was created
+# with; change or reset a password to move it to the new one.
 #
 # PASSWORD_ITERATIONS = "600000"
-#
-# [limits]
-# cpu_ms = 1000
 
-# Two secrets, neither of them set here — use the Cloudflare dashboard, or:
-#   wrangler secret put BOOTSTRAP_SECRET   # authorises /setup; delete afterwards
-#   wrangler secret put PASSWORD_PEPPER    # optional; see docs/DEPLOYMENT.md
+# Two secrets, neither of them set here. For a Pages project they live under
+# the project's Settings → Variables and Secrets → Production, or:
+#   wrangler pages secret put BOOTSTRAP_SECRET   # authorises /setup; delete after
+#   wrangler pages secret put PASSWORD_PEPPER    # optional; see docs/DEPLOYMENT.md
 #
 # PASSWORD_PEPPER is mixed into every password before hashing. Because it lives
 # outside D1, a leaked database export cannot be attacked offline at all. It can
