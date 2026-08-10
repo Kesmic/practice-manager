@@ -137,7 +137,8 @@ src/                 the React app (TypeScript, Vite, Tailwind)
 migrations/          D1 schema, seeded job templates and seeded handbook,
                      applied by CI
 scripts/             build-worker.mjs - bundles the Worker to dist/_worker.js
-docs/                deployment, custom domain, workflow and portal documentation
+docs/                user guide, deployment, custom domain, email,
+                     workflow and portal documentation
 ```
 
 Because both sides import `shared/workflow.ts`, a button appears in the UI
@@ -150,7 +151,12 @@ Same-origin means no CORS layer and session cookies that stay `SameSite=Lax`.
 
 ## Getting it running
 
-**If you are not a developer**, follow
+**If you are here to use the portal rather than to work on it**, read
+**[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**. It covers every screen and every
+grade, for everyone from a new joiner on their first morning to a partner running
+the firm's people side.
+
+**If you are not a developer but need to deploy it**, follow
 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** instead of anything below. It is a
 click-by-click guide you can complete entirely in a web browser - no software to
 install and nothing to type into a terminal. GitHub does the building and
