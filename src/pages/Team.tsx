@@ -22,9 +22,27 @@ export function Team() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
-  const [credential, setCredential] = useState<{ email: string; password: string } | null>(
-    null,
-  );
+  /**
+   * Shown once after an account is created. `invited` says whether the portal managed
+   * to email the person, which changes the instruction entirely: either "they have it"
+   * or "you must pass this on yourself".
+   */
+  const [credential, setCredential] = useState<{
+    email: string;
+    password: string;
+    invited: boolean;
+    invitationError: string | null;
+  } | null>(null);
+
+  const closeCredential = () => {
+    const invited = credential?.invited;
+    setCredential(null);
+    setNotice(
+      invited
+        ? "Invitation sent. The temporary password was also shown to you in case it does not arrive."
+        : "Pass the temporary password on through a secure channel.",
+    );
+  };
 
   const load = useCallback(async () => {
     try {
@@ -56,7 +74,14 @@ export function Team() {
     setError(null);
     try {
       const { temporary_password } = await api.resetPassword(target.id);
-      setCredential({ email: target.email, password: temporary_password });
+      // A reset never emails: somebody who has lost their password has often lost
+      // access to the mailbox too, and sending a new one there would be no help.
+      setCredential({
+        email: target.email,
+        password: temporary_password,
+        invited: false,
+        invitationError: "A password reset is always handed over in person.",
+      });
       await load();
     } catch (err) {
       setError(
@@ -184,8 +209,8 @@ export function Team() {
       <InviteModal
         open={inviting}
         onClose={() => setInviting(false)}
-        onCreated={(email, password) => {
-          setCredential({ email, password });
+        onCreated={(email, password, invited, invitationError) => {
+          setCredential({ email, password, invited, invitationError });
           setInviting(false);
           void load();
         }}
@@ -194,35 +219,38 @@ export function Team() {
       {/* Temporary credentials are shown once and never stored in plain text. */}
       <Modal
         open={!!credential}
-        title="Temporary password"
-        onClose={() => {
-          setCredential(null);
-          setNotice("Pass the temporary password on through a secure channel.");
-        }}
+        title={credential?.invited ? "Account created and invitation sent" : "Temporary password"}
+        onClose={closeCredential}
         footer={
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => {
-              setCredential(null);
-              setNotice("Pass the temporary password on through a secure channel.");
-            }}
-          >
+          <button type="button" className="btn-primary" onClick={closeCredential}>
             Done
           </button>
         }
       >
         {credential && (
           <div className="space-y-3">
+            {credential.invited ? (
+              <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800 ring-1 ring-emerald-200">
+                An invitation has been emailed to <strong>{credential.email}</strong> with
+                the temporary password and a link to sign in.
+              </p>
+            ) : (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+                <strong>No email was sent</strong>, so you have to pass these details on
+                yourself.
+                {credential.invitationError ? ` ${credential.invitationError}` : ""}
+              </p>
+            )}
             <p className="text-sm text-slate-700">
-              Give these details to <strong>{credential.email}</strong>. They will be asked
-              to set their own password when they first sign in.
+              The temporary password for <strong>{credential.email}</strong>. They are asked
+              to choose their own the first time they sign in.
             </p>
             <p className="select-all rounded-md bg-slate-900 px-3 py-2 font-mono text-sm text-emerald-300">
               {credential.password}
             </p>
             <p className="text-xs text-slate-500">
-              This is shown once only. Send it over a channel separate from the sign-in link.
+              Shown once only, whether or not the invitation was sent. Email can be delayed
+              or filtered, so keep this to hand until they have signed in.
             </p>
           </div>
         )}
@@ -238,20 +266,32 @@ function InviteModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: (email: string, password: string) => void;
+  onCreated: (
+    email: string,
+    password: string,
+    invited: boolean,
+    invitationError: string | null,
+  ) => void;
 }) {
   const [form, setForm] = useState({
     full_name: "",
     email: "",
     role: "associate",
     title: "",
+    send_invitation: true,
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setForm({ full_name: "", email: "", role: "associate", title: "" });
+      setForm({
+        full_name: "",
+        email: "",
+        role: "associate",
+        title: "",
+        send_invitation: true,
+      });
       setError(null);
     }
   }, [open]);
@@ -266,8 +306,14 @@ function InviteModal({
         email: form.email,
         role: form.role,
         title: form.title || null,
+        send_invitation: form.send_invitation,
       });
-      onCreated(result.user.email, result.temporary_password ?? "");
+      onCreated(
+        result.user.email,
+        result.temporary_password ?? "",
+        result.invitation_sent,
+        result.invitation_error,
+      );
     } catch (err) {
       setError(
         err instanceof ApiRequestError ? err.message : "Could not create that account.",
@@ -342,6 +388,25 @@ function InviteModal({
             />
           )}
         </Field>
+
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-slate-200 p-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0"
+            checked={form.send_invitation}
+            onChange={(event) =>
+              setForm({ ...form, send_invitation: event.target.checked })
+            }
+          />
+          <span className="text-sm">
+            <span className="font-medium text-slate-800">Email them an invitation</span>
+            <span className="hint mt-0.5 block">
+              Sent from the firm's own address, with the temporary password and a link to
+              sign in. You are shown the password either way, because email can be delayed
+              or filtered. Untick this if you would rather hand it over in person.
+            </span>
+          </span>
+        </label>
       </form>
     </Modal>
   );

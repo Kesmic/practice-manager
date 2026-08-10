@@ -17,6 +17,8 @@ import {
 } from "../db";
 import { Router, badRequest, conflict, forbidden, json, notFound, readJson } from "../http";
 import { ROLES, ROLE_LABELS, ROLE_RANK, type Role } from "../../shared/workflow";
+import { sendToPerson } from "../email";
+import { readSettings } from "./settings";
 
 /** Grade required to administer staff records. */
 const MIN_USER_ADMIN: Role = "partner";
@@ -54,7 +56,7 @@ export function registerUserRoutes(router: Router<Env>): void {
     return json({ users });
   });
 
-  router.post("/api/users", async ({ request, env }) => {
+  router.post("/api/users", async ({ request, env, url }) => {
     const actor = await requireRole(env, request, MIN_USER_ADMIN);
     const body = await readJson<{
       email?: string;
@@ -62,6 +64,7 @@ export function registerUserRoutes(router: Router<Env>): void {
       role?: string;
       title?: string;
       password?: string;
+      send_invitation?: boolean;
     }>(request);
 
     const email = normaliseEmail(body.email);
@@ -111,11 +114,38 @@ export function registerUserRoutes(router: Router<Env>): void {
       )
       .run();
 
+    // The invitation is sent inside the request rather than in waitUntil, because
+    // the screen has to tell the administrator whether it went: "invitation sent" and
+    // "write the password down, it did not send" are different instructions, and
+    // guessing wrong means a new joiner with no way in.
+    let invitation: { sent: boolean; error?: string } = {
+      sent: false,
+      error: "No invitation was requested.",
+    };
+    if (body.send_invitation !== false && mustChange) {
+      const settings = await readSettings(env);
+      const portal = (env.PORTAL_URL ?? "").trim().replace(/\/+$/, "") || url.origin;
+      invitation = await sendToPerson(env, {
+        to: { email, full_name: fullName },
+        subject: `Your ${settings.firm_name} portal account`,
+        headline: `${actor.full_name} has created your account on the ${settings.firm_name} staff portal. Sign in with this email address and the temporary password below, and you will be asked to choose your own password straight away.`,
+        detail: `Email address: ${email}\nTemporary password: ${password}`,
+        link: `${portal}/login`,
+        linkLabel: "Sign in to the portal",
+        firmName: settings.firm_name,
+        reason: `an account has been created for you at ${settings.firm_name}`,
+      });
+    }
+
     return json(
       {
         user: { id, email, full_name: fullName, role, title, status: "active" },
-        // Shown once so the administrator can pass it on out of band.
+        // Shown once so the administrator can pass it on out of band. Still returned
+        // when the invitation was sent: the email can be delayed, filtered or bounce,
+        // and the administrator needs the fallback in front of them either way.
         temporary_password: mustChange ? password : null,
+        invitation_sent: invitation.sent,
+        invitation_error: invitation.sent ? null : (invitation.error ?? null),
       },
       201,
     );

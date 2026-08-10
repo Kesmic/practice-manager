@@ -26,8 +26,32 @@ database_name = "kesmic-practice"
 database_id = "8d0f0a0e-01f3-4fd2-9eee-48677f51f17d"
 migrations_dir = "migrations"
 
+# Plain-text settings.
+#
+# Once this file declares any of them, Cloudflare treats it as the only place they
+# come from: the dashboard says "Environment variables for this project are being
+# managed through wrangler.toml" and offers to manage Secrets only. That is the
+# right split rather than an obstacle. These values are configuration and belong in
+# version control, where a change is reviewable and cannot be lost with a browser
+# tab. Anything genuinely secret is listed at the bottom of this file and never here.
+#
+# They take effect on the next deploy, which the Deploy workflow does on every push
+# to main.
 [vars]
 SESSION_TTL_DAYS = "7"
+
+# Email notifications. See docs/EMAIL.md. The API key is a secret and is not here.
+#
+# SendGrid rather than Resend because of DNS: Resend verifies a domain by requiring
+# an MX record on a subdomain, and Wix, which holds kesmic.org, only allows MX on the
+# root. SendGrid verifies with CNAME records, which Wix does support.
+EMAIL_PROVIDER = "sendgrid"
+# Any mailbox at the domain authenticated in SendGrid. It does not have to be a real
+# inbox to send from, but making it one means replies are not lost.
+EMAIL_FROM = "Kesmic Practice Manager <portal@kesmic.org>"
+# Only used to build the links inside the emails. Without it they point at whichever
+# hostname the portal happened to be reached on.
+PORTAL_URL = "https://portal.kesmic.org"
 
 # Password hashing work factor. Left unset, the Worker uses 8,000 PBKDF2
 # iterations (~4 ms of CPU), which fits the 10 ms per-request CPU budget of the
@@ -42,10 +66,14 @@ SESSION_TTL_DAYS = "7"
 #
 # PASSWORD_ITERATIONS = "600000"
 
-# Two secrets, neither of them set here. For a Pages project they live under
+# Three secrets, none of them set here. For a Pages project they live under
 # the project's Settings → Variables and Secrets → Production, or:
 #   wrangler pages secret put BOOTSTRAP_SECRET   # authorises /setup; delete after
 #   wrangler pages secret put PASSWORD_PEPPER    # optional; see docs/DEPLOYMENT.md
+#   wrangler pages secret put EMAIL_API_KEY      # the SendGrid key; see docs/EMAIL.md
+#
+# Secrets are unaffected by this file governing the plain-text variables above: they
+# are stored separately and a deploy does not disturb them.
 #
 # PASSWORD_PEPPER is mixed into every password before hashing. Because it lives
 # outside D1, a leaked database export cannot be attacked offline at all. It can

@@ -36,7 +36,7 @@ import type {
   User,
 } from "@shared/types";
 import type { WorkflowAction } from "@shared/workflow";
-import type { IntakeForm, IntakeLink } from "@shared/intake";
+import type { IntakeForm, IntakeLink, IntakeService } from "@shared/intake";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -150,10 +150,12 @@ export const api = {
     ),
 
   createUser: (input: Record<string, unknown>) =>
-    request<{ user: User; temporary_password: string | null }>("/api/users", {
-      method: "POST",
-      body: input,
-    }),
+    request<{
+      user: User;
+      temporary_password: string | null;
+      invitation_sent: boolean;
+      invitation_error: string | null;
+    }>("/api/users", { method: "POST", body: input }),
 
   updateUser: (id: string, input: Record<string, unknown>) =>
     request<{ user: User }>(`/api/users/${id}`, { method: "PATCH", body: input }),
@@ -355,6 +357,35 @@ export const api = {
     }>(`/api/client-requests/${id}/accept`, { method: "POST", body: input }),
 
   intakeLinks: () => request<{ links: IntakeLink[] }>("/api/intake-links"),
+
+  intakeServices: () =>
+    request<{ services: IntakeService[]; customised: boolean }>("/api/intake-services"),
+
+  setIntakeServices: (services: IntakeService[]) =>
+    request<{ services: IntakeService[]; customised: boolean }>("/api/intake-services", {
+      method: "PUT",
+      body: { services },
+    }),
+
+  resetIntakeServices: () =>
+    request<{ services: IntakeService[]; customised: boolean }>("/api/intake-services", {
+      method: "DELETE",
+    }),
+
+  /**
+   * Issues a contract or form for one employee, from a template. The copy requires a
+   * signature unless told otherwise, since being signed is the point of issuing it.
+   */
+  copyDocumentFor: (
+    id: string,
+    assignedUserId: string,
+    title?: string,
+    options: { kind?: string; requires_signature?: boolean } = {},
+  ) =>
+    request<{ document: PortalDocument }>(`/api/documents/${id}/copy-for`, {
+      method: "POST",
+      body: { assigned_user_id: assignedUserId, title, ...options },
+    }),
 
   rotateIntakeLink: (kind: string) =>
     request<{ link: IntakeLink }>(`/api/intake-links/${kind}/rotate`, {

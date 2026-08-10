@@ -35,6 +35,18 @@ export interface Env {
   /** The From address, e.g. "Kesmic Practice Manager <portal@kesmic.org>". */
   EMAIL_FROM?: string;
   /**
+   * Which service delivers the mail: "resend", "postmark" or "sendgrid".
+   * Defaults to Resend.
+   *
+   * This exists because the choice is forced by DNS rather than by preference.
+   * Resend verifies a domain by asking for an MX record on a subdomain, and some
+   * registrars, Wix among them, will not create one. Postmark and SendGrid verify
+   * with TXT and CNAME records only, which every registrar supports. All three
+   * take the same three settings, so switching is a variable rather than a change
+   * to the code.
+   */
+  EMAIL_PROVIDER?: string;
+  /**
    * Base address used for links in emails, e.g. https://portal.kesmic.org. Left
    * unset, links use the origin the portal was reached on, which is right unless
    * it answers to more than one name.

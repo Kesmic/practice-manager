@@ -94,6 +94,8 @@ function DocumentsAdmin({
   const [documents, setDocuments] = useState<PortalDocument[] | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [editing, setEditing] = useState<PortalDocument | "new" | null>(null);
+  /** The template being copied for one person, if any. */
+  const [issuing, setIssuing] = useState<PortalDocument | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -223,6 +225,22 @@ function DocumentsAdmin({
                         >
                           Edit
                         </button>
+                        {/*
+                          A contract is per person, so the seeded one is a template and
+                          this is how it gets used: copy it for somebody, fill in their
+                          terms, publish it to them alone. Offered on contracts and
+                          letters, not on handbook policies, which are one text for
+                          everybody and are published as they stand.
+                        */}
+                        {(doc.kind === "contract" || doc.kind === "form") && (
+                          <button
+                            type="button"
+                            className="btn-ghost btn-sm"
+                            onClick={() => setIssuing(doc)}
+                          >
+                            Issue to someone
+                          </button>
+                        )}
                         {doc.status !== "published" ? (
                           <button
                             type="button"
@@ -261,7 +279,152 @@ function DocumentsAdmin({
         }}
         setError={setError}
       />
+
+      <IssueDialog
+        template={issuing}
+        users={users}
+        onClose={() => setIssuing(null)}
+        onIssued={async (message) => {
+          setNotice(message);
+          setIssuing(null);
+          await load();
+        }}
+        setError={setError}
+      />
     </div>
+  );
+}
+
+/**
+ * Copies a contract or letter for one employee.
+ *
+ * This is the answer to a fair question: why can an administrator not simply publish
+ * the contract? Because a contract is not one document. Each employee's differs in
+ * title, salary, start date and notice period, and publishing one to everybody would
+ * ask each of them to sign somebody else's terms. So the seeded contract stays an
+ * unpublished template and is copied per person from here. The template is never
+ * altered, so it stays reusable, and each copy is its own record with its own
+ * signature and its own version history.
+ */
+function IssueDialog({
+  template,
+  users,
+  onClose,
+  onIssued,
+  setError,
+}: {
+  template: PortalDocument | null;
+  users: User[];
+  onClose: () => void;
+  onIssued: (message: string) => Promise<void>;
+  setError: (m: string | null) => void;
+}) {
+  const [userId, setUserId] = useState("");
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setUserId("");
+    setTitle("");
+  }, [template]);
+
+  if (!template) return null;
+
+  const person = users.find((u) => u.id === userId);
+  const suggested = person
+    ? `${template.title.replace(/\s*\(template\)\s*$/i, "")} - ${person.full_name}`
+    : "";
+
+  const issue = async () => {
+    if (!userId) {
+      setError("Choose who this copy is for.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      // An issued contract files under Contracts, not under Form / template where the
+      // source lives, so it appears where anyone would look for it.
+      const res = await api.copyDocumentFor(template.id, userId, title || undefined, {
+        kind: template.category === "Contracts" ? "contract" : template.kind,
+      });
+      await onIssued(
+        `Created “${res.document.title}” as a draft for ${person?.full_name ?? "them"}. Edit it, then publish it to them.`,
+      );
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : "Could not create that copy.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      title={`Issue “${template.title}”`}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => void issue()}
+            disabled={busy}
+          >
+            {busy ? "Creating…" : "Create the copy"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">
+          This makes a <strong>draft copy</strong> for one person, addressed to them
+          alone. The template is left exactly as it is, so you can issue it again to the
+          next joiner. Fill in their terms in the copy, then publish it to them.
+        </p>
+
+        <Field label="Who is it for?" required>
+          {(id) => (
+            <Select id={id} value={userId} onChange={(e) => setUserId(e.target.value)}>
+              <option value="">Choose an employee</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name} ({u.email})
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
+        <Field
+          label="Title for their copy"
+          hint={
+            suggested
+              ? `Left blank, it will be called "${suggested}".`
+              : "Left blank, their name is added to the template's title."
+          }
+        >
+          {(id) => (
+            <TextInput
+              id={id}
+              value={title}
+              maxLength={200}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={suggested}
+            />
+          )}
+        </Field>
+
+        {template.kind === "contract" && (
+          <p className="hint">
+            A contract copy always requires a signature, whatever the template says.
+          </p>
+        )}
+      </div>
+    </Modal>
   );
 }
 

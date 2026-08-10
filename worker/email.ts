@@ -152,12 +152,91 @@ function render(message: Message, recipient: Recipient) {
 }
 
 /**
- * Hands one message to the provider.
+ * Splits "Kesmic Practice Manager <portal@kesmic.org>" into its two parts.
  *
- * Resend's API is the default because its request shape is the simplest of the
- * transactional providers, but the only provider-specific things here are the URL
- * and the body, so swapping is a small change rather than a rewrite.
+ * Resend and Postmark take the combined form; SendGrid insists on the name and the
+ * address as separate fields, so the parse has to happen somewhere.
  */
+function fromAddress(value: string): { name?: string; email: string } {
+  const match = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(value);
+  if (!match) return { email: value.trim() };
+  return { name: match[1] || undefined, email: match[2].trim() };
+}
+
+interface ProviderRequest {
+  url: string;
+  headers: Record<string, string>;
+  body: unknown;
+}
+
+/**
+ * How each supported service wants to be asked. The differences are the URL, the
+ * name of the auth header and the field names; everything else about sending is the
+ * same, which is why this is a lookup table rather than three code paths.
+ *
+ * The choice between them is usually not about the services at all. Resend verifies
+ * a domain by requiring an MX record on a subdomain, and registrars including Wix
+ * refuse to create one, which makes verification impossible without moving DNS
+ * elsewhere. Postmark and SendGrid verify with TXT and CNAME records, which Wix does
+ * support. See docs/EMAIL.md.
+ */
+const PROVIDERS: Record<
+  string,
+  (env: Env, to: string, subject: string, text: string, html: string) => ProviderRequest
+> = {
+  resend: (env, to, subject, text, html) => ({
+    url: "https://api.resend.com/emails",
+    headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
+    body: { from: env.EMAIL_FROM, to: [to], subject, text, html },
+  }),
+
+  postmark: (env, to, subject, text, html) => ({
+    url: "https://api.postmarkapp.com/email",
+    headers: { "X-Postmark-Server-Token": env.EMAIL_API_KEY ?? "", Accept: "application/json" },
+    body: {
+      From: env.EMAIL_FROM,
+      To: to,
+      Subject: subject,
+      TextBody: text,
+      HtmlBody: html,
+      // Postmark separates transactional mail from bulk. These are notifications
+      // about someone's own work, so they belong on the transactional stream.
+      MessageStream: "outbound",
+    },
+  }),
+
+  sendgrid: (env, to, subject, text, html) => {
+    const from = fromAddress(env.EMAIL_FROM ?? "");
+    return {
+      url: "https://api.sendgrid.com/v3/mail/send",
+      headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
+      body: {
+        personalizations: [{ to: [{ email: to }] }],
+        from: from.name ? { email: from.email, name: from.name } : { email: from.email },
+        subject,
+        content: [
+          { type: "text/plain", value: text },
+          { type: "text/html", value: html },
+        ],
+      },
+    };
+  },
+};
+
+/** The provider named in the environment, or Resend. Unknown names are refused. */
+function providerName(env: Env): string {
+  const name = (env.EMAIL_PROVIDER ?? "resend").trim().toLowerCase();
+  if (!(name in PROVIDERS)) {
+    // Thrown rather than silently falling back: sending through the wrong service
+    // would fail in a way that looks like a DNS problem and waste an afternoon.
+    throw new Error(
+      `EMAIL_PROVIDER is "${name}", which is not one of: ${Object.keys(PROVIDERS).join(", ")}.`,
+    );
+  }
+  return name;
+}
+
+/** Hands one message to whichever service is configured. */
 async function deliver(
   env: Env,
   to: string,
@@ -165,20 +244,70 @@ async function deliver(
   text: string,
   html: string,
 ): Promise<void> {
-  const response = await fetch("https://api.resend.com/emails", {
+  const name = providerName(env);
+  const request = PROVIDERS[name](env, to, subject, text, html);
+
+  const response = await fetch(request.url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.EMAIL_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject, text, html }),
+    headers: { "Content-Type": "application/json", ...request.headers },
+    body: JSON.stringify(request.body),
   });
 
   if (!response.ok) {
     // The provider's own message is the useful part: it says whether the domain
     // is unverified, the key is wrong, or the address was rejected.
     const detail = await response.text().catch(() => "");
-    throw new Error(`Email provider returned ${response.status}: ${detail.slice(0, 300)}`);
+    throw new Error(
+      `${name} returned ${response.status}: ${detail.slice(0, 300)}`,
+    );
+  }
+}
+
+/**
+ * Emails one named person, for a message that is about them rather than about a
+ * deliverable: an invitation to the portal, most obviously.
+ *
+ * Unlike the other two, this one reports whether it managed to send, because the
+ * screen that creates an account needs to say "invitation sent" or "tell them
+ * yourself" rather than leaving the administrator guessing. It still cannot throw,
+ * and it still cannot fail the request that created the account.
+ */
+export async function sendToPerson(
+  env: Env,
+  input: {
+    to: { email: string; full_name: string };
+    subject: string;
+    headline: string;
+    detail?: string | null;
+    link: string;
+    linkLabel: string;
+    firmName: string;
+    reason: string;
+  },
+): Promise<{ sent: boolean; error?: string }> {
+  if (!emailConfigured(env)) {
+    return { sent: false, error: "Email is not set up on this portal." };
+  }
+  try {
+    const recipient = { id: "", email: input.to.email, full_name: input.to.full_name };
+    const { text, html } = render(
+      {
+        subject: input.subject,
+        headline: input.headline,
+        detail: input.detail ?? null,
+        link: input.link,
+        linkLabel: input.linkLabel,
+        firmName: input.firmName,
+        reason: input.reason,
+      },
+      recipient,
+    );
+    await deliver(env, recipient.email, input.subject, text, html);
+    return { sent: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Invitation email failed:", message);
+    return { sent: false, error: message };
   }
 }
 

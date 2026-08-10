@@ -49,13 +49,17 @@ import {
   ENTITY_TYPES,
   MIN_SUPERVISOR_ROLE,
   SERVICE_LINES,
-  type ServiceLine,
+  SERVICE_LINE_LABELS,
 } from "../../shared/workflow";
 import {
+  MAX_SERVICES,
   REQUEST_KINDS,
   REQUEST_LIMITS,
   REQUEST_RATE,
   REQUEST_STATUSES,
+  SERVICE_KEY_PATTERN,
+  serviceKeyFrom,
+  type IntakeService,
   type RequestKind,
 } from "../../shared/intake";
 import { notifyIntake } from "../email";
@@ -139,15 +143,72 @@ async function assertWithinRate(env: Env, kind: RequestKind, ipHash: string) {
   }
 }
 
-/** Validates the service lines a sender ticked. */
-function readServices(value: unknown): ServiceLine[] {
+/**
+ * The service list the public form offers, as the firm has it.
+ *
+ * Falls back to the firm's own service lines when nothing has been configured, so a
+ * fresh deployment has a sensible list rather than an empty one, and so the firm only
+ * has to touch this if the defaults are wrong for them.
+ */
+function serviceList(settings: Record<string, string>): IntakeService[] {
+  const raw = settings.intake_services;
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const out = parsed
+          .filter((s) => s && typeof s.key === "string" && typeof s.label === "string")
+          .map((s) => ({ key: String(s.key), label: String(s.label) }));
+        if (out.length) return out;
+      }
+    } catch {
+      // A malformed list must not take the public form down with it.
+      console.error("intake_services is not valid JSON; using the defaults.");
+    }
+  }
+  return SERVICE_LINES.map((key) => ({ key, label: SERVICE_LINE_LABELS[key] }));
+}
+
+/** Validates the services a sender ticked against the list actually on offer. */
+function readServices(value: unknown, offered: IntakeService[]): string[] {
   if (!Array.isArray(value) || !value.length) {
     throw badRequest("Please choose at least one service you would like help with.");
   }
-  const out: ServiceLine[] = [];
+  const allowed = offered.map((s) => s.key);
+  const out: string[] = [];
   for (const entry of value) {
-    const service = requireEnum(entry, "services", SERVICE_LINES);
+    const service = requireEnum(entry, "services", allowed);
     if (!out.includes(service)) out.push(service);
+  }
+  return out;
+}
+
+/** Parses and checks a list an administrator has submitted. */
+function assertServiceList(value: unknown): IntakeService[] {
+  if (!Array.isArray(value) || !value.length) {
+    throw badRequest("Keep at least one service on the list, or the form cannot be used.");
+  }
+  if (value.length > MAX_SERVICES) {
+    throw badRequest(
+      `That is ${value.length} services. Keep it to ${MAX_SERVICES} or fewer, or nobody will read the list.`,
+    );
+  }
+  const out: IntakeService[] = [];
+  for (const entry of value) {
+    const label = requireString((entry as Record<string, unknown>)?.label, "label", {
+      max: 80,
+    });
+    const rawKey = (entry as Record<string, unknown>)?.key;
+    const key = typeof rawKey === "string" && rawKey ? rawKey : serviceKeyFrom(label);
+    if (!SERVICE_KEY_PATTERN.test(key)) {
+      throw badRequest(
+        `"${label}" does not give a usable reference. Use letters and numbers in the name.`,
+      );
+    }
+    if (out.some((s) => s.key === key)) {
+      throw badRequest(`Two services would share the reference "${key}". Reword one of them.`);
+    }
+    out.push({ key, label });
   }
   return out;
 }
@@ -257,6 +318,7 @@ export function registerIntakeRoutes(router: Router<Env>): void {
         kind,
         firm_name: settings.firm_name,
         firm_website: settings.firm_website,
+        services: serviceList(settings),
       },
     });
   });
@@ -282,7 +344,7 @@ export function registerIntakeRoutes(router: Router<Env>): void {
       max: REQUEST_LIMITS.contact_name,
     });
     const contactEmail = readEmail(body.contact_email);
-    const services = readServices(body.services);
+    const services = readServices(body.services, serviceList(settings));
 
     const id = newId();
     const reference = await nextRef(env, "request", "REQ", 4);
@@ -546,6 +608,44 @@ export function registerIntakeRoutes(router: Router<Env>): void {
       links.push(await ensureLink(env, kind, actor.id, url.origin));
     }
     return json({ links });
+  });
+
+  /**
+   * The service list, for the screen that edits it. Returns whatever is in use,
+   * whether that is the firm's own list or the defaults it started from.
+   */
+  router.get("/api/intake-services", async ({ request, env }) => {
+    await requireRole(env, request, MIN_SUPERVISOR_ROLE);
+    const settings = await readSettings(env);
+    return json({
+      services: serviceList(settings),
+      customised: Boolean(settings.intake_services),
+    });
+  });
+
+  /**
+   * Replaces the whole list rather than editing one entry at a time, because the
+   * order is part of it and reordering is the commonest change after wording.
+   *
+   * Keys of services already chosen on past requests are not protected: an old
+   * request keeps the key it was submitted with, and the review screen falls back to
+   * showing that key if the service has since been removed. Renaming is therefore
+   * always safe, and removing costs only the label on historic requests.
+   */
+  router.put("/api/intake-services", async ({ request, env }) => {
+    const actor = await requireRole(env, request, MIN_SUPERVISOR_ROLE);
+    const body = await readJson<{ services?: unknown }>(request);
+    const services = assertServiceList(body.services);
+    await writeSetting(env, "intake_services", JSON.stringify(services), actor.id);
+    return json({ services, customised: true });
+  });
+
+  /** Puts the built-in service lines back, for when an edit has gone wrong. */
+  router.delete("/api/intake-services", async ({ request, env }) => {
+    const actor = await requireRole(env, request, MIN_SUPERVISOR_ROLE);
+    await writeSetting(env, "intake_services", "", actor.id);
+    const settings = await readSettings(env);
+    return json({ services: serviceList(settings), customised: false });
   });
 
   /**

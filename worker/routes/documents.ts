@@ -359,6 +359,105 @@ export function registerDocumentRoutes(router: Router<Env>): void {
     return json({ document: await loadDocument(env, id) }, 201);
   });
 
+  /**
+   * Copies a document for one employee. This is how a contract is issued.
+   *
+   * A contract cannot work like a handbook policy. A policy is one text everybody
+   * acknowledges, so one record serves the whole firm. A contract is a different
+   * document for each person: their job title, their salary, their start date, their
+   * notice period. Publishing one contract to everyone would ask every employee to
+   * sign somebody else's terms.
+   *
+   * So the seeded contract stays an unpublished template, and this endpoint makes a
+   * copy of it addressed to one person, as a draft, for the firm to fill in and then
+   * publish to them alone. The template is never touched, so it stays reusable, and
+   * each employee's contract is its own record with its own signature and its own
+   * version history.
+   */
+  router.post("/api/documents/:id/copy-for", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{
+      assigned_user_id?: unknown;
+      title?: unknown;
+      kind?: unknown;
+      requires_signature?: unknown;
+    }>(request);
+
+    const source = await env.DB.prepare(
+      `SELECT kind, category, title, summary, body, requires_signature,
+              requires_acknowledgement, effective_from, position
+         FROM documents WHERE id = ?`,
+    )
+      .bind(params.id)
+      .first<Record<string, unknown>>();
+    if (!source) throw notFound("That document does not exist.");
+
+    /*
+     * Two things deliberately differ from the source.
+     *
+     * The copy requires a signature unless told otherwise. The seeded contract
+     * template is stored as a form with no signature required, because nobody signs a
+     * template; the copy is the thing that gets signed, and inheriting 0 here would
+     * produce an unsignable contract, which is the one outcome that would make this
+     * endpoint pointless.
+     *
+     * The copy may also be given a different kind, so an issued contract files under
+     * Contracts rather than under Form / template where its source lives. The caller
+     * says so explicitly rather than the server guessing from the title.
+     */
+    const requiresSignature =
+      body.requires_signature === false || body.requires_signature === 0 ? 0 : 1;
+    const kind = body.kind === undefined
+      ? String(source.kind)
+      : requireEnum(body.kind, "kind", DOCUMENT_KINDS);
+
+    const assignedUserId = optionalId(body.assigned_user_id, "assigned_user_id");
+    if (!assignedUserId) {
+      throw badRequest("Choose the employee this copy is for.");
+    }
+    const person = await env.DB.prepare(
+      `SELECT full_name FROM users WHERE id = ?`,
+    )
+      .bind(assignedUserId)
+      .first<{ full_name: string }>();
+    if (!person) throw badRequest("The selected employee does not exist.");
+
+    // Their name in the title by default, because a personnel file with four
+    // documents all called "Contract of Employment (template)" is unusable.
+    const title =
+      optionalString(body.title, "title", 200) ??
+      `${String(source.title).replace(/\s*\(template\)\s*$/i, "")} - ${person.full_name}`;
+
+    const id = newId();
+    const timestamp = nowIso();
+    await env.DB.prepare(
+      `INSERT INTO documents
+         (id, kind, category, title, summary, body, version, status,
+          requires_signature, requires_acknowledgement, audience, assigned_user_id,
+          effective_from, position, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, 'draft', ?, ?, 'individual', ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        id,
+        kind,
+        source.category,
+        title,
+        source.summary,
+        source.body,
+        requiresSignature,
+        source.requires_acknowledgement ?? 0,
+        assignedUserId,
+        source.effective_from,
+        source.position ?? 0,
+        actor.id,
+        timestamp,
+        timestamp,
+      )
+      .run();
+
+    return json({ document: await loadDocument(env, id) }, 201);
+  });
+
   router.patch("/api/documents/:id", async ({ request, env, params }) => {
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const doc = await loadDocument(env, params.id);

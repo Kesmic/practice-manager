@@ -85,11 +85,42 @@ export const REQUEST_LIMITS = {
  */
 export const REQUEST_RATE = { perSender: 5, perLink: 60, windowMinutes: 60 } as const;
 
-/** What the public form needs to know to render itself. */
+/**
+ * One line on the "What do you need help with?" list.
+ *
+ * The firm edits these, so the list is data rather than code. `key` is what gets
+ * stored on a request and never changes once in use; `label` is what the public
+ * sees and can be reworded freely.
+ */
+export interface IntakeService {
+  key: string;
+  label: string;
+}
+
+/** Keys are stored on requests forever, so they are narrow on purpose. */
+export const SERVICE_KEY_PATTERN = /^[a-z0-9_]{1,40}$/;
+
+/** The most services the list may hold. Beyond this the form stops being scannable. */
+export const MAX_SERVICES = 24;
+
+/** Turns a label into a usable key: "Tax Advisory (Ghana)" becomes "tax_advisory_ghana". */
+export function serviceKeyFrom(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+}
+
+/**
+ * What the public form needs to know to render itself, including the service list
+ * as the firm currently has it.
+ */
 export interface IntakeForm {
   kind: RequestKind;
   firm_name: string;
   firm_website: string;
+  services: IntakeService[];
 }
 
 /** One link, as the admin screen shows it. */
