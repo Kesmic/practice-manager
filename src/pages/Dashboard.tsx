@@ -89,6 +89,30 @@ export function Dashboard() {
         </section>
       )}
 
+      {/*
+        Handed in with no reviewer named. This sits above your own queue when it
+        has anything in it, because work nobody has been asked to review is the
+        more urgent of the two: the preparer is finished and waiting.
+      */}
+      {can("manager") && data.awaiting_a_reviewer.length > 0 && (
+        <section className="card ring-1 ring-amber-200">
+          <div className="card-header">
+            <h2 className="card-title">Submitted with no reviewer named</h2>
+            <span className="muted">{data.awaiting_a_reviewer.length} item(s)</span>
+          </div>
+          <p className="muted px-4 pb-2">
+            The preparer has finished and is waiting. Open one and use Change under
+            Assignment to name a reviewer.
+          </p>
+          <TaskTable
+            tasks={data.awaiting_a_reviewer}
+            columns={["ref", "client", "title", "status", "assignee", "due", "points"]}
+            emptyTitle="Nothing unclaimed"
+            emptyDescription="Work submitted without a named reviewer appears here."
+          />
+        </section>
+      )}
+
       <section className="card">
         <div className="card-header">
           <h2 className="card-title">My deliverables</h2>

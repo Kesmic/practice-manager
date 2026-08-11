@@ -17,6 +17,25 @@ export const OVERDUE_PREDICATE = `
   AND date(COALESCE(t.internal_due_date, t.statutory_due_date)) < date('now')
 `;
 
+/** Submitted or under review, and therefore sitting in a reviewer's queue. */
+export const WITH_REVIEWER_STATUSES = `('submitted','under_review')`;
+
+/**
+ * Work handed in with nobody named to review it.
+ *
+ * The reviewer is optional when a deliverable is raised, which is right: a
+ * partner setting up next quarter's returns does not always know who will review
+ * them. But the preparer can still finish and submit, and at that moment the work
+ * belongs to no reviewer's queue. Before this predicate existed it appeared on
+ * nobody's dashboard at all: the preparer had done their part, the file was
+ * waiting, and nothing said so. Every supervisor sees this queue, because the
+ * answer to "who reviews it" is exactly what is missing.
+ */
+export const AWAITING_A_REVIEWER = `
+  t.reviewer_id IS NULL
+  AND t.status IN ${WITH_REVIEWER_STATUSES}
+`;
+
 /** Selects a full TaskSummary row. Callers append their own WHERE/ORDER BY. */
 export const TASK_SELECT = `
   SELECT t.*,

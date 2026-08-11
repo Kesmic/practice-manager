@@ -7,6 +7,9 @@
  * the person using the system, not just by a developer.
  */
 
+import type { ErasePreview, EraseScope } from "@shared/erase";
+import type { Visibility } from "@shared/visibility";
+import type { TwoFactorStatus } from "@shared/twofactor";
 import type {
   ChecklistItem,
   DocumentSignature,
@@ -35,7 +38,7 @@ import type {
   TimeEntry,
   User,
 } from "@shared/types";
-import type { WorkflowAction } from "@shared/workflow";
+import type { Role, WorkflowAction } from "@shared/workflow";
 import type { IntakeForm, IntakeLink, IntakeService } from "@shared/intake";
 import type { ClientFile } from "@shared/files";
 
@@ -113,15 +116,35 @@ export interface SessionResponse {
   unread_notifications?: number;
 }
 
+/** What the password step returns when the account has a second factor. */
+export interface LoginChallenge {
+  token: string;
+  expires_at: string;
+  methods: Array<"totp" | "recovery">;
+  recovery_remaining: number;
+}
+
 export const api = {
   // ------------------------------------------------------------------- auth
   session: () => request<SessionResponse>("/api/auth/me"),
 
+  /**
+   * The password step. A `user` means straight in; a `challenge` means this account has
+   * a second factor and nothing is signed in yet.
+   */
   login: (email: string, password: string) =>
-    request<{ user: User }>("/api/auth/login", {
+    request<{ user: User | null; challenge?: LoginChallenge }>("/api/auth/login", {
       method: "POST",
       body: { email, password },
     }),
+
+  /** The second step, with either an app code or a recovery code. */
+  completeLogin: (input: { challenge: string; code?: string; recovery_code?: string }) =>
+    request<{
+      user: User;
+      used_recovery_code?: boolean;
+      recovery_codes_remaining?: number;
+    }>("/api/auth/2fa", { method: "POST", body: input }),
 
   logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
 
@@ -143,6 +166,72 @@ export const api = {
       method: "POST",
       body: { current_password, new_password },
     }),
+
+  // ------------------------------------------------------- two-step sign-in
+
+  twoFactor: () => request<{ two_factor: TwoFactorStatus }>("/api/2fa"),
+
+  /** Begins enrolment. The secret is returned here and nowhere else, ever. */
+  startTwoFactor: () =>
+    request<{
+      secret: string;
+      secret_grouped: string;
+      uri: string;
+      qr_svg: string | null;
+      issuer: string;
+      account: string;
+    }>("/api/2fa/start", { method: "POST" }),
+
+  /** Confirms it with a code, and returns the recovery codes once. */
+  confirmTwoFactor: (code: string) =>
+    request<{ ok: true; recovery_codes: string[]; two_factor: TwoFactorStatus }>(
+      "/api/2fa/confirm",
+      { method: "POST", body: { code } },
+    ),
+
+  newRecoveryCodes: (code: string) =>
+    request<{ ok: true; recovery_codes: string[] }>("/api/2fa/recovery-codes", {
+      method: "POST",
+      body: { code },
+    }),
+
+  disableTwoFactor: (code: string) =>
+    request<{ ok: true; two_factor: TwoFactorStatus }>("/api/2fa/disable", {
+      method: "POST",
+      body: { code },
+    }),
+
+  twoFactorOverview: () =>
+    request<{
+      policy: string;
+      outstanding: number;
+      people: Array<{
+        id: string;
+        full_name: string;
+        email: string;
+        role: Role;
+        enabled: boolean;
+        required: boolean;
+        confirmed_at: string | null;
+        recovery_remaining: number;
+      }>;
+    }>("/api/2fa/overview"),
+
+  setTwoFactorPolicy: (minimum: string) =>
+    request<{
+      policy: string;
+      covered_grades: Role[];
+      not_yet_enrolled: number;
+      applies_to_self: boolean;
+    }>("/api/2fa/policy", { method: "PUT", body: { minimum } }),
+
+  resetTwoFactorFor: (userId: string) =>
+    request<{
+      ok: true;
+      was_enrolled: boolean;
+      must_enrol_again: boolean;
+      message: string;
+    }>(`/api/users/${userId}/2fa/reset`, { method: "POST" }),
 
   // ------------------------------------------------------------------ users
   users: (includeSuspended = false) =>
@@ -411,6 +500,62 @@ export const api = {
       "/api/email/test",
       { method: "POST" },
     ),
+
+  // ---------------------------------------------------------- who sees what
+
+  visibility: () => request<{ visibility: Visibility }>("/api/visibility"),
+
+  setVisibility: (input: Visibility) =>
+    request<{ visibility: Visibility; changed_by: string }>("/api/visibility", {
+      method: "PUT",
+      body: input,
+    }),
+
+  // ------------------------------------------------------------- erasing data
+
+  /** Counts what a period would remove. Changes nothing. */
+  erasePreview: (input: { from: string; to: string; scopes: EraseScope[] }) =>
+    request<{ preview: ErasePreview }>("/api/erase/preview", {
+      method: "POST",
+      body: input,
+    }),
+
+  /**
+   * Erases it. `expected_total` is the total the preview showed: the Worker refuses
+   * if the figure has moved, so a stale preview cannot authorise a bigger deletion.
+   */
+  erase: (input: {
+    from: string;
+    to: string;
+    scopes: EraseScope[];
+    reason: string;
+    confirm: string;
+    expected_total: number;
+  }) =>
+    request<{
+      erased: {
+        id: string;
+        range: { from: string; to: string };
+        removed: Record<string, number>;
+        total: number;
+      };
+    }>("/api/erase", { method: "POST", body: input }),
+
+  erasures: () =>
+    request<{
+      erasures: Array<{
+        id: string;
+        actor_name: string;
+        actor_email: string;
+        period_from: string;
+        period_to: string;
+        scopes: string;
+        removed: string;
+        total_removed: number;
+        reason: string;
+        created_at: string;
+      }>;
+    }>("/api/erasures"),
 
   intakeServices: () =>
     request<{ services: IntakeService[]; customised: boolean }>("/api/intake-services"),

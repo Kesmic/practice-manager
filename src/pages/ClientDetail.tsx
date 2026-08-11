@@ -59,12 +59,19 @@ export function ClientDetail() {
   }, [load]);
 
   useEffect(() => {
-    void Promise.all([api.users(), api.templates()])
-      .then(([userRes, templateRes]) => {
-        setUsers(userRes.users);
-        setTemplates(templateRes.templates);
-      })
-      .catch(() => undefined);
+  /*
+    Fetched independently rather than with Promise.all. Clients and job templates are
+    areas the firm can close to a grade, and one refusal in an all() takes the other
+    lists down with it, emptying lists the person is still entitled to.
+  */
+    void api
+      .users()
+      .then((res) => setUsers(res.users))
+      .catch(() => setUsers([]));
+    void api
+      .templates()
+      .then((res) => setTemplates(res.templates))
+      .catch(() => setTemplates([]));
   }, []);
 
   if (error && !client) return <ErrorBanner error={error} />;

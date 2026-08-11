@@ -8,7 +8,7 @@
  */
 
 import type { Env } from "../env";
-import { requireRole, requireUser } from "../auth";
+import { requireRole } from "../auth";
 import {
   assertExists,
   buildUpdate,
@@ -25,6 +25,8 @@ import {
   requireString,
 } from "../db";
 import { Router, badRequest, json, notFound, readJson } from "../http";
+import { notifyBatchAssignment } from "../email";
+import { readSettings, requireArea } from "./settings";
 import {
   MIN_SUPERVISOR_ROLE,
   PRIORITIES,
@@ -64,7 +66,7 @@ const MAX_GENERATED = 400;
 
 export function registerTemplateRoutes(router: Router<Env>): void {
   router.get("/api/templates", async ({ request, env, url }) => {
-    await requireUser(env, request);
+    await requireArea(env, request, "templates");
     const includeInactive = url.searchParams.get("include_inactive") === "1";
 
     const { results } = await env.DB.prepare(
@@ -150,7 +152,7 @@ export function registerTemplateRoutes(router: Router<Env>): void {
    * Idempotent per (client, title, period): re-running will not duplicate a job
    * that already exists, so a partly-failed run can simply be repeated.
    */
-  router.post("/api/templates/:id/generate", async ({ request, env, params }) => {
+  router.post("/api/templates/:id/generate", async ({ request, env, params, url, waitUntil }) => {
     const actor = await requireRole(env, request, MIN_SUPERVISOR_ROLE);
     const template = await env.DB.prepare(`SELECT * FROM task_templates WHERE id = ?`)
       .bind(params.id)
@@ -298,6 +300,18 @@ export function registerTemplateRoutes(router: Router<Env>): void {
         created.push({ id, ref, client: clientName, period: label });
       }
     }
+
+    // One message for the whole run rather than one per deliverable.
+    await notifyBatchAssignment(env, waitUntil, {
+      count: created.length,
+      what: `the "${template.name}" template`,
+      actorId: actor.id,
+      actorName: actor.full_name,
+      origin: url.origin,
+      firmName: (await readSettings(env)).firm_name,
+      assigneeId,
+      reviewerId,
+    });
 
     return json({ created, skipped }, created.length ? 201 : 200);
   });

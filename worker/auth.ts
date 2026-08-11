@@ -10,6 +10,10 @@
 import type { Env } from "./env";
 import { HttpError, forbidden, unauthorized } from "./http";
 import { atLeast, type Role } from "../shared/workflow";
+import {
+  isRequiredFor as twoFactorRequiredFor,
+  readPolicy as readTwoFactorPolicy,
+} from "../shared/twofactor";
 
 /**
  * The PBKDF2 work factor is a deployment setting rather than a constant, because
@@ -377,7 +381,10 @@ export function publicUser(user: AuthenticatedUser) {
 export async function requireUser(
   env: Env,
   request: Request,
-  { allowPasswordPending = false }: { allowPasswordPending?: boolean } = {},
+  {
+    allowPasswordPending = false,
+    allowTwoFactorPending = false,
+  }: { allowPasswordPending?: boolean; allowTwoFactorPending?: boolean } = {},
 ): Promise<AuthenticatedUser> {
   const user = await currentUser(env, request);
   if (!user) throw unauthorized();
@@ -386,7 +393,48 @@ export async function requireUser(
       "You are signed in with a temporary password. Set a new password before continuing.",
     );
   }
+
+  /*
+   * Someone whose grade obliges them to use a second factor, and who has not set one up,
+   * is confined to doing so, exactly as a temporary password confines them to choosing a
+   * new one. Confinement rather than refusal at sign-in: locking them out instead would
+   * mean the day a partner turns this on is the day nobody can work, including whoever
+   * would have to turn it back off.
+   *
+   * The check is one indexed lookup and only runs for grades the policy covers, so it
+   * costs nothing for the associates who are the bulk of the requests.
+   */
+  if (!allowTwoFactorPending && (await mustEnrolTwoFactor(env, user))) {
+    throw forbidden(
+      "Two-step sign-in is required at your grade. Set it up under My account before continuing.",
+    );
+  }
+
   return user;
+}
+
+/**
+ * Whether this person is obliged to have a second factor and has not confirmed one.
+ *
+ * Kept here rather than in twofactor.ts to avoid a cycle: the auth module is imported by
+ * everything, including the two-factor routes.
+ */
+async function mustEnrolTwoFactor(
+  env: Env,
+  user: AuthenticatedUser,
+): Promise<boolean> {
+  const setting = await env.DB.prepare(`SELECT value FROM settings WHERE key = ?`)
+    .bind("twofactor_min_role")
+    .first<{ value: string }>();
+  const policy = readTwoFactorPolicy(setting?.value);
+  if (!twoFactorRequiredFor(policy, user.role)) return false;
+
+  const row = await env.DB.prepare(
+    `SELECT confirmed_at FROM user_totp WHERE user_id = ?`,
+  )
+    .bind(user.id)
+    .first<{ confirmed_at: string | null }>();
+  return !row?.confirmed_at;
 }
 
 export async function requireRole(

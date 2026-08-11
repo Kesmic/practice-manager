@@ -14,6 +14,18 @@ import {
 } from "../auth";
 import { newId, nowIso, normaliseEmail, requireString } from "../db";
 import {
+  checkTotp,
+  consumeChallenge,
+  countFailure,
+  createChallenge,
+  isEnabled,
+  loadChallenge,
+  loadTotp,
+  pruneChallenges,
+  recoveryRemaining,
+  spendRecoveryCode,
+} from "../twofactor";
+import {
   HttpError,
   Router,
   badRequest,
@@ -24,6 +36,35 @@ import {
   unauthorized,
 } from "../http";
 import type { Role } from "../../shared/workflow";
+
+/**
+ * Creates the session and returns the signed-in user.
+ *
+ * Shared by the one-step and two-step paths so there is a single place where a session
+ * comes into existence, and no way to reach it without having got through whichever
+ * factors the account requires.
+ */
+async function finishLogin(
+  env: Env,
+  request: Request,
+  userId: string,
+  extra: Record<string, unknown> = {},
+): Promise<Response> {
+  await env.DB.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`)
+    .bind(nowIso(), userId)
+    .run();
+
+  const { cookie } = await createSession(env, userId, request.headers.get("User-Agent"));
+  const user = await env.DB.prepare(
+    `SELECT id, email, full_name, role, title, status, must_change_password,
+            email_notifications, created_at, last_login_at
+       FROM users WHERE id = ?`,
+  )
+    .bind(userId)
+    .first();
+
+  return json({ user, ...extra }, 200, { "Set-Cookie": cookie });
+}
 
 export function registerAuthRoutes(router: Router<Env>): void {
   /**
@@ -126,24 +167,105 @@ export function registerAuthRoutes(router: Router<Env>): void {
     }
 
     await pruneSessions(env);
-    await env.DB.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`)
-      .bind(nowIso(), row.id)
-      .run();
+    await pruneChallenges(env);
 
-    const { cookie } = await createSession(
-      env,
-      row.id,
-      request.headers.get("User-Agent"),
-    );
-    const user = await env.DB.prepare(
-      `SELECT id, email, full_name, role, title, status, must_change_password,
-              email_notifications, created_at, last_login_at
-         FROM users WHERE id = ?`,
-    )
-      .bind(row.id)
-      .first();
+    /*
+     * The password was right. If this account has a confirmed second factor, no session
+     * is created here and no cookie is sent: what comes back is a challenge, which is
+     * worth nothing on its own and expires in five minutes. Everything that follows
+     * needs the code as well.
+     */
+    if (await isEnabled(env, row.id)) {
+      const { token, expiresAt } = await createChallenge(
+        env,
+        row.id,
+        request.headers.get("User-Agent"),
+      );
+      const remaining = await recoveryRemaining(env, row.id);
+      return json({
+        user: null,
+        challenge: {
+          token,
+          expires_at: expiresAt,
+          methods: remaining > 0 ? ["totp", "recovery"] : ["totp"],
+          recovery_remaining: remaining,
+        },
+      });
+    }
 
-    return json({ user }, 200, { "Set-Cookie": cookie });
+    return finishLogin(env, request, row.id);
+  });
+
+  /**
+   * The second step: a code from the authenticator app, or a recovery code.
+   *
+   * Deliberately separate from the password step rather than a field on it. The browser
+   * has nothing that authenticates it between the two, which is the point: a stolen
+   * password gets as far as this endpoint and no further.
+   */
+  router.post("/api/auth/2fa", async ({ request, env }) => {
+    const body = await readJson<{
+      challenge?: unknown;
+      code?: unknown;
+      recovery_code?: unknown;
+    }>(request);
+
+    const challenge = await loadChallenge(env, body.challenge);
+    if (!challenge) {
+      throw unauthorized(
+        "That sign-in has expired or was not recognised. Enter your email and password again.",
+      );
+    }
+
+    const usingRecovery = typeof body.recovery_code === "string" && body.recovery_code.trim() !== "";
+
+    if (usingRecovery) {
+      const spent = await spendRecoveryCode(env, challenge.user_id, body.recovery_code);
+      if (!spent) {
+        const { exhausted, remaining } = await countFailure(env, challenge);
+        throw unauthorized(
+          exhausted
+            ? "That recovery code is not right, and there have been too many attempts. Enter your email and password again."
+            : `That recovery code is not right, or it has already been used. ${remaining} attempt(s) left.`,
+        );
+      }
+      await consumeChallenge(env, challenge);
+      const left = await recoveryRemaining(env, challenge.user_id);
+      return finishLogin(env, request, challenge.user_id, {
+        recovery_codes_remaining: left,
+        used_recovery_code: true,
+      });
+    }
+
+    const row = await loadTotp(env, challenge.user_id);
+    if (!row?.confirmed_at) {
+      // The enrolment was reset between the two steps. The password already succeeded,
+      // so let them in rather than stranding them at a step that no longer applies.
+      await consumeChallenge(env, challenge);
+      return finishLogin(env, request, challenge.user_id);
+    }
+
+    const result = await checkTotp(env, row, body.code);
+    if (!result.ok) {
+      const { exhausted, remaining } = await countFailure(env, challenge);
+      if (result.reason === "unreadable") {
+        throw unauthorized(
+          "This deployment can no longer read your secret, which happens if PASSWORD_PEPPER changed. Ask a Partner to reset your two-step sign-in.",
+        );
+      }
+      const detail =
+        result.reason === "replay"
+          ? "That code has already been used. Wait for the app to show the next one."
+          : "That code is not right. Check your phone's clock is set automatically.";
+      throw unauthorized(
+        exhausted
+          ? `${detail} There have been too many attempts, so enter your email and password again.`
+          : `${detail} ${remaining} attempt(s) left.`,
+      );
+    }
+
+    await consumeChallenge(env, challenge);
+    return finishLogin(env, request, challenge.user_id);
   });
 
   router.post("/api/auth/logout", async ({ request, env }) => {

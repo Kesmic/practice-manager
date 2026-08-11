@@ -3,7 +3,18 @@
 import type { Env } from "../env";
 import { requireRole, requireUser } from "../auth";
 import { nowIso, optionalString } from "../db";
-import { Router, badRequest, json, readJson } from "../http";
+import { Router, badRequest, forbidden, json, readJson } from "../http";
+import { ROLES, ROLE_LABELS, ROLE_RANK, type Role } from "../../shared/workflow";
+import {
+  AREAS,
+  AREA_SPECS,
+  DEFAULT_VISIBILITY,
+  type Area,
+  type Visibility,
+  canSeeArea,
+  readVisibility,
+  writeVisibility,
+} from "../../shared/visibility";
 import { MIN_HR_ADMIN_ROLE } from "../../shared/hr";
 import { emailDiagnosis, sendTestEmail } from "../email";
 
@@ -42,10 +53,20 @@ const DEFAULTS: Record<string, string> = {
    * validation is specific and a malformed list breaks a public page.
    */
   intake_services: "",
+  /**
+   * Which grades can see which areas, as JSON: {"reports":"senior_associate", ...}.
+   * Empty means the built-in defaults. Only what differs from the defaults is stored.
+   *
+   * Edited through /api/visibility rather than here, because it is enforced by the
+   * Worker and a malformed value must fail closed rather than be written.
+   */
+  nav_visibility: "",
 };
 
-/** Everything except the intake settings, which have their own endpoints. */
-const EDITABLE = Object.keys(DEFAULTS).filter((key) => !key.startsWith("intake_"));
+/** Everything except the settings that have their own, validating endpoints. */
+const EDITABLE = Object.keys(DEFAULTS).filter(
+  (key) => !key.startsWith("intake_") && key !== "nav_visibility",
+);
 
 /**
  * The subset of settings that describe how the portal looks. These are readable
@@ -119,7 +140,80 @@ export async function readSettings(env: Env): Promise<Record<string, string>> {
   return out;
 }
 
+/**
+ * The configured visibility map, or the defaults.
+ *
+ * Read on the request rather than cached: a settings row is one indexed lookup, and a
+ * permission that takes effect only after a redeploy is not a permission anyone can
+ * rely on.
+ */
+export async function readVisibilitySetting(env: Env): Promise<Visibility> {
+  const row = await env.DB.prepare(`SELECT value FROM settings WHERE key = ?`)
+    .bind("nav_visibility")
+    .first<{ value: string }>();
+  return readVisibility(row?.value);
+}
+
+/**
+ * Requires that the caller's grade has been granted an area.
+ *
+ * This is the half that makes the setting real. Hiding a sidebar link while the
+ * endpoint behind it still answers would be a decoration, not a permission.
+ */
+export async function requireArea(
+  env: Env,
+  request: Request,
+  area: Area,
+): Promise<Awaited<ReturnType<typeof requireUser>>> {
+  const actor = await requireUser(env, request);
+  const visibility = await readVisibilitySetting(env);
+  if (!canSeeArea(visibility, area, actor.role)) {
+    throw forbidden(
+      `${AREA_SPECS[area].label} is not open to ${ROLE_LABELS[actor.role]} grade in this firm. ` +
+        `A Partner can change that under Portal settings, Who sees what.`,
+    );
+  }
+  return actor;
+}
+
 export function registerSettingsRoutes(router: Router<Env>): void {
+  /**
+   * Who sees what. Readable by any signed-in user, because the sidebar needs it to
+   * decide what to draw, and it describes their own access rather than anyone else's.
+   */
+  router.get("/api/visibility", async ({ request, env }) => {
+    await requireUser(env, request);
+    return json({ visibility: await readVisibilitySetting(env) });
+  });
+
+  router.put("/api/visibility", async ({ request, env }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<Record<string, unknown>>(request);
+
+    const next: Visibility = { ...DEFAULT_VISIBILITY };
+    for (const area of AREAS) {
+      const value = body[area];
+      if (value === undefined) continue;
+      if (typeof value !== "string" || !ROLES.includes(value as Role)) {
+        throw badRequest(`"${String(value)}" is not a grade.`);
+      }
+      const role = value as Role;
+      // Refused rather than silently clamped: a Partner who tries to open personnel
+      // information to Associates should be told why they cannot, not left believing
+      // they did.
+      if (ROLE_RANK[role] < ROLE_RANK[AREA_SPECS[area].floor]) {
+        throw badRequest(
+          `${AREA_SPECS[area].label} cannot be opened below ${ROLE_LABELS[AREA_SPECS[area].floor]} grade. ` +
+            (AREA_SPECS[area].floorReason ?? ""),
+        );
+      }
+      next[area] = role;
+    }
+
+    await writeSetting(env, "nav_visibility", writeVisibility(next), actor.id);
+    return json({ visibility: next, changed_by: actor.full_name });
+  });
+
   /**
    * Logo and colours, with no sign-in required, so the sign-in page can already
    * be the firm's own. Deliberately a separate endpoint rather than relaxing

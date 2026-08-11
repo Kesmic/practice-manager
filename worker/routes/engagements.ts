@@ -1,5 +1,5 @@
 import type { Env } from "../env";
-import { requireRole, requireUser } from "../auth";
+import { requireRole } from "../auth";
 import {
   assertExists,
   buildUpdate,
@@ -15,6 +15,7 @@ import {
   requireString,
 } from "../db";
 import { Router, badRequest, json, notFound, readJson } from "../http";
+import { requireArea } from "./settings";
 import {
   ENGAGEMENT_STATUSES,
   MIN_SUPERVISOR_ROLE,
@@ -23,7 +24,7 @@ import {
 
 export function registerEngagementRoutes(router: Router<Env>): void {
   router.get("/api/engagements", async ({ request, env, url }) => {
-    await requireUser(env, request);
+    await requireArea(env, request, "engagements");
 
     const filters: string[] = [];
     const binds: unknown[] = [];

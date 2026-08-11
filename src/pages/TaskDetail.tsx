@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { ReviewPoint, TaskDetail as TaskDetailData } from "@shared/types";
+import type { ReviewPoint, TaskDetail as TaskDetailData, User } from "@shared/types";
 import {
+  MIN_REVIEWER_ROLE,
   PRIORITY_LABELS,
   REVIEW_SEVERITIES,
+  ROLE_LABELS,
   SEVERITY_LABELS,
   SERVICE_LINE_LABELS,
   STATUS_LABELS,
+  atLeast,
   availableActions,
   can,
   isDisposed,
@@ -47,7 +50,7 @@ type Tab = "review" | "checklist" | "documents" | "time" | "discussion" | "activ
 
 export function TaskDetail() {
   const { id = "" } = useParams();
-  const { user } = useSession();
+  const { user, can: hasGrade } = useSession();
 
   const [data, setData] = useState<TaskDetailData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +58,7 @@ export function TaskDetail() {
   const [tab, setTab] = useState<Tab>("review");
   const [pendingAction, setPendingAction] = useState<TransitionRule | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reassigning, setReassigning] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -283,7 +287,18 @@ export function TaskDetail() {
         {/* ---------------------------------------------------------- sidebar */}
         <div className="space-y-5">
           <div className="card p-4">
-            <h2 className="card-title mb-2">Assignment</h2>
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <h2 className="card-title">Assignment</h2>
+              {hasGrade("manager") && (
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={() => setReassigning(true)}
+                >
+                  Change
+                </button>
+              )}
+            </div>
             <dl className="divide-y divide-slate-100">
               <DetailRow label="Preparer">
                 {task.assignee_name ? (
@@ -296,7 +311,18 @@ export function TaskDetail() {
                 )}
               </DetailRow>
               <DetailRow label="Reviewer">
-                {task.reviewer_name ?? <span className="text-slate-400">Not named</span>}
+                {task.reviewer_name ?? (
+                  /*
+                    Worth saying out loud rather than greying out: submitted work
+                    with no reviewer named waits in a queue of its own, and a
+                    reader of this page is often the person who should claim it.
+                  */
+                  <span className="text-amber-700">
+                    Not named
+                    {(task.status === "submitted" || task.status === "under_review") &&
+                      ", so nobody has been asked to review it"}
+                  </span>
+                )}
               </DetailRow>
               <DetailRow label="Priority">{PRIORITY_LABELS[task.priority]}</DetailRow>
             </dl>
@@ -354,7 +380,149 @@ export function TaskDetail() {
         onCancel={() => setPendingAction(null)}
         onConfirm={(note) => pendingAction && void runAction(pendingAction, note)}
       />
+
+      <AssignmentModal
+        open={reassigning}
+        task={task}
+        onClose={() => setReassigning(false)}
+        onSaved={(message) => {
+          setNotice(message);
+          void load();
+        }}
+      />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Naming the preparer and the reviewer after the fact
+// ---------------------------------------------------------------------------
+
+/**
+ * Both people can be left unnamed when a deliverable is raised, so both have to
+ * be nameable later. Without this the reviewer was fixed at creation for good:
+ * work could be submitted to nobody, and no screen could put that right.
+ */
+function AssignmentModal({
+  open,
+  task,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  task: TaskDetailData["task"];
+  onClose: () => void;
+  onSaved: (message: string) => void;
+}) {
+  const [users, setUsers] = useState<User[]>([]);
+  const [assignee, setAssignee] = useState(task.assignee_id ?? "");
+  const [reviewer, setReviewer] = useState(task.reviewer_id ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setAssignee(task.assignee_id ?? "");
+    setReviewer(task.reviewer_id ?? "");
+    setError(null);
+    void api
+      .users()
+      .then((res) => setUsers(res.users))
+      .catch(() => setError("Could not load the list of people."));
+  }, [open, task.assignee_id, task.reviewer_id]);
+
+  const reviewers = useMemo(
+    () => users.filter((u) => atLeast(u.role, MIN_REVIEWER_ROLE) && u.id !== assignee),
+    [users, assignee],
+  );
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.updateTask(task.id, {
+        assignee_id: assignee || null,
+        reviewer_id: reviewer || null,
+      });
+      onSaved("Assignment updated. Anyone newly put on this work has been told.");
+      onClose();
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError
+          ? [err.message, err.detail].filter(Boolean).join(" ")
+          : "Could not change the assignment.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Change the assignment"
+      footer={
+        <>
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={busy}
+            onClick={() => void save()}
+          >
+            {busy ? "Saving..." : "Save"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <ErrorBanner error={error} onDismiss={() => setError(null)} />
+        <Field label="Preparer">
+          {(id) => (
+            <Select
+              id={id}
+              value={assignee}
+              onChange={(e) => {
+                const next = e.target.value;
+                setAssignee(next);
+                // Nobody reviews their own work, so a collision clears the
+                // reviewer rather than being left to fail on save.
+                if (next && next === reviewer) setReviewer("");
+              }}
+            >
+              <option value="">Unassigned</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name} - {ROLE_LABELS[u.role]}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field
+          label="Reviewer"
+          hint="Senior Associate grade or above, and never the preparer."
+        >
+          {(id) => (
+            <Select id={id} value={reviewer} onChange={(e) => setReviewer(e.target.value)}>
+              <option value="">Nobody yet</option>
+              {reviewers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name} - {ROLE_LABELS[u.role]}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <p className="muted">
+          Whoever is newly named here is emailed and gets a portal notification, the
+          same as when work is first assigned.
+        </p>
+      </div>
+    </Modal>
   );
 }
 

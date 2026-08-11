@@ -64,17 +64,26 @@ export function Tasks() {
     void load();
   }, [load]);
 
-  // Reference data for the filter bar and the create form.
+  /*
+    Reference data for the filter bar and the create form, fetched independently.
+    Settled rather than all: clients and job templates are areas the firm can close
+    to a grade, and with Promise.all a single refusal took the other two lists down
+    with it, so someone who had lost Clients also lost the assignee filter on a page
+    they still had. Each list now degrades on its own.
+  */
   useEffect(() => {
-    void Promise.all([api.clients(), api.users(), api.templates()])
-      .then(([clientRes, userRes, templateRes]) => {
-        setClients(clientRes.clients);
-        setUsers(userRes.users);
-        setTemplates(templateRes.templates);
-      })
-      .catch(() => {
-        /* Filters degrade to text search if reference data fails to load. */
-      });
+    void api
+      .clients()
+      .then((res) => setClients(res.clients))
+      .catch(() => setClients([]));
+    void api
+      .users()
+      .then((res) => setUsers(res.users))
+      .catch(() => setUsers([]));
+    void api
+      .templates()
+      .then((res) => setTemplates(res.templates))
+      .catch(() => setTemplates([]));
   }, []);
 
   useEffect(() => {
