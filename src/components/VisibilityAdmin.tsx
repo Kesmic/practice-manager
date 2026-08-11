@@ -105,6 +105,11 @@ export function VisibilityAdmin({
                       <p className="muted mt-1 italic">{spec.floorReason}</p>
                     )}
                   </div>
+                  {/*
+                    Every area gets a control. The floor only stops it being opened
+                    further down; closing an area is always the firm's call, so an area
+                    already at its floor still offers every stricter grade above it.
+                  */}
                   <div className="w-56 shrink-0">
                     {fixed ? (
                       <p className="text-sm text-slate-500">

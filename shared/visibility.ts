@@ -11,8 +11,9 @@
  * an Associate cannot be made a reviewer, and pay is Partner business. Those are not
  * preferences, they are the reason a review file is worth anything, so they are not
  * on this screen and cannot be reached from it. Each area below carries a `floor`: the
- * lowest grade the firm is allowed to open it to. Where the floor equals the default
- * the area is fixed, and it is shown as fixed rather than quietly ignored.
+ * lowest grade the firm is allowed to open it to. The floor is a lower bound only.
+ * Tightening is always allowed, because a firm that does not want Associates reading the
+ * client list is entitled to say so.
  *
  * **It is not only about the sidebar.** Hiding a link while the endpoint behind it
  * still answers is not a permission, it is a decoration. The Worker reads this same
@@ -39,8 +40,8 @@ export interface AreaSpec {
   /** Applied when the firm has never changed it. */
   defaultMin: Role;
   /**
-   * The lowest grade this may ever be opened to. Where it equals `defaultMin` the
-   * area cannot be loosened at all, only tightened.
+   * The lowest grade this may ever be opened to. A lower bound only: the firm may set
+   * anything at or above it, including grades stricter than the default.
    */
   floor: Role;
   /** Why the floor is where it is. Shown next to the control. */
@@ -74,7 +75,7 @@ export const AREA_SPECS: Record<Area, AreaSpec> = {
     defaultMin: "manager",
     floor: "senior_associate",
     floorReason:
-      "An enquiry carries a stranger's contact details and their description of their affairs, so it needs at least Senior Associate judgement.",
+      "Cannot be opened below Senior Associate: an enquiry carries a stranger's contact details and their description of their affairs.",
   },
   reports: {
     label: "Reports",
@@ -83,7 +84,7 @@ export const AREA_SPECS: Record<Area, AreaSpec> = {
     defaultMin: "manager",
     floor: "senior_associate",
     floorReason:
-      "These figures compare colleagues with each other. Opening them below Senior Associate rarely ends well.",
+      "Cannot be opened below Senior Associate: these figures compare colleagues with each other.",
   },
   people: {
     label: "People",
@@ -92,7 +93,7 @@ export const AREA_SPECS: Record<Area, AreaSpec> = {
     defaultMin: "manager",
     floor: "manager",
     floorReason:
-      "Personnel information stays with those who manage people. This one cannot be loosened.",
+      "Cannot be opened below Manager: personnel information stays with those who manage people.",
   },
 };
 
@@ -103,15 +104,29 @@ export const DEFAULT_VISIBILITY: Record<Area, Role> = Object.fromEntries(
 
 export type Visibility = Record<Area, Role>;
 
-/** Whether an area can be loosened at all, or only tightened. */
-export function isFixed(area: Area): boolean {
-  return AREA_SPECS[area].floor === AREA_SPECS[area].defaultMin;
-}
-
-/** The grades the firm may choose from for an area, lowest first. */
+/**
+ * The grades the firm may choose from for an area, lowest first.
+ *
+ * The floor is a lower bound only. Tightening is always allowed: a firm that does not
+ * want Associates reading the client list is entitled to say so, and refusing that
+ * would make the screen a list of things it will not do.
+ */
 export function choicesFor(area: Area): Role[] {
   const floor = ROLE_RANK[AREA_SPECS[area].floor];
   return ROLES.filter((role) => ROLE_RANK[role] >= floor);
+}
+
+/**
+ * Whether there is any choice to offer. Only true for an area whose floor is the top
+ * grade, which none currently is, so this is a guard rather than a live case.
+ */
+export function isFixed(area: Area): boolean {
+  return choicesFor(area).length <= 1;
+}
+
+/** Whether an area is already as open as the firm is allowed to make it. */
+export function atFloor(area: Area, visibility: Visibility): boolean {
+  return visibility[area] === AREA_SPECS[area].floor;
 }
 
 /**
