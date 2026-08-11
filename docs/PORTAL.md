@@ -19,7 +19,7 @@ on **My onboarding**, which shows:
    documents they owe a response to, and whether their personal details are
    complete.
 2. **The welcome message from the Managing Director** - markdown, edited in
-   Portal administration, signed with the MD's name and title.
+   Portal settings, signed with the MD's name and title.
 3. **Documents to read and sign** - their contract first, then handbook policies.
 4. **Their personal details** - with a direct list of what is still missing.
 5. **Their own steps** - tickable.
@@ -139,7 +139,7 @@ delay that is often the firm's. If you want a hard block, the place to add it is
 | My details | `/my-profile` | Everyone |
 | People directory and onboarding progress | `/people` | Manager and above |
 | Personnel file | `/people/:id` | Self, manager, HR - by section |
-| Handbook and welcome authoring | `/portal-admin` | Partner and above |
+| Portal settings: handbook, welcome, logo, email | `/portal-admin` | Partner and above |
 | Accounts and grades | `/team` | Partner and above |
 
 ---

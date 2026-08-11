@@ -259,7 +259,8 @@ if it lands there, the SPF or the domain verification is not right yet.
 
 ## The portal will tell you what is wrong
 
-**Portal administration → Email**, at Partner grade. It reads the settings from the
+**Email notifications** in the sidebar, under Administration, at Partner grade. It
+is also the last tab of **Portal settings**. It reads the settings from the
 running system rather than from what anyone believes is set, and it shows:
 
 - whether email is configured at all

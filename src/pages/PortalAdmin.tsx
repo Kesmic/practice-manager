@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { FirmSettings, PortalDocument, User } from "@shared/types";
 import {
   DOCUMENT_KINDS,
@@ -30,35 +30,53 @@ import { formatDate } from "../lib/format";
 
 type Tab = "documents" | "welcome" | "appearance" | "email";
 
+const TABS: Array<[Tab, string]> = [
+  ["documents", "Documents and handbook"],
+  ["welcome", "Welcome message and firm details"],
+  ["appearance", "Logo and colours"],
+  ["email", "Email notifications"],
+];
+
+const DEFAULT_TAB: Tab = "documents";
+
 /** Authoring surface for the handbook, contracts and the welcome message. */
 export function PortalAdmin() {
-  const [tab, setTab] = useState<Tab>("documents");
+  /*
+    The open tab lives in the address rather than in component state, so the
+    sidebar can link straight to one, and so a link to a particular tab survives
+    being bookmarked or pasted to a colleague.
+  */
+  const [params, setParams] = useSearchParams();
+  const asked = params.get("tab");
+  const tab: Tab = TABS.some(([key]) => key === asked) ? (asked as Tab) : DEFAULT_TAB;
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  const openTab = (key: Tab) => {
+    const next = new URLSearchParams(params);
+    if (key === DEFAULT_TAB) next.delete("tab");
+    else next.set("tab", key);
+    setParams(next, { replace: true });
+    setError(null);
+    setNotice(null);
+  };
 
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="section-title">Portal administration</h1>
+        <h1 className="section-title">Portal settings</h1>
         <p className="muted mt-0.5">
-          The handbook, contracts, the welcome message new joiners see first, and how
-          the portal looks.
+          The handbook, contracts, the welcome message new joiners see first, how the
+          portal looks, and whether it sends email.
         </p>
       </div>
 
-      <div className="flex gap-1 border-b border-slate-200">
-        {(
-          [
-            ["documents", "Documents and handbook"],
-            ["welcome", "Welcome message and firm details"],
-            ["appearance", "Logo and colours"],
-            ["email", "Email"],
-          ] as Array<[Tab, string]>
-        ).map(([key, label]) => (
+      <div className="flex flex-wrap gap-1 border-b border-slate-200">
+        {TABS.map(([key, label]) => (
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
+            onClick={() => openTab(key)}
             className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
               tab === key
                 ? "border-brand-600 text-link"
