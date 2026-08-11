@@ -366,7 +366,7 @@ staff until you say so.
 
 ### Review the handbook
 
-Sign in and go to **Handbook and welcome**.
+Sign in and go to **Portal settings → Documents and handbook**.
 
 Ten policies are waiting there marked **Draft**: conduct and ethics, client
 confidentiality, independence and conflicts of interest, anti-money laundering,
@@ -387,7 +387,7 @@ individually.
 
 ### Write your welcome message
 
-**Handbook and welcome → Welcome message and firm details.**
+**Portal settings → Welcome message and firm details.**
 
 There is a draft there, but it will read far better in your own words. Add your
 name so it is signed properly. This is the first thing every new joiner reads.

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ROLE_LABELS } from "@shared/workflow";
 import { useSession } from "../lib/auth";
 import { FirmLogo, FirmName } from "../lib/firm";
@@ -9,6 +9,12 @@ import { Avatar } from "./ui";
 interface NavItem {
   to: string;
   label: string;
+  /**
+   * Opens a particular tab of a multi-tab page. Two entries may point at the
+   * same route this way: settings pages collect several jobs behind tabs, and a
+   * job nobody can name from the sidebar is a job nobody finds.
+   */
+  tab?: string;
   /** Minimum grade required to see the item. */
   minimum?: "manager" | "partner";
   /** Heading the item sits under in the sidebar. */
@@ -37,7 +43,14 @@ const NAV: NavItem[] = [
   { to: "/team", label: "Accounts and grades", minimum: "partner", section: "Administration" },
   {
     to: "/portal-admin",
-    label: "Handbook and welcome",
+    label: "Portal settings",
+    minimum: "partner",
+    section: "Administration",
+  },
+  {
+    to: "/portal-admin",
+    tab: "email",
+    label: "Email notifications",
     minimum: "partner",
     section: "Administration",
   },
@@ -46,9 +59,29 @@ const NAV: NavItem[] = [
 export function Layout() {
   const { user, unread, signOut, can } = useSession();
   const navigate = useNavigate();
+  const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const visible = NAV.filter((item) => !item.minimum || can(item.minimum));
+
+  const openTab = new URLSearchParams(location.search).get("tab");
+  const href = (item: NavItem) => (item.tab ? `${item.to}?tab=${item.tab}` : item.to);
+  /**
+   * Which entry to light up. A path match alone is not enough, because two
+   * entries can share a route: there the tab decides, the entry naming the open
+   * tab wins, and the plain entry owns every other tab. This is why the sidebar
+   * uses Link rather than NavLink, whose own matching looks at the path only.
+   */
+  const isCurrent = (item: NavItem) => {
+    const onPath =
+      item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
+    if (!onPath) return false;
+    const siblings = NAV.filter((other) => other.to === item.to);
+    if (siblings.length < 2) return true;
+    return item.tab
+      ? item.tab === openTab
+      : !siblings.some((other) => other.tab && other.tab === openTab);
+  };
   // Preserve the declared section order rather than relying on object key order.
   const sections = ["Work", "My portal", "Administration"].filter((section) =>
     visible.some((item) => item.section === section),
@@ -88,21 +121,19 @@ export function Layout() {
               {visible
                 .filter((item) => item.section === section)
                 .map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.to === "/"}
+                  <Link
+                    key={href(item)}
+                    to={href(item)}
                     onClick={() => setMenuOpen(false)}
-                    className={({ isActive }) =>
-                      `block rounded-md px-3 py-2 text-sm transition-colors ${
-                        isActive
-                          ? "bg-panel/15 font-semibold text-white"
-                          : "text-white/80 hover:bg-panel/10 hover:text-white"
-                      }`
-                    }
+                    aria-current={isCurrent(item) ? "page" : undefined}
+                    className={`block rounded-md px-3 py-2 text-sm transition-colors ${
+                      isCurrent(item)
+                        ? "bg-panel/15 font-semibold text-white"
+                        : "text-white/80 hover:bg-panel/10 hover:text-white"
+                    }`}
                   >
                     {item.label}
-                  </NavLink>
+                  </Link>
                 ))}
             </div>
           ))}

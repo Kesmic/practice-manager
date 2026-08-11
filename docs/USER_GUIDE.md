@@ -479,7 +479,7 @@ HR, and their onboarding page comes to life.
 
 ### The handbook and the welcome
 
-**Handbook and welcome** is where you author what staff read.
+**Portal settings** is where you author what staff read.
 
 Ten policies ship as **drafts**: conduct and ethics, client confidentiality,
 independence and conflicts, anti-money laundering, IT security, leave, working
