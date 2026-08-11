@@ -25,6 +25,7 @@ import { registerReviewRoutes } from "./routes/reviews";
 import { registerSettingsRoutes } from "./routes/settings";
 import { registerTaskItemRoutes } from "./routes/task-items";
 import { registerTaskRoutes } from "./routes/tasks";
+import { registerTwoFactorRoutes } from "./routes/twofactor";
 import { registerTemplateRoutes } from "./routes/templates";
 import { registerUserRoutes } from "./routes/users";
 import { registerWorkflowRoutes } from "./routes/workflow";
@@ -55,6 +56,7 @@ registerEmployeeRoutes(router);
 registerDocumentRoutes(router);
 registerSettingsRoutes(router);
 registerEraseRoutes(router);
+registerTwoFactorRoutes(router);
 
 /**
  * Serves a static file, falling back to the app shell so that client-side routes

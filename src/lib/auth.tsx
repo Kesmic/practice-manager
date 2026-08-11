@@ -17,13 +17,23 @@ import {
   type Area,
   type Visibility,
 } from "@shared/visibility";
-import { api } from "./api";
+import { api, type LoginChallenge } from "./api";
 
 interface SessionState {
   user: User | null;
   loading: boolean;
   unread: number;
-  signIn: (email: string, password: string) => Promise<void>;
+  /**
+   * The password step. Resolves to a challenge when the account has a second factor, in
+   * which case nothing is signed in yet and `completeSignIn` has to follow.
+   */
+  signIn: (email: string, password: string) => Promise<LoginChallenge | null>;
+  /** The second step. */
+  completeSignIn: (input: {
+    challenge: string;
+    code?: string;
+    recovery_code?: string;
+  }) => Promise<{ recovery_codes_remaining?: number; used_recovery_code?: boolean }>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   setUnread: (count: number) => void;
@@ -74,8 +84,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { user: signedIn } = await api.login(email, password);
+  /** Shared tail of both sign-in paths: pick up what the session needs. */
+  const settle = useCallback(async (signedIn: User) => {
     setUser(signedIn);
     try {
       const { visibility: configured } = await api.visibility();
@@ -83,7 +93,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch {
       setVisibility(DEFAULT_VISIBILITY);
     }
-    // Pick up the notification count for the newly signed-in user.
     try {
       const session = await api.session();
       setUnread(session.unread_notifications ?? 0);
@@ -91,6 +100,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setUnread(0);
     }
   }, []);
+
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      const result = await api.login(email, password);
+      // A challenge means the password was right and nothing is signed in yet.
+      if (!result.user) return result.challenge ?? null;
+      await settle(result.user);
+      return null;
+    },
+    [settle],
+  );
+
+  const completeSignIn = useCallback(
+    async (input: { challenge: string; code?: string; recovery_code?: string }) => {
+      const result = await api.completeLogin(input);
+      await settle(result.user);
+      return {
+        recovery_codes_remaining: result.recovery_codes_remaining,
+        used_recovery_code: result.used_recovery_code,
+      };
+    },
+    [settle],
+  );
 
   const signOut = useCallback(async () => {
     try {
@@ -107,13 +139,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       loading,
       unread,
       signIn,
+      completeSignIn,
       signOut,
       refresh,
       setUnread,
       can: (minimum: Role) => (user ? atLeast(user.role, minimum) : false),
       canSee: (area: Area) => (user ? canSeeArea(visibility, area, user.role) : false),
     }),
-    [user, loading, unread, signIn, signOut, refresh, visibility],
+    [user, loading, unread, signIn, completeSignIn, signOut, refresh, visibility],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

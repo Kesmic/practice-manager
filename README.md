@@ -164,7 +164,7 @@ src/                 the React app (TypeScript, Vite, Tailwind)
 migrations/          D1 schema, seeded job templates and seeded handbook,
                      applied by CI
 scripts/             build-worker.mjs - bundles the Worker to dist/_worker.js
-docs/                user guide, deployment, custom domain, email,
+docs/                user guide, deployment, custom domain, email, two-step sign-in,
                      workflow and portal documentation
 ```
 

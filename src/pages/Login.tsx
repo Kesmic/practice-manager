@@ -21,7 +21,7 @@
 
 import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { ApiRequestError } from "../lib/api";
+import { ApiRequestError, type LoginChallenge } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { FirmLogo, FirmName, useFirm } from "../lib/firm";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -44,7 +44,7 @@ const ASSURANCES = [
 ];
 
 export function Login() {
-  const { user, loading, signIn } = useSession();
+  const { user, loading, signIn, completeSignIn } = useSession();
   const { branding } = useFirm();
   const navigate = useNavigate();
   const location = useLocation();
@@ -55,6 +55,14 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showReset, setShowReset] = useState(false);
+  /*
+    The half-finished sign-in. While this is set the password is already accepted and
+    nothing is signed in: the form swaps to asking for a code. Kept in component state
+    rather than anywhere persistent, so closing the tab abandons it.
+  */
+  const [challenge, setChallenge] = useState<LoginChallenge | null>(null);
+  const [code, setCode] = useState("");
+  const [useRecovery, setUseRecovery] = useState(false);
 
   if (loading) return <Spinner label="Checking your session" />;
   if (user) {
@@ -67,7 +75,14 @@ export function Login() {
     setBusy(true);
     setError(null);
     try {
-      await signIn(email, password);
+      const next = await signIn(email, password);
+      if (next) {
+        // Password accepted, second factor still to come.
+        setChallenge(next);
+        setUseRecovery(false);
+        setCode("");
+        return;
+      }
       navigate("/", { replace: true });
     } catch (err) {
       setError(
@@ -76,6 +91,47 @@ export function Login() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const submitCode = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!challenge) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await completeSignIn({
+        challenge: challenge.token,
+        ...(useRecovery ? { recovery_code: code } : { code }),
+      });
+      if (result.used_recovery_code) {
+        // Said here rather than after landing, because it is the one moment the person
+        // is thinking about their recovery codes.
+        window.sessionStorage.setItem(
+          "kpm_recovery_notice",
+          String(result.recovery_codes_remaining ?? 0),
+        );
+      }
+      navigate("/", { replace: true });
+    } catch (err) {
+      const message =
+        err instanceof ApiRequestError ? err.message : "That did not work. Try again.";
+      setError(message);
+      setCode("");
+      // Too many attempts, or an expired challenge: back to the password.
+      if (err instanceof ApiRequestError && /email and password again/.test(message)) {
+        setChallenge(null);
+        setPassword("");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startOver = () => {
+    setChallenge(null);
+    setCode("");
+    setError(null);
+    setPassword("");
   };
 
   return (
@@ -154,6 +210,87 @@ export function Login() {
         </div>
 
         <div className="mx-auto w-full max-w-sm">
+          {challenge ? (
+            <>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                One more step
+              </h1>
+              <p className="muted mt-1">
+                {useRecovery
+                  ? "Enter one of the recovery codes you saved when you set this up."
+                  : "Enter the six-digit code from your authenticator app."}
+              </p>
+
+              <form onSubmit={submitCode} className="mt-7 space-y-4" noValidate>
+                <ErrorBanner error={error} onDismiss={() => setError(null)} />
+
+                <Field
+                  label={useRecovery ? "Recovery code" : "Six-digit code"}
+                  required
+                  hint={
+                    useRecovery
+                      ? "Each one works once. Case and the hyphen do not matter."
+                      : "The code changes every thirty seconds."
+                  }
+                >
+                  {(id) => (
+                    <TextInput
+                      id={id}
+                      // A numeric keypad for the app code, plain text for a recovery
+                      // code, which has letters in it.
+                      inputMode={useRecovery ? "text" : "numeric"}
+                      autoComplete={useRecovery ? "off" : "one-time-code"}
+                      autoFocus
+                      required
+                      spellCheck={false}
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      placeholder={useRecovery ? "ABCDE-FGHJK" : "123456"}
+                      className="input text-center text-lg tracking-[0.3em]"
+                    />
+                  )}
+                </Field>
+
+                <button type="submit" className="btn-primary w-full py-2.5" disabled={busy}>
+                  {busy ? "Checking..." : "Sign in"}
+                </button>
+
+                <div className="space-y-2 text-center text-xs text-slate-500">
+                  {challenge.methods.includes("recovery") && (
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => {
+                        setUseRecovery((on) => !on);
+                        setCode("");
+                        setError(null);
+                      }}
+                    >
+                      {useRecovery
+                        ? "Use the code from my app instead"
+                        : "I do not have my phone"}
+                    </button>
+                  )}
+                  {useRecovery && challenge.recovery_remaining > 0 && (
+                    <p>
+                      {challenge.recovery_remaining} recovery code(s) left. Each one works
+                      once.
+                    </p>
+                  )}
+                  {!challenge.methods.includes("recovery") && (
+                    <p>
+                      You have no recovery codes left. If you cannot produce a code, a
+                      Partner can reset your two-step sign-in.
+                    </p>
+                  )}
+                  <button type="button" className="link" onClick={startOver}>
+                    Start again
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Sign in</h1>
           <p className="muted mt-1">Use the work email address the firm set up for you.</p>
 
@@ -231,6 +368,8 @@ export function Login() {
               )}
             </div>
           </form>
+            </>
+          )}
 
           <p className="mt-10 border-t border-slate-200 pt-5 text-xs leading-relaxed text-slate-500">
             Accounts are issued by the firm - there is nothing to sign up for. If you are

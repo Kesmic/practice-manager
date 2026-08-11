@@ -14,6 +14,7 @@ import { deriveLightInk, whyNotDerivable } from "../lib/logo";
 import { useFirm } from "../lib/firm";
 import { EraseAdmin } from "../components/EraseAdmin";
 import { Markdown } from "../components/Markdown";
+import { SignInSecurityAdmin } from "../components/SignInSecurityAdmin";
 import { VisibilityAdmin } from "../components/VisibilityAdmin";
 import {
   DetailRow,
@@ -36,6 +37,7 @@ type Tab =
   | "appearance"
   | "email"
   | "visibility"
+  | "signin"
   | "erase";
 
 const TABS: Array<[Tab, string]> = [
@@ -44,6 +46,7 @@ const TABS: Array<[Tab, string]> = [
   ["appearance", "Logo and colours"],
   ["email", "Email notifications"],
   ["visibility", "Who sees what"],
+  ["signin", "Sign-in security"],
   ["erase", "Erase data"],
 ];
 
@@ -109,6 +112,8 @@ export function PortalAdmin() {
         <EmailAdmin setError={setError} setNotice={setNotice} />
       ) : tab === "visibility" ? (
         <VisibilityAdmin setError={setError} setNotice={setNotice} />
+      ) : tab === "signin" ? (
+        <SignInSecurityAdmin setError={setError} setNotice={setNotice} />
       ) : tab === "erase" ? (
         <EraseAdmin setError={setError} setNotice={setNotice} />
       ) : (

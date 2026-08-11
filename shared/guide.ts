@@ -68,6 +68,69 @@ You can turn your own email off under **My account** without affecting the inbox
   },
 
   {
+    id: "two-step",
+    title: "Two-step sign-in",
+    summary: "Setting up the code from your phone, and what to do if you lose it.",
+    body: `
+## What it is
+
+A six-digit code from an app on your phone, as well as your password. The code changes
+every thirty seconds and never travels anywhere: the app works out the same answer the
+portal does, from a secret the two of them share.
+
+It is what stops a stolen password from being enough. If you use the same password
+anywhere else, and that other place is breached, this is the difference between an
+inconvenience and somebody reading every client file the firm holds.
+
+Whether you are obliged to use it depends on your grade and on what the firm has set.
+Everyone may use it.
+
+## Setting it up
+
+**My account**, then **Set up two-step sign-in**. Three steps:
+
+1. Scan the square with an authenticator app. Google Authenticator, Microsoft
+   Authenticator, Authy, 1Password and Bitwarden all work. If the camera will not
+   cooperate, press **Show the key** and type it in instead.
+2. Enter the six-digit code the app now shows. This is not a formality: it is what proves
+   the app and the portal agree, before you start relying on it.
+3. Save the ten recovery codes.
+
+## The recovery codes
+
+Ten codes, each of which works once. They are shown at the moment you finish setting up
+and never again, because they are stored as one-way hashes: nobody can produce them
+again, including whoever runs the firm.
+
+Save them somewhere that is not the phone with the app on it. A password manager, or
+paper in a locked drawer. Both on the same phone is one lost phone away from having no
+way in.
+
+## Signing in from then on
+
+Your password, then the code. If you do not have your phone, choose **I do not have my
+phone** and use one of the recovery codes.
+
+Five wrong codes and the attempt is abandoned; start again from your email and password.
+
+## If a code is refused
+
+Almost always the phone's clock. An authenticator works from the time, so a phone whose
+clock is set by hand and has drifted a minute produces codes the portal will not accept.
+Set the clock to update automatically and try again.
+
+The portal accepts a code from thirty seconds either side of now, so being slightly out
+is already allowed for.
+
+## If you lose your phone and your codes
+
+A Partner resets your two-step sign-in, and you set it up again on the new phone. They
+will want to be sure it is really you asking: expect a phone call to a number they
+already had, not an email exchange.
+`,
+  },
+
+  {
     id: "work",
     title: "Doing a piece of client work",
     summary: "From assigned to submitted, and what the procedures list is for.",
@@ -378,6 +441,7 @@ Everything the firm controls sits behind one sidebar entry, in tabs:
 - **Email notifications**: whether the portal can send mail, and a test you can send to
   yourself.
 - **Who sees what**: below.
+- **Sign-in security**: below.
 - **Erase data**: below.
 
 ## Who sees what
@@ -388,6 +452,27 @@ the sidebar, so closing an area actually closes it rather than hiding the link.
 Some things are not on that screen and cannot be changed: nobody reviews their own work,
 Associates cannot be reviewers, pay is Partner only. Those are what make the review file
 worth anything.
+
+## Sign-in security
+
+Choose the lowest grade obliged to use two-step sign-in. The default is Partner and
+above, which is where the damage is: a partner can read every client file and every pay
+record. Anyone below the line may still choose to use it.
+
+Nobody is locked out by turning this on. Someone who is required to use it and has not
+set it up can still sign in, and is then confined to their own account screen until they
+do. That matters: locking them out instead would mean the day you turn this on is the day
+nobody can work, including you.
+
+The same screen lists where everyone stands, and lets you **reset** somebody whose phone
+is lost along with their recovery codes. Two things about that:
+
+- You cannot reset your own. A Partner who could would have a way past their own second
+  factor needing nothing but their password, which is the thing this exists to stop. Use
+  a recovery code, or ask another Partner.
+- Satisfy yourself the person asking is really them before you do it. A phone call you
+  placed to a number you already had is the usual test. A request by email is not, because
+  email is exactly what an attacker would have.
 
 ## Erasing data
 
@@ -437,6 +522,16 @@ been submitted.
 ## "I cannot see a screen I could see before"
 
 A Partner may have changed who sees what. Ask them, rather than assuming something broke.
+
+## "It will not accept my code"
+
+Almost always the phone's clock. An authenticator works from the time of day, so a phone
+set by hand that has drifted produces codes the portal refuses. Set the clock to update
+automatically.
+
+If it still refuses, check the app is showing the entry for this portal rather than
+another system, and that you finished setting it up: an enrolment you started and did not
+confirm is not in force, and starting again issues a new key.
 
 ## "My password stopped working"
 

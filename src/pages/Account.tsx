@@ -10,6 +10,7 @@ import {
   TextInput,
 } from "../components/ui";
 import { formatDate } from "../lib/format";
+import { TwoFactorCard } from "../components/TwoFactorCard";
 
 export function Account() {
   const { user, refresh } = useSession();
@@ -65,6 +66,8 @@ export function Account() {
           <DetailRow label="Account created">{formatDate(user.created_at)}</DetailRow>
         </dl>
       </div>
+
+      <TwoFactorCard setNotice={setDone} />
 
       <div className="card space-y-3 p-5">
         <h2 className="card-title">Notifications</h2>

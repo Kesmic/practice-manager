@@ -295,6 +295,14 @@ thoroughly as we would like. This key closes that gap a different way: it is kep
 apart from the filing cabinet, so even someone who obtained a complete copy of
 your database could not work out anybody's password without it.
 
+This key does a second job too. If you turn on two-step sign-in later, it is also
+what encrypts each person's authenticator secret in the database. Two-step sign-in
+works without it, but those secrets would then sit in the database as they are, and
+the portal will say so on the account screen.
+
+**Once set, never change or remove it.** Doing so stops every existing password
+verifying, and stops every existing authenticator app working.
+
 1. Still under **Variables and Secrets**, click **+ Add** again
 2. Set **Type** to **Secret**
 3. In **Variable name**, type exactly: `PASSWORD_PEPPER`
@@ -400,6 +408,34 @@ can assign work, who can review it, and who can sign it off.
 Each person gets a temporary password, shown **once**. Pass it on by phone or in
 person, not in the same email as the link. They must set their own password
 before they can do anything else.
+
+### Then turn on two-step sign-in
+
+A password on its own is all that protects a Partner's account, and a Partner can
+read every client file and every pay record. Two-step sign-in adds a six-digit code
+from an app on the phone.
+
+It is **off** when the portal is first published, on purpose: switching itself on
+during setup would have confined you before you could create a single account. So
+this is a step you take deliberately, and the order matters.
+
+1. **Appoint a second Partner first.** Resetting somebody's two-step sign-in needs a
+   different Partner: nobody can reset their own, because that would be a way past
+   their own second factor using only their password. A firm with exactly one Partner
+   has no way back in from inside the portal if that person loses both their phone and
+   their recovery codes.
+2. **Set your own up before anyone else's.** My account → Set up two-step sign-in.
+   Scan the square with Google Authenticator, Microsoft Authenticator, Authy,
+   1Password or Bitwarden, enter the code it shows, and **save the ten recovery
+   codes somewhere that is not the phone** with the app on it.
+3. **Then set the policy.** Portal settings → Sign-in security → Required from
+   **Partner and above** → Save.
+
+Nobody is locked out by this. Anyone required to use it who has not set it up can
+still sign in, and is then confined to their own account screen until they do.
+
+Full detail, including what happens if a phone is lost, is in
+**[docs/TWO_FACTOR.md](TWO_FACTOR.md)**.
 
 ### And check the filing deadlines
 
