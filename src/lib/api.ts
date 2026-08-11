@@ -7,6 +7,8 @@
  * the person using the system, not just by a developer.
  */
 
+import type { ErasePreview, EraseScope } from "@shared/erase";
+import type { Visibility } from "@shared/visibility";
 import type {
   ChecklistItem,
   DocumentSignature,
@@ -411,6 +413,62 @@ export const api = {
       "/api/email/test",
       { method: "POST" },
     ),
+
+  // ---------------------------------------------------------- who sees what
+
+  visibility: () => request<{ visibility: Visibility }>("/api/visibility"),
+
+  setVisibility: (input: Visibility) =>
+    request<{ visibility: Visibility; changed_by: string }>("/api/visibility", {
+      method: "PUT",
+      body: input,
+    }),
+
+  // ------------------------------------------------------------- erasing data
+
+  /** Counts what a period would remove. Changes nothing. */
+  erasePreview: (input: { from: string; to: string; scopes: EraseScope[] }) =>
+    request<{ preview: ErasePreview }>("/api/erase/preview", {
+      method: "POST",
+      body: input,
+    }),
+
+  /**
+   * Erases it. `expected_total` is the total the preview showed: the Worker refuses
+   * if the figure has moved, so a stale preview cannot authorise a bigger deletion.
+   */
+  erase: (input: {
+    from: string;
+    to: string;
+    scopes: EraseScope[];
+    reason: string;
+    confirm: string;
+    expected_total: number;
+  }) =>
+    request<{
+      erased: {
+        id: string;
+        range: { from: string; to: string };
+        removed: Record<string, number>;
+        total: number;
+      };
+    }>("/api/erase", { method: "POST", body: input }),
+
+  erasures: () =>
+    request<{
+      erasures: Array<{
+        id: string;
+        actor_name: string;
+        actor_email: string;
+        period_from: string;
+        period_to: string;
+        scopes: string;
+        removed: string;
+        total_removed: number;
+        reason: string;
+        created_at: string;
+      }>;
+    }>("/api/erasures"),
 
   intakeServices: () =>
     request<{ services: IntakeService[]; customised: boolean }>("/api/intake-services"),

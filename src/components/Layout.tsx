@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ROLE_LABELS } from "@shared/workflow";
+import type { Area } from "@shared/visibility";
 import { useSession } from "../lib/auth";
 import { FirmLogo, FirmName } from "../lib/firm";
 import { ThemeToggle } from "./ThemeToggle";
@@ -9,6 +10,12 @@ import { Avatar } from "./ui";
 interface NavItem {
   to: string;
   label: string;
+  /**
+   * The configurable area this item belongs to. Where set, the firm's own setting
+   * decides who sees it, and the Worker refuses the screen behind it to anyone else.
+   * Items with no area are governed by `minimum` alone.
+   */
+  area?: Area;
   /**
    * Opens a particular tab of a multi-tab page. Two entries may point at the
    * same route this way: settings pages collect several jobs behind tabs, and a
@@ -24,22 +31,23 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", section: "Work" },
   { to: "/tasks", label: "Deliverables", section: "Work" },
-  { to: "/clients", label: "Clients", section: "Work" },
+  { to: "/clients", label: "Clients", area: "clients", section: "Work" },
   {
     to: "/client-requests",
     label: "Client requests",
-    minimum: "manager",
+    area: "client_requests",
     section: "Work",
   },
-  { to: "/engagements", label: "Engagements", section: "Work" },
-  { to: "/templates", label: "Job templates", section: "Work" },
-  { to: "/reports", label: "Reports", minimum: "manager", section: "Work" },
+  { to: "/engagements", label: "Engagements", area: "engagements", section: "Work" },
+  { to: "/templates", label: "Job templates", area: "templates", section: "Work" },
+  { to: "/reports", label: "Reports", area: "reports", section: "Work" },
 
   { to: "/onboarding", label: "My onboarding", section: "My portal" },
   { to: "/handbook", label: "Employee handbook", section: "My portal" },
   { to: "/my-profile", label: "My details", section: "My portal" },
+  { to: "/guide", label: "How to use the portal", section: "My portal" },
 
-  { to: "/people", label: "People", minimum: "manager", section: "Administration" },
+  { to: "/people", label: "People", area: "people", section: "Administration" },
   { to: "/team", label: "Accounts and grades", minimum: "partner", section: "Administration" },
   {
     to: "/portal-admin",
@@ -57,12 +65,14 @@ const NAV: NavItem[] = [
 ];
 
 export function Layout() {
-  const { user, unread, signOut, can } = useSession();
+  const { user, unread, signOut, can, canSee } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const visible = NAV.filter((item) => !item.minimum || can(item.minimum));
+  const visible = NAV.filter((item) =>
+    item.area ? canSee(item.area) : !item.minimum || can(item.minimum),
+  );
 
   const openTab = new URLSearchParams(location.search).get("tab");
   const href = (item: NavItem) => (item.tab ? `${item.to}?tab=${item.tab}` : item.to);

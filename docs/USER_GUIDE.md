@@ -15,6 +15,8 @@ situation in the contents and start there.
 - [Reports](#reports)
 - [Who can do what](#who-can-do-what)
 - [Settings, notifications and appearance](#settings-notifications-and-appearance)
+- [Who sees what](#who-sees-what-partners)
+- [Erasing a period of data](#erasing-a-period-of-data-partners)
 - [When something is not working](#when-something-is-not-working)
 
 ---
@@ -78,10 +80,16 @@ Everything is in the left sidebar, in three groups.
 **Work** is client work: your dashboard, deliverables, clients, engagements, job
 templates and reports.
 
-**My portal** is you: your onboarding, the employee handbook, and your own details.
+**My portal** is you: your onboarding, the employee handbook, your own details, and
+**How to use the portal**, which is this guide inside the portal itself, showing only
+the sections that apply to your grade.
 
 **Administration** appears only if your grade includes it: the people directory,
-accounts and grades, and the handbook and welcome authoring.
+accounts and grades, **Portal settings**, and **Email notifications**.
+
+What appears under **Work** is partly up to the firm. A Partner sets the lowest grade
+for each area under **Portal settings, Who sees what**, so two firms running this
+system will not necessarily show an Associate the same sidebar.
 
 Top right you have your **Inbox**, which carries a count of anything unread, the
 appearance control, and your own account.
@@ -633,7 +641,87 @@ because you are worried.
 
 ---
 
+## Who sees what (Partners)
+
+**Portal settings, Who sees what.** For each area, pick the lowest grade that can open
+it. Everyone at that grade and above sees it.
+
+The areas are Clients, Engagements, Job templates, Client requests, Reports and People.
+A table underneath shows what each grade would end up seeing, which is usually easier to
+check than reading the rows one at a time.
+
+Each area has a floor it cannot go below, and the screen says why. People cannot be
+opened below Manager at all: personnel information stays with those who manage people.
+Reports and Client requests stop at Senior Associate.
+
+This is enforced by the server, not only by the sidebar. Closing an area refuses the
+screens behind it, rather than hiding a link that still works if somebody types the
+address.
+
+Some things are deliberately not on that screen, and cannot be reached from it:
+
+- Nobody reviews their own work, at any grade.
+- An Associate cannot be named as a reviewer.
+- Pay and bank details are Partner only.
+- Accounts, grades and the settings themselves are Partner only.
+- Everyone always keeps their own dashboard, their own deliverables, the handbook and
+  their own details.
+
+Those are what make a review file worth anything, so they are not preferences.
+
+---
+
+## Erasing a period of data (Partners)
+
+**Portal settings, Erase data.** Pick a period, tick what to include, and check before
+anything happens.
+
+What can be erased:
+
+- **Closed and cancelled deliverables**, with their procedures, review points, review
+  rounds, comments, attachment links, time entries and history.
+- **Inbox notifications**, which are copies of things that happened rather than the
+  things themselves.
+- **Activity log entries**, which is the audit trail. Off by default and marked as such.
+- **Client enquiries** from the public forms.
+
+What can never be erased here, whatever the dates say: staff records and pay history,
+signed documents and the signatures on them, clients and engagements, live deliverables,
+and user accounts. If you need one of those gone, this is not the tool.
+
+A deliverable is placed by the period it relates to, not by when it was last touched, so
+erasing 2019 means the 2019 returns wherever they happened to be closed.
+
+**Check** shows exact counts, including how many attached records would follow, and how
+many items inside the dates are being left alone because they are still live. It also
+warns you when the period reaches into the years a practice would normally still be
+expected to produce records for.
+
+To go ahead you have to give a reason and type `ERASE`. The reason is kept: an
+unexplained gap in the records is worse than no gap. If the figures have moved since you
+checked, the erasure is refused rather than run, so a preview left open on a screen
+cannot authorise a larger deletion than the one you read.
+
+Every erasure is recorded, with who did it, when, over what period, how many records and
+why. That log is not itself erasable.
+
+---
+
 ## When something is not working
+
+### "I finished it but nothing happened"
+
+Check whether a reviewer is named on the deliverable. If not, it went into **Submitted
+with no reviewer named**, which every supervisor sees on their dashboard but which is
+nobody's personal queue. Say something as well as submitting it.
+
+A supervisor fixes it by opening the deliverable and pressing **Change** under
+Assignment.
+
+### "A screen I could see last week has gone"
+
+A Partner may have changed **Who sees what**. Ask before assuming something is broken.
+
 
 **A button I need is missing or greyed out.** Almost always the portal is telling you
 that the action is not available yet, rather than that something is broken. Hover

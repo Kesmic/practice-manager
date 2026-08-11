@@ -38,7 +38,7 @@ import {
   missingProfileFields,
 } from "../../shared/hr";
 import { OUTSTANDING_DOCUMENTS_SQL } from "./documents";
-import { readSettings } from "./settings";
+import { readSettings, requireArea } from "./settings";
 
 /** Employment columns - safe for anyone with directory access. */
 const EMPLOYMENT_COLUMNS = `p.user_id, p.staff_no, p.job_title, p.department,
@@ -247,6 +247,9 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
   // -------------------------------------------------------------------------
 
   router.get("/api/employees", async ({ request, env, url }) => {
+    // Both gates apply. The area setting lets the firm tighten this further than the
+    // built-in floor; it can never loosen it past MIN_DIRECTORY_ROLE.
+    await requireArea(env, request, "people");
     const actor = await requireRole(env, request, MIN_DIRECTORY_ROLE);
 
     const filters: string[] = [];

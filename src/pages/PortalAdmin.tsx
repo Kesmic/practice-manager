@@ -12,7 +12,9 @@ import { ApiRequestError, api } from "../lib/api";
 import { applyBranding, isHexColour } from "../lib/branding";
 import { deriveLightInk, whyNotDerivable } from "../lib/logo";
 import { useFirm } from "../lib/firm";
+import { EraseAdmin } from "../components/EraseAdmin";
 import { Markdown } from "../components/Markdown";
+import { VisibilityAdmin } from "../components/VisibilityAdmin";
 import {
   DetailRow,
   EmptyState,
@@ -28,13 +30,21 @@ import {
 } from "../components/ui";
 import { formatDate } from "../lib/format";
 
-type Tab = "documents" | "welcome" | "appearance" | "email";
+type Tab =
+  | "documents"
+  | "welcome"
+  | "appearance"
+  | "email"
+  | "visibility"
+  | "erase";
 
 const TABS: Array<[Tab, string]> = [
   ["documents", "Documents and handbook"],
   ["welcome", "Welcome message and firm details"],
   ["appearance", "Logo and colours"],
   ["email", "Email notifications"],
+  ["visibility", "Who sees what"],
+  ["erase", "Erase data"],
 ];
 
 const DEFAULT_TAB: Tab = "documents";
@@ -97,6 +107,10 @@ export function PortalAdmin() {
         <AppearanceAdmin setError={setError} setNotice={setNotice} />
       ) : tab === "email" ? (
         <EmailAdmin setError={setError} setNotice={setNotice} />
+      ) : tab === "visibility" ? (
+        <VisibilityAdmin setError={setError} setNotice={setNotice} />
+      ) : tab === "erase" ? (
+        <EraseAdmin setError={setError} setNotice={setNotice} />
       ) : (
         <WelcomeAdmin setError={setError} setNotice={setNotice} />
       )}

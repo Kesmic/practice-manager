@@ -352,6 +352,11 @@ export interface Notification {
 export interface DashboardStats {
   assigned_open: number;
   awaiting_my_review: number;
+  /**
+   * Submitted work with no reviewer named. Practice-wide rather than personal,
+   * and reported as 0 to anyone below supervisor grade, who cannot act on it.
+   */
+  awaiting_a_reviewer: number;
   in_rework: number;
   overdue: number;
   due_this_week: number;
@@ -362,6 +367,7 @@ export interface Dashboard {
   stats: DashboardStats;
   my_tasks: TaskSummary[];
   awaiting_my_review: TaskSummary[];
+  awaiting_a_reviewer: TaskSummary[];
   overdue: TaskSummary[];
 }
 

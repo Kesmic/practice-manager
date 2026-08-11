@@ -10,6 +10,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { DocumentView } from "./pages/DocumentView";
 import { EmployeeDetail } from "./pages/EmployeeDetail";
 import { Engagements } from "./pages/Engagements";
+import { Guide } from "./pages/Guide";
 import { Handbook } from "./pages/Handbook";
 import { Intake } from "./pages/Intake";
 import { Login } from "./pages/Login";
@@ -100,6 +101,7 @@ export function App() {
         {/* Employee portal */}
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/handbook" element={<Handbook />} />
+        <Route path="/guide" element={<Guide />} />
         <Route path="/documents/:id" element={<DocumentView />} />
         <Route path="/my-profile" element={<MyProfile />} />
         <Route

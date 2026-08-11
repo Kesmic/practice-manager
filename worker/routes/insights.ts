@@ -1,11 +1,17 @@
 /** Dashboard, practice reports and the notification inbox. */
 
 import type { Env } from "../env";
-import { requireRole, requireUser } from "../auth";
+import { requireUser } from "../auth";
 import { nowIso } from "../db";
 import { Router, json } from "../http";
-import { MIN_SUPERVISOR_ROLE } from "../../shared/workflow";
-import { OVERDUE_PREDICATE, TASK_ORDER, TASK_SELECT } from "./task-sql";
+import { requireArea } from "./settings";
+import { MIN_SUPERVISOR_ROLE, ROLE_RANK } from "../../shared/workflow";
+import {
+  AWAITING_A_REVIEWER,
+  OVERDUE_PREDICATE,
+  TASK_ORDER,
+  TASK_SELECT,
+} from "./task-sql";
 
 export function registerInsightRoutes(router: Router<Env>): void {
   // -------------------------------------------------------------------------
@@ -15,7 +21,9 @@ export function registerInsightRoutes(router: Router<Env>): void {
   router.get("/api/dashboard", async ({ request, env }) => {
     const actor = await requireUser(env, request);
 
-    const [stats, mine, reviews, overdue] = await env.DB.batch([
+    const supervises = ROLE_RANK[actor.role] >= ROLE_RANK[MIN_SUPERVISOR_ROLE];
+
+    const [stats, mine, reviews, unclaimed, overdue] = await env.DB.batch([
       env.DB.prepare(
         `SELECT
            (SELECT COUNT(*) FROM tasks t
@@ -35,7 +43,9 @@ export function registerInsightRoutes(router: Router<Env>): void {
                AND date(COALESCE(t.internal_due_date, t.statutory_due_date))
                      BETWEEN date('now') AND date('now', '+7 day')) AS due_this_week,
            (SELECT COUNT(*) FROM notifications n
-             WHERE n.user_id = ?1 AND n.read_at IS NULL) AS unread_notifications`,
+             WHERE n.user_id = ?1 AND n.read_at IS NULL) AS unread_notifications,
+           (SELECT COUNT(*) FROM tasks t
+             WHERE ${AWAITING_A_REVIEWER}) AS awaiting_a_reviewer`,
       ).bind(actor.id),
 
       env.DB.prepare(
@@ -49,6 +59,14 @@ export function registerInsightRoutes(router: Router<Env>): void {
           WHERE t.reviewer_id = ? AND t.status IN ('submitted','under_review')
           ${TASK_ORDER} LIMIT 50`,
       ).bind(actor.id),
+
+      // Handed in with no reviewer named. Only supervisors can act on it, since
+      // naming a reviewer is a supervisor's job, so only they are shown it.
+      env.DB.prepare(
+        supervises
+          ? `${TASK_SELECT} WHERE ${AWAITING_A_REVIEWER} ${TASK_ORDER} LIMIT 50`
+          : `${TASK_SELECT} WHERE 1 = 0`,
+      ),
 
       // Supervisors see the whole practice's overdue list; everyone else sees
       // only their own, which is all they can act on.
@@ -66,9 +84,18 @@ export function registerInsightRoutes(router: Router<Env>): void {
     ]);
 
     return json({
-      stats: stats.results[0] ?? {},
+      stats: {
+        ...(stats.results[0] ?? {}),
+        // Nobody below supervisor grade is shown the count either, so the tile
+        // and the list agree about what is there.
+        awaiting_a_reviewer: supervises
+          ? ((stats.results[0] as Record<string, unknown> | undefined)
+              ?.awaiting_a_reviewer ?? 0)
+          : 0,
+      },
       my_tasks: mine.results,
       awaiting_my_review: reviews.results,
+      awaiting_a_reviewer: unclaimed.results,
       overdue: overdue.results,
     });
   });
@@ -78,7 +105,7 @@ export function registerInsightRoutes(router: Router<Env>): void {
   // -------------------------------------------------------------------------
 
   router.get("/api/reports", async ({ request, env }) => {
-    await requireRole(env, request, MIN_SUPERVISOR_ROLE);
+    await requireArea(env, request, "reports");
 
     const [workload, serviceLines, statusCounts, quality] = await env.DB.batch([
       // Per-person workload, budget consumption and overdue exposure.

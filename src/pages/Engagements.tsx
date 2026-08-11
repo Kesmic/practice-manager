@@ -56,12 +56,19 @@ export function Engagements() {
   }, [load]);
 
   useEffect(() => {
-    void Promise.all([api.clients(), api.users()])
-      .then(([clientRes, userRes]) => {
-        setClients(clientRes.clients);
-        setUsers(userRes.users);
-      })
-      .catch(() => undefined);
+  /*
+    Fetched independently rather than with Promise.all. Clients and job templates are
+    areas the firm can close to a grade, and one refusal in an all() takes the other
+    lists down with it, emptying lists the person is still entitled to.
+  */
+    void api
+      .clients()
+      .then((res) => setClients(res.clients))
+      .catch(() => setClients([]));
+    void api
+      .users()
+      .then((res) => setUsers(res.users))
+      .catch(() => setUsers([]));
   }, []);
 
   return (

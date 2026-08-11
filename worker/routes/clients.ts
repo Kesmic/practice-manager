@@ -1,5 +1,5 @@
 import type { Env } from "../env";
-import { requireRole, requireUser } from "../auth";
+import { requireRole } from "../auth";
 import {
   assertExists,
   buildUpdate,
@@ -14,6 +14,7 @@ import {
   requireString,
 } from "../db";
 import { Router, badRequest, conflict, json, notFound, readJson } from "../http";
+import { requireArea } from "./settings";
 import {
   CLIENT_STATUSES,
   ENTITY_TYPES,
@@ -24,7 +25,7 @@ import { OVERDUE_PREDICATE, TASK_SELECT } from "./task-sql";
 
 export function registerClientRoutes(router: Router<Env>): void {
   router.get("/api/clients", async ({ request, env, url }) => {
-    await requireUser(env, request);
+    await requireArea(env, request, "clients");
 
     const filters: string[] = [];
     const binds: unknown[] = [];
@@ -70,7 +71,7 @@ export function registerClientRoutes(router: Router<Env>): void {
   });
 
   router.get("/api/clients/:id", async ({ request, env, params }) => {
-    await requireUser(env, request);
+    await requireArea(env, request, "clients");
 
     const client = await env.DB.prepare(
       `SELECT c.*, up.full_name AS partner_name, um.full_name AS manager_name

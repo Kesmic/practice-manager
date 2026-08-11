@@ -17,6 +17,7 @@ import { registerClientFileRoutes } from "./routes/client-files";
 import { registerClientRoutes } from "./routes/clients";
 import { registerDocumentRoutes } from "./routes/documents";
 import { registerEmployeeRoutes } from "./routes/employees";
+import { registerEraseRoutes } from "./routes/erase";
 import { registerEngagementRoutes } from "./routes/engagements";
 import { registerInsightRoutes } from "./routes/insights";
 import { registerIntakeRoutes } from "./routes/intake";
@@ -53,6 +54,7 @@ registerIntakeRoutes(router);
 registerEmployeeRoutes(router);
 registerDocumentRoutes(router);
 registerSettingsRoutes(router);
+registerEraseRoutes(router);
 
 /**
  * Serves a static file, falling back to the app shell so that client-side routes

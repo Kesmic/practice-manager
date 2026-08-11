@@ -63,7 +63,7 @@ import {
   type RequestKind,
 } from "../../shared/intake";
 import { notifyIntake } from "../email";
-import { readSettings, writeSetting } from "./settings";
+import { readSettings, requireArea, writeSetting } from "./settings";
 
 /** Which setting holds each link's token. */
 const TOKEN_KEY: Record<RequestKind, string> = {
@@ -434,7 +434,7 @@ export function registerIntakeRoutes(router: Router<Env>): void {
   // ------------------------------------------------------------------- staff
 
   router.get("/api/client-requests", async ({ request, env, url }) => {
-    await requireRole(env, request, MIN_SUPERVISOR_ROLE);
+    await requireArea(env, request, "client_requests");
 
     const filters: string[] = [];
     const binds: unknown[] = [];
@@ -469,7 +469,7 @@ export function registerIntakeRoutes(router: Router<Env>): void {
   });
 
   router.get("/api/client-requests/:id", async ({ request, env, params }) => {
-    await requireRole(env, request, MIN_SUPERVISOR_ROLE);
+    await requireArea(env, request, "client_requests");
     const row = await env.DB.prepare(`${REQUEST_SELECT} WHERE r.id = ?`)
       .bind(params.id)
       .first<Record<string, unknown>>();
@@ -482,7 +482,7 @@ export function registerIntakeRoutes(router: Router<Env>): void {
    * it, matching it to a client, or noting what was decided.
    */
   router.patch("/api/client-requests/:id", async ({ request, env, params }) => {
-    const actor = await requireRole(env, request, MIN_SUPERVISOR_ROLE);
+    const actor = await requireArea(env, request, "client_requests");
     const existing = await loadRequest(env, params.id);
     const body = await readJson<Record<string, unknown>>(request);
 

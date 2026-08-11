@@ -677,8 +677,19 @@ function RequestModal({
               <button type="button" className="btn-danger" onClick={decline} disabled={busy}>
                 Decline
               </button>
-              <button type="button" className="btn-primary" onClick={accept} disabled={busy}>
-                {busy ? "Working…" : "Accept"}
+              {/*
+                Accepting creates a client record, which is Manager work, and stays so
+                however far down the firm has opened this queue. Disabled rather than
+                hidden, with the reason below, so the split is visible instead of
+                looking like a missing button.
+              */}
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={accept}
+                disabled={busy || !can("manager")}
+              >
+                {busy ? "Working..." : "Accept"}
               </button>
             </>
           )}
@@ -827,7 +838,9 @@ function RequestModal({
 
         {!can("manager") && (
           <p className="hint">
-            Accepting and declining need Manager grade or above.
+            You can take this on and you can decline it. Accepting it creates a client
+            record, which needs Manager grade or above, so pass it to one when you are
+            satisfied it should come in.
           </p>
         )}
       </div>

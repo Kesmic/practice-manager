@@ -17,6 +17,8 @@ import {
   requireString,
 } from "../db";
 import { Router, badRequest, forbidden, json, notFound, readJson } from "../http";
+import { notifyAssignment } from "../email";
+import { readSettings } from "./settings";
 import {
   MIN_REVIEWER_ROLE,
   MIN_SUPERVISOR_ROLE,
@@ -29,7 +31,12 @@ import {
   atLeast,
   type Role,
 } from "../../shared/workflow";
-import { OVERDUE_PREDICATE, TASK_ORDER, TASK_SELECT } from "./task-sql";
+import {
+  AWAITING_A_REVIEWER,
+  OVERDUE_PREDICATE,
+  TASK_ORDER,
+  TASK_SELECT,
+} from "./task-sql";
 
 /** Grade required to create a deliverable at all. */
 const MIN_TASK_AUTHOR: Role = "senior_associate";
@@ -93,6 +100,9 @@ export function registerTaskRoutes(router: Router<Env>): void {
         break;
       case "unassigned":
         filters.push(`t.assignee_id IS NULL AND t.status NOT IN ('closed','cancelled')`);
+        break;
+      case "awaiting_a_reviewer":
+        filters.push(`(${AWAITING_A_REVIEWER})`);
         break;
       default:
         break;
@@ -213,7 +223,7 @@ export function registerTaskRoutes(router: Router<Env>): void {
   // Create
   // -------------------------------------------------------------------------
 
-  router.post("/api/tasks", async ({ request, env }) => {
+  router.post("/api/tasks", async ({ request, env, url, waitUntil }) => {
     const actor = await requireRole(env, request, MIN_TASK_AUTHOR);
     const body = await readJson<Record<string, unknown>>(request);
 
@@ -303,14 +313,39 @@ export function registerTaskRoutes(router: Router<Env>): void {
     }
 
     await env.DB.batch(statements);
-    return json({ task: await loadTaskSummary(env, id) }, 201);
+
+    const created = await loadTaskSummary(env, id);
+
+    /*
+     * Being handed work is the notification most worth getting right, so it is
+     * emailed as well as put in the inbox. A draft is nobody's work yet, so it is
+     * announced only once it leaves draft. After the batch, so nothing is emailed
+     * about a deliverable that failed to save.
+     */
+    if (status !== "draft") {
+      await notifyAssignment(env, waitUntil, {
+        taskId: id,
+        taskRef: ref,
+        taskTitle: title,
+        clientName: (created as { client_name?: string | null })?.client_name ?? null,
+        dueDate: fields.internal_due_date ?? fields.statutory_due_date ?? null,
+        actorId: actor.id,
+        actorName: actor.full_name,
+        origin: url.origin,
+        firmName: (await readSettings(env)).firm_name,
+        assigneeId: fields.assignee_id,
+        reviewerId: fields.reviewer_id,
+      });
+    }
+
+    return json({ task: created }, 201);
   });
 
   // -------------------------------------------------------------------------
   // Update
   // -------------------------------------------------------------------------
 
-  router.patch("/api/tasks/:id", async ({ request, env, params }) => {
+  router.patch("/api/tasks/:id", async ({ request, env, params, url, waitUntil }) => {
     const actor = await requireRole(env, request, MIN_SUPERVISOR_ROLE);
     const existing = await env.DB.prepare(
       `SELECT id, ref, client_id, status, assignee_id, reviewer_id FROM tasks WHERE id = ?`,
@@ -400,7 +435,38 @@ export function registerTaskRoutes(router: Router<Env>): void {
     }
 
     await env.DB.batch(statements);
-    return json({ task: await loadTaskSummary(env, params.id) });
+
+    const updated = await loadTaskSummary(env, params.id);
+
+    // The same two people who get an inbox entry get an email, and only when
+    // they are newly on the work: re-saving the form does not re-announce it.
+    if (newlyInvolved.length) {
+      const summary = updated as {
+        title?: string;
+        client_name?: string | null;
+        internal_due_date?: string | null;
+        statutory_due_date?: string | null;
+      };
+      await notifyAssignment(env, waitUntil, {
+        taskId: params.id,
+        taskRef: existing.ref,
+        taskTitle: summary.title ?? existing.ref,
+        clientName: summary.client_name ?? null,
+        dueDate: summary.internal_due_date ?? summary.statutory_due_date ?? null,
+        actorId: actor.id,
+        actorName: actor.full_name,
+        origin: url.origin,
+        firmName: (await readSettings(env)).firm_name,
+        assigneeId: newlyInvolved.includes(fields.assignee_id)
+          ? fields.assignee_id
+          : null,
+        reviewerId: newlyInvolved.includes(fields.reviewer_id)
+          ? fields.reviewer_id
+          : null,
+      });
+    }
+
+    return json({ task: updated });
   });
 }
 

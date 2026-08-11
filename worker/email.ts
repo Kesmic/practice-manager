@@ -196,6 +196,35 @@ async function watchers(
   return results;
 }
 
+/**
+ * Named people who can be emailed, in the order given.
+ *
+ * Applies the same exclusions as `watchers`: the actor, suspended accounts, and
+ * anyone who has turned email off. Assignment mail goes to people picked by name
+ * rather than to everyone on a deliverable, so it needs this narrower lookup.
+ */
+async function pickPeople(
+  env: Env,
+  ids: Array<string | null | undefined>,
+  actorId: string,
+): Promise<Recipient[]> {
+  const wanted = [...new Set(ids.filter((id): id is string => !!id && id !== actorId))];
+  if (!wanted.length) return [];
+  const { results } = await env.DB.prepare(
+    `SELECT id, email, full_name
+       FROM users
+      WHERE status = 'active'
+        AND email_notifications = 1
+        AND id IN (${wanted.map(() => "?").join(", ")})`,
+  )
+    .bind(...wanted)
+    .all<Recipient>();
+  // Preserve the caller's order, which is the order the roles were given in.
+  return wanted
+    .map((id) => results.find((r) => r.id === id))
+    .filter((r): r is Recipient => Boolean(r));
+}
+
 /** Minimal escaping for the values interpolated into the HTML body. */
 function escapeHtml(value: string): string {
   return value
@@ -505,6 +534,187 @@ export async function notifyIntake(
         }
       } catch (err) {
         console.error("Client request email failed entirely:", err);
+      }
+    })(),
+  );
+}
+
+/**
+ * Emails the people just put on a deliverable, each told which part is theirs.
+ *
+ * Separate from `notifyWatchers` because the audience and the wording differ. A
+ * transition tells everyone involved that something happened; this tells two
+ * particular people that something is now theirs to do, and being handed work is
+ * the notification most worth getting right. The preparer is asked to do it; the
+ * reviewer is told to expect it, not to act yet.
+ *
+ * Safe to call unconditionally, and never throws.
+ */
+export async function notifyAssignment(
+  env: Env,
+  waitUntil: (promise: Promise<unknown>) => void,
+  input: {
+    taskId: string;
+    taskRef: string;
+    taskTitle: string;
+    clientName: string | null;
+    dueDate: string | null;
+    actorId: string;
+    actorName: string;
+    origin: string;
+    firmName: string;
+    /** Newly given the work to do. Null or unchanged means nobody to write to. */
+    assigneeId?: string | null;
+    /** Newly named as reviewer. */
+    reviewerId?: string | null;
+  },
+): Promise<void> {
+  if (!emailConfigured(env)) return;
+  if (!input.assigneeId && !input.reviewerId) return;
+
+  waitUntil(
+    (async () => {
+      try {
+        const forRole = new Map<string, "preparer" | "reviewer">();
+        if (input.assigneeId) forRole.set(input.assigneeId, "preparer");
+        // If the same person somehow holds both, the work to do outranks the
+        // watching brief, so "preparer" is left in place.
+        if (input.reviewerId && !forRole.has(input.reviewerId)) {
+          forRole.set(input.reviewerId, "reviewer");
+        }
+
+        const recipients = await pickPeople(env, [...forRole.keys()], input.actorId);
+        if (!recipients.length) return;
+
+        const where = input.clientName ? ` for ${input.clientName}` : "";
+        const due = input.dueDate ? ` It is needed by ${input.dueDate}.` : "";
+
+        const results = await Promise.allSettled(
+          recipients.map((recipient) => {
+            const role = forRole.get(recipient.id);
+            const message: Message =
+              role === "reviewer"
+                ? {
+                    subject: `${input.taskRef}: you are the reviewer`,
+                    headline:
+                      `${input.actorName} has named you as reviewer of ` +
+                      `${input.taskTitle}${where}.`,
+                    detail:
+                      "Nothing to do yet. It will appear in Awaiting your review once " +
+                      `the preparer submits it.${due}`,
+                    link: `${portalUrl(env, input.origin)}/tasks/${input.taskId}`,
+                    linkLabel: `Open ${input.taskRef}`,
+                    firmName: input.firmName,
+                    reason: "you have been named as the reviewer of this deliverable",
+                  }
+                : {
+                    subject: `${input.taskRef}: assigned to you`,
+                    headline:
+                      `${input.actorName} has assigned you ` +
+                      `${input.taskTitle}${where}.`,
+                    detail: `Open it to start work and to see the procedures.${due}`,
+                    link: `${portalUrl(env, input.origin)}/tasks/${input.taskId}`,
+                    linkLabel: `Open ${input.taskRef}`,
+                    firmName: input.firmName,
+                    reason: "this deliverable has been assigned to you",
+                  };
+            const { text, html } = render(message, recipient);
+            return deliver(env, recipient.email, message.subject, text, html);
+          }),
+        );
+
+        const failed = results.filter((r) => r.status === "rejected");
+        if (failed.length) {
+          console.error(
+            `Email: ${failed.length} of ${results.length} assignment notices failed ` +
+              `for ${input.taskRef}.`,
+            (failed[0] as PromiseRejectedResult).reason,
+          );
+        }
+      } catch (err) {
+        console.error("Assignment email failed entirely:", err);
+      }
+    })(),
+  );
+}
+
+/**
+ * One message for a batch of deliverables raised together.
+ *
+ * Generating a quarter of VAT returns creates dozens of deliverables at once. Sent
+ * individually that is dozens of near-identical emails, which is how a firm learns
+ * to filter the portal into a folder it never opens. So the batch gets one message
+ * naming the count and where to see them.
+ *
+ * Safe to call unconditionally, and never throws.
+ */
+export async function notifyBatchAssignment(
+  env: Env,
+  waitUntil: (promise: Promise<unknown>) => void,
+  input: {
+    count: number;
+    what: string;
+    actorId: string;
+    actorName: string;
+    origin: string;
+    firmName: string;
+    assigneeId?: string | null;
+    reviewerId?: string | null;
+  },
+): Promise<void> {
+  if (!emailConfigured(env)) return;
+  if (input.count < 1) return;
+  if (!input.assigneeId && !input.reviewerId) return;
+
+  waitUntil(
+    (async () => {
+      try {
+        const roles = new Map<string, "preparer" | "reviewer">();
+        if (input.assigneeId) roles.set(input.assigneeId, "preparer");
+        if (input.reviewerId && !roles.has(input.reviewerId)) {
+          roles.set(input.reviewerId, "reviewer");
+        }
+        const recipients = await pickPeople(env, [...roles.keys()], input.actorId);
+        if (!recipients.length) return;
+
+        const many = input.count === 1 ? "deliverable" : "deliverables";
+        const base = portalUrl(env, input.origin);
+
+        const results = await Promise.allSettled(
+          recipients.map((recipient) => {
+            const reviewing = roles.get(recipient.id) === "reviewer";
+            const message: Message = {
+              subject: reviewing
+                ? `You are the reviewer on ${input.count} new ${many}`
+                : `${input.count} new ${many} assigned to you`,
+              headline:
+                `${input.actorName} has raised ${input.count} ${many} from ` +
+                `${input.what} and named you as ` +
+                (reviewing ? "reviewer." : "the preparer."),
+              detail: reviewing
+                ? "Nothing to do yet. Each one reaches you once its preparer submits it."
+                : "They are listed under Deliverables, filtered to your own work.",
+              link: reviewing ? `${base}/tasks?scope=my_reviews` : `${base}/tasks?scope=mine`,
+              linkLabel: reviewing ? "See what is coming to you" : "See your deliverables",
+              firmName: input.firmName,
+              reason: reviewing
+                ? "you have been named as the reviewer of these deliverables"
+                : "these deliverables have been assigned to you",
+            };
+            const { text, html } = render(message, recipient);
+            return deliver(env, recipient.email, message.subject, text, html);
+          }),
+        );
+
+        const failed = results.filter((r) => r.status === "rejected");
+        if (failed.length) {
+          console.error(
+            `Email: ${failed.length} of ${results.length} batch notices failed.`,
+            (failed[0] as PromiseRejectedResult).reason,
+          );
+        }
+      } catch (err) {
+        console.error("Batch assignment email failed entirely:", err);
       }
     })(),
   );

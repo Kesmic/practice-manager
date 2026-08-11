@@ -11,6 +11,12 @@ import {
 } from "react";
 import type { User } from "@shared/types";
 import { atLeast, type Role } from "@shared/workflow";
+import {
+  DEFAULT_VISIBILITY,
+  canSeeArea,
+  type Area,
+  type Visibility,
+} from "@shared/visibility";
 import { api } from "./api";
 
 interface SessionState {
@@ -23,6 +29,12 @@ interface SessionState {
   setUnread: (count: number) => void;
   /** True when the signed-in user holds `minimum` grade or above. */
   can: (minimum: Role) => boolean;
+  /**
+   * True when this firm has opened an area to the signed-in user's grade. The Worker
+   * enforces the same setting, so this decides what to draw rather than what is
+   * allowed: a screen hidden here is also refused there.
+   */
+  canSee: (area: Area) => boolean;
 }
 
 const SessionContext = createContext<SessionState | null>(null);
@@ -31,12 +43,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
+  // Until it has loaded, the defaults apply. They are the stricter of the two in every
+  // case a firm is likely to configure, so the sidebar cannot flash a link the person
+  // is not entitled to.
+  const [visibility, setVisibility] = useState<Visibility>(DEFAULT_VISIBILITY);
 
   const refresh = useCallback(async () => {
     try {
       const { user: current, unread_notifications } = await api.session();
       setUser(current);
       setUnread(unread_notifications ?? 0);
+      if (current) {
+        try {
+          const { visibility: configured } = await api.visibility();
+          setVisibility(configured);
+        } catch {
+          // Keep the defaults rather than assuming the firm opened anything up.
+          setVisibility(DEFAULT_VISIBILITY);
+        }
+      }
     } catch {
       // A failed session probe means "not signed in" as far as the UI cares.
       setUser(null);
@@ -52,6 +77,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     const { user: signedIn } = await api.login(email, password);
     setUser(signedIn);
+    try {
+      const { visibility: configured } = await api.visibility();
+      setVisibility(configured);
+    } catch {
+      setVisibility(DEFAULT_VISIBILITY);
+    }
     // Pick up the notification count for the newly signed-in user.
     try {
       const session = await api.session();
@@ -80,8 +111,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       refresh,
       setUnread,
       can: (minimum: Role) => (user ? atLeast(user.role, minimum) : false),
+      canSee: (area: Area) => (user ? canSeeArea(visibility, area, user.role) : false),
     }),
-    [user, loading, unread, signIn, signOut, refresh],
+    [user, loading, unread, signIn, signOut, refresh, visibility],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
