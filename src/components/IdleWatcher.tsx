@@ -40,6 +40,21 @@ export function IdleWatcher() {
   const [secondsLeft, secondsLeftSet] = useState<number | null>(null);
   const signingOut = useRef(false);
 
+  /*
+    When the Worker was last told somebody is here.
+
+    The two halves measure different things: this component watches for a hand on the
+    machine, while the Worker can only see requests. Reading counts as activity here and
+    does not there, so somebody scrolling through a long file for ten minutes would keep
+    resetting the page's timer, see no warning at all, and then be signed out the moment
+    they finally clicked something. Present the whole time, warned about none of it.
+
+    So genuine interaction, and only genuine interaction, occasionally tells the Worker.
+    A session nobody is touching still sends nothing, which is what keeps the server side
+    honest: a quiet session really is a quiet person.
+  */
+  const lastPinged = useRef(Date.now());
+
   const enabled = Boolean(user) && idlePolicy?.enabled === true;
   const windowMs = (idlePolicy?.enabled ? idlePolicy.minutes : 0) * 60_000;
 
@@ -56,6 +71,7 @@ export function IdleWatcher() {
 
   const stayIn = useCallback(() => {
     lastActive.current = Date.now();
+    lastPinged.current = Date.now();
     secondsLeftSet(null);
     // One request, which also refreshes the last-used time the Worker measures against.
     void api.session().catch(() => undefined);
@@ -83,8 +99,24 @@ export function IdleWatcher() {
     }
 
     const tick = window.setInterval(() => {
-      const idleFor = Date.now() - lastActive.current;
+      const now = Date.now();
+      const idleFor = now - lastActive.current;
       const remaining = Math.ceil((windowMs - idleFor) / 1000);
+
+      /*
+        Keep the Worker's clock in step with this one, but only on the back of real
+        interaction. Half the window, so the Worker's view can never be more than half a
+        window stale while somebody is here, and at most two requests per window rather
+        than one per second.
+      */
+      if (
+        remaining > 0 &&
+        lastActive.current > lastPinged.current &&
+        now - lastPinged.current > windowMs / 2
+      ) {
+        lastPinged.current = now;
+        void api.session().catch(() => undefined);
+      }
 
       if (remaining <= 0) {
         if (signingOut.current) return;

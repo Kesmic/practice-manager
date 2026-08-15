@@ -176,9 +176,18 @@ passes.
 The warning is ninety seconds, capped to a third of the window so that a short setting
 does not leave the dialog permanently on screen with its own button unable to dismiss it.
 
-Nothing polls in the background, which is what makes the server side meaningful: every
-authenticated request is a genuine action by a person, so a quiet session really is a
-quiet person.
+### The two halves measure different things, and have to be reconciled
+
+This component watches for a hand on the machine; the Worker can only see requests.
+Reading counts as activity to the first and not to the second, so somebody scrolling
+through a long file for ten minutes would keep resetting the page's timer, see no warning
+at all, and then be signed out the instant they finally clicked something: present the
+whole time, warned about none of it.
+
+So real interaction, and only real interaction, tells the Worker it is still there, at
+most twice a window. A session nobody is touching sends nothing at all, which is the part
+that keeps the server side honest: every authenticated request is still a genuine action
+by a person, so a quiet session really is a quiet person.
 
 ## Why it warns rather than simply acting
 
