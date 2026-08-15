@@ -194,6 +194,18 @@ An idle sign-out returns 401 with `idle_timeout` as its detail, and `/api/auth/m
 who steps away for lunch comes back to a sign-in screen and no explanation for where their
 afternoon went.
 
+## The deploy itself does not sign everybody out
+
+`last_seen_at` has been on the sessions table since the first migration, but nothing ever
+wrote to it after the row was created. On a live session it therefore holds the moment
+somebody signed in, which for anybody signed in for a few days sits well outside any idle
+window the firm would pick. Left alone, the deploy that turns this on would sign out every
+person at the firm the instant it landed.
+
+`0010_session_last_seen.sql` starts everyone's clock at the deploy instead. It is the same
+shape of problem as a policy that switches itself on during a migration, and it is avoided
+the same way. Run `npm run db:migrate:remote` after merging.
+
 ## What it does not change
 
 The week-long session expiry is unaffected and still applies with the timeout off. Signing
