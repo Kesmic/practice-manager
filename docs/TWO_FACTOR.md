@@ -142,3 +142,59 @@ phone camera does.
 
 The key is always shown as text as well, in groups of four, because a camera that will
 not focus should not stop somebody enrolling.
+
+---
+
+# Signing out after inactivity
+
+Lives on the same screen, because it answers the same question: how much sits between an
+unattended desk and the firm's client files.
+
+**Ten minutes by default, and the firm can change or disable it.** Unlike the two-factor
+policy, this one ships on. The difference is what each does when it is unwelcome: a second
+factor imposed by surprise confines people to one screen with no way out from inside the
+portal, while an idle timeout imposed by surprise signs somebody out, which is the
+behaviour being asked for and is undone by one click.
+
+## Two halves, both needed
+
+**The server decides.** Every session records when it was last used, and a request
+arriving after the window has passed is refused and the session destroyed. This is what
+makes the setting real: it holds for a tab closed without signing out, and for a cookie
+copied off a machine, neither of which will ever run the page's own timer.
+
+The recorded time is rewritten only when it has gone more than twenty seconds stale, so
+continuous work is not a database write per request. The cost is being signed out up to
+twenty seconds early at the exact boundary, which on a ten-minute window is three per
+cent, and which the browser's own timer normally reaches first and reaches exactly.
+
+**The browser warns.** The server can only notice idleness when the next request arrives,
+which for an unattended screen is never. So the page watches for real interaction
+(pointer, key, wheel, touch, scroll), warns before the deadline, and signs out when it
+passes.
+
+The warning is ninety seconds, capped to a third of the window so that a short setting
+does not leave the dialog permanently on screen with its own button unable to dismiss it.
+
+Nothing polls in the background, which is what makes the server side meaningful: every
+authenticated request is a genuine action by a person, so a quiet session really is a
+quiet person.
+
+## Why it warns rather than simply acting
+
+Somebody reading a long policy without touching anything loses their place; somebody
+part-way through a review point loses the review point. A countdown with a button costs
+one click and avoids both, and it is the difference between a security control the firm
+keeps and one they ask to have turned off.
+
+## The reason is carried through
+
+An idle sign-out returns 401 with `idle_timeout` as its detail, and `/api/auth/me` reports
+`idled: true` once. The sign-in screen uses it to say what happened. Without it, somebody
+who steps away for lunch comes back to a sign-in screen and no explanation for where their
+afternoon went.
+
+## What it does not change
+
+The week-long session expiry is unaffected and still applies with the timeout off. Signing
+out still works. Nothing about it touches passwords or second factors.

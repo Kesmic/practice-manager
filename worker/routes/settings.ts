@@ -61,11 +61,22 @@ const DEFAULTS: Record<string, string> = {
    * Worker and a malformed value must fail closed rather than be written.
    */
   nav_visibility: "",
+  /**
+   * Minutes of inactivity before a session ends, or "off". Empty means the default.
+   *
+   * Its own endpoint rather than /api/settings, because it is enforced by the Worker on
+   * every authenticated request and a malformed value would either lock the firm out or
+   * quietly stop protecting them.
+   */
+  idle_timeout_minutes: "",
 };
 
 /** Everything except the settings that have their own, validating endpoints. */
 const EDITABLE = Object.keys(DEFAULTS).filter(
-  (key) => !key.startsWith("intake_") && key !== "nav_visibility",
+  (key) =>
+    !key.startsWith("intake_") &&
+    key !== "nav_visibility" &&
+    key !== "idle_timeout_minutes",
 );
 
 /**

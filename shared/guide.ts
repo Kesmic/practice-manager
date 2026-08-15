@@ -127,6 +127,20 @@ is already allowed for.
 A Partner resets your two-step sign-in, and you set it up again on the new phone. They
 will want to be sure it is really you asking: expect a phone call to a number they
 already had, not an email exchange.
+
+## Being signed out when you step away
+
+The portal signs you out after a spell with no activity, ten minutes unless the firm has
+changed it. It is for the ordinary case rather than a dramatic one: a laptop open on a
+desk in a shared office, or a browser left signed in on a machine somebody else uses next.
+
+You get a warning before it happens, with a countdown and a **Stay signed in** button.
+Take it if you were part-way through writing something, because anything typed and not
+saved goes with the session.
+
+Typing, clicking and scrolling all count as activity, so this only bites when you have
+genuinely left the screen alone. Reading a long document without touching anything counts
+as leaving it alone, which is exactly when the warning matters.
 `,
   },
 
@@ -444,6 +458,22 @@ Everything the firm controls sits behind one sidebar entry, in tabs:
 - **Sign-in security**: below.
 - **Erase data**: below.
 
+## Sign-in security
+
+Two things, on one screen.
+
+**Sign out after inactivity.** How long a session may sit untouched before it ends. Ten
+minutes by default. Everyone gets a warning with a countdown and a button to stay signed
+in, so nobody loses work they were part-way through. Set it to *Never* if the firm would
+rather not have it, though an unattended screen is then signed in until somebody signs it
+out.
+
+It is enforced by the server as well as the browser, which matters for the case the
+browser cannot cover: a tab closed without signing out, where none of the portal's own
+code will ever run again.
+
+**Who must use two-step sign-in.** Covered under Two-step sign-in above.
+
 ## Who sees what
 
 For each area, the lowest grade that can open it. It is enforced by the server as well as
@@ -522,6 +552,18 @@ been submitted.
 ## "I cannot see a screen I could see before"
 
 A Partner may have changed who sees what. Ask them, rather than assuming something broke.
+
+## "I keep being signed out"
+
+The portal ends a session after a spell of no activity, ten minutes unless your firm has
+changed it. If it is happening while you are working, you are probably reading rather than
+typing: scrolling counts as activity, but sitting still with a document open does not.
+
+A Partner can lengthen the period or switch it off entirely under **Portal settings,
+Sign-in security**.
+
+If it happens the instant you sign in, that is something else. Tell a Partner: it usually
+means a clock somewhere is badly wrong.
 
 ## "It will not accept my code"
 

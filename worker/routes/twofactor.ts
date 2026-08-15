@@ -7,7 +7,7 @@
  */
 
 import type { Env } from "../env";
-import { requireRole, requireUser } from "../auth";
+import { idlePolicy, requireRole, requireUser } from "../auth";
 import { nowIso } from "../db";
 import { Router, badRequest, forbidden, json, notFound, readJson } from "../http";
 import { encodeQr, qrSvg } from "../../shared/qr";
@@ -19,6 +19,13 @@ import {
   TWOFACTOR_OFF,
   readPolicy,
 } from "../../shared/twofactor";
+import {
+  IDLE_OFF,
+  MAX_IDLE_MINUTES,
+  MIN_IDLE_MINUTES,
+  clampIdleMinutes,
+  writeIdlePolicy,
+} from "../../shared/session-policy";
 import {
   beginEnrolment,
   checkTotp,
@@ -249,6 +256,7 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
 
     return json({
       policy,
+      idle: await idlePolicy(env),
       people: results.map((row) => ({
         ...row,
         enabled: Boolean(row.confirmed_at),
@@ -258,6 +266,37 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
         (row) => isRequiredFor(policy, row.role) && !row.confirmed_at,
       ).length,
     });
+  });
+
+  /**
+   * Signing people out after a spell of inactivity.
+   *
+   * Lives beside the two-factor policy because it is the same screen and the same
+   * question: how much the firm wants between an unattended desk and its client files.
+   */
+  router.put("/api/session-policy", async ({ request, env }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ idle_minutes?: unknown; enabled?: unknown }>(request);
+
+    if (body.enabled === false) {
+      await writeSetting(env, "idle_timeout_minutes", IDLE_OFF, actor.id);
+      return json({ idle: { enabled: false } });
+    }
+
+    const raw = body.idle_minutes;
+    const minutes = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
+    if (!Number.isFinite(minutes)) {
+      throw badRequest("Give a number of minutes, or enabled: false to switch it off.");
+    }
+    if (minutes < MIN_IDLE_MINUTES || minutes > MAX_IDLE_MINUTES) {
+      throw badRequest(
+        `The inactivity period has to be between ${MIN_IDLE_MINUTES} and ${MAX_IDLE_MINUTES} minutes.`,
+      );
+    }
+
+    const policy = { enabled: true as const, minutes: clampIdleMinutes(minutes) };
+    await writeSetting(env, "idle_timeout_minutes", writeIdlePolicy(policy), actor.id);
+    return json({ idle: policy });
   });
 
   /** The firm's policy: the lowest grade obliged to use a second factor, or off. */

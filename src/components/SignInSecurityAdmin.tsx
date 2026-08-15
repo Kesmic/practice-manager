@@ -13,6 +13,11 @@ import {
   RECOMMENDED_TWOFACTOR_MIN_ROLE,
   TWOFACTOR_OFF,
 } from "@shared/twofactor";
+import {
+  IDLE_MINUTE_CHOICES,
+  IDLE_OFF,
+  IDLE_WARNING_SECONDS,
+} from "@shared/session-policy";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { formatDateTime } from "../lib/format";
@@ -27,12 +32,14 @@ export function SignInSecurityAdmin({
   setError: (m: string | null) => void;
   setNotice: (m: string | null) => void;
 }) {
-  const { user } = useSession();
+  const { user, refresh } = useSession();
   const [data, setData] = useState<Overview | null>(null);
   const [draft, setDraft] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [resetting, setResetting] = useState<Overview["people"][number] | null>(null);
+  /** The inactivity setting being edited: "off", or a number of minutes as a string. */
+  const [idleDraft, setIdleDraft] = useState<string>("");
 
   const load = useCallback(() => {
     void api
@@ -40,6 +47,7 @@ export function SignInSecurityAdmin({
       .then((res) => {
         setData(res);
         setDraft(res.policy);
+        setIdleDraft(res.idle.enabled ? String(res.idle.minutes) : IDLE_OFF);
       })
       .catch((err) =>
         setLocalError(
@@ -76,6 +84,33 @@ export function SignInSecurityAdmin({
     }
   };
 
+  const saveIdle = async () => {
+    setBusy(true);
+    setLocalError(null);
+    try {
+      const res = await api.setSessionPolicy(
+        idleDraft === IDLE_OFF
+          ? { enabled: false }
+          : { enabled: true, idle_minutes: Number.parseInt(idleDraft, 10) },
+      );
+      setNotice(
+        res.idle.enabled
+          ? `Sessions will now end after ${res.idle.minutes} minutes of inactivity. Everyone gets a warning ${IDLE_WARNING_SECONDS} seconds before, with a chance to stay signed in.`
+          : "Sessions will no longer end through inactivity. They still expire on their own after a week, and signing out still works.",
+      );
+      setError(null);
+      // Picked up by everyone else's browser on their next request, and by this one now.
+      await refresh();
+      load();
+    } catch (err) {
+      setLocalError(
+        err instanceof ApiRequestError ? err.message : "Could not save that.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const doReset = async (person: Overview["people"][number]) => {
     setBusy(true);
     setLocalError(null);
@@ -97,6 +132,54 @@ export function SignInSecurityAdmin({
   return (
     <div className="space-y-5">
       <ErrorBanner error={localError} onDismiss={() => setLocalError(null)} />
+
+      <section className="card p-4">
+        <h2 className="card-title">Sign out after inactivity</h2>
+        <p className="muted mb-3 mt-0.5">
+          Ends a session that has been left untouched, so a screen open on an unattended
+          desk cannot be used by whoever sits down next. Everyone gets a warning{" "}
+          {IDLE_WARNING_SECONDS} seconds before, with a button to stay signed in, so
+          nobody loses work they were part-way through.
+        </p>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-700">
+              End the session after
+            </span>
+            <Select
+              value={idleDraft}
+              onChange={(e) => setIdleDraft(e.target.value)}
+              className="input w-64"
+            >
+              <option value={IDLE_OFF}>Never, unless they sign out</option>
+              {IDLE_MINUTE_CHOICES.map((minutes) => (
+                <option key={minutes} value={String(minutes)}>
+                  {minutes} minutes of inactivity
+                </option>
+              ))}
+            </Select>
+          </label>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={
+              busy ||
+              idleDraft ===
+                (data.idle.enabled ? String(data.idle.minutes) : IDLE_OFF)
+            }
+            onClick={() => void saveIdle()}
+          >
+            {busy ? "Saving..." : "Save"}
+          </button>
+        </div>
+
+        <p className="muted mt-3">
+          {data.idle.enabled
+            ? `Currently ${data.idle.minutes} minutes. Enforced by the server as well as the browser, so a tab closed without signing out is finished too.`
+            : "Currently off. A session then lasts until the person signs out, or a week passes."}
+        </p>
+      </section>
 
       <section className="card p-4">
         <h2 className="card-title">Who must use two-step sign-in</h2>

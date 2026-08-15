@@ -22,6 +22,7 @@
 import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiRequestError, type LoginChallenge } from "../lib/api";
+import { IDLE_SIGNED_OUT_MESSAGE } from "@shared/session-policy";
 import { useSession } from "../lib/auth";
 import { FirmLogo, FirmName, useFirm } from "../lib/firm";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -44,7 +45,7 @@ const ASSURANCES = [
 ];
 
 export function Login() {
-  const { user, loading, signIn, completeSignIn } = useSession();
+  const { user, loading, signIn, completeSignIn, idled } = useSession();
   const { branding } = useFirm();
   const navigate = useNavigate();
   const location = useLocation();
@@ -55,6 +56,13 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showReset, setShowReset] = useState(false);
+  /*
+    Why the person is looking at this screen, when they did not choose to be. Read from
+    the address rather than from context, so it survives the redirect that brought them
+    here and disappears when they navigate away.
+  */
+  const signedOutIdle =
+    new URLSearchParams(location.search).get("reason") === "idle" || idled;
   /*
     The half-finished sign-in. While this is set the password is already accepted and
     nothing is signed in: the form swaps to asking for a code. Kept in component state
@@ -296,6 +304,12 @@ export function Login() {
 
           <form onSubmit={submit} className="mt-7 space-y-4" noValidate>
             <ErrorBanner error={error} onDismiss={() => setError(null)} />
+
+            {signedOutIdle && !error && (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-inset ring-amber-200">
+                {IDLE_SIGNED_OUT_MESSAGE}
+              </p>
+            )}
 
             <Field label="Email address" required>
               {(id) => (

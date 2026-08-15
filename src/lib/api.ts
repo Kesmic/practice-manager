@@ -10,6 +10,7 @@
 import type { ErasePreview, EraseScope } from "@shared/erase";
 import type { Visibility } from "@shared/visibility";
 import type { TwoFactorStatus } from "@shared/twofactor";
+import type { IdlePolicy } from "@shared/session-policy";
 import type {
   ChecklistItem,
   DocumentSignature,
@@ -114,6 +115,10 @@ const qs = (params: Record<string, string | number | undefined | null>): string 
 export interface SessionResponse {
   user: User | null;
   unread_notifications?: number;
+  /** The firm's inactivity setting, so the browser knows what to count down to. */
+  idle_policy?: IdlePolicy;
+  /** True when the session just ended because the portal was left idle. */
+  idled?: boolean;
 }
 
 /** What the password step returns when the account has a second factor. */
@@ -201,9 +206,16 @@ export const api = {
       body: { code },
     }),
 
+  setSessionPolicy: (input: { enabled: boolean; idle_minutes?: number }) =>
+    request<{ idle: IdlePolicy }>("/api/session-policy", {
+      method: "PUT",
+      body: input,
+    }),
+
   twoFactorOverview: () =>
     request<{
       policy: string;
+      idle: IdlePolicy;
       outstanding: number;
       people: Array<{
         id: string;

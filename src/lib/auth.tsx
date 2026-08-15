@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { User } from "@shared/types";
+import type { IdlePolicy } from "@shared/session-policy";
 import { atLeast, type Role } from "@shared/workflow";
 import {
   DEFAULT_VISIBILITY,
@@ -40,6 +41,13 @@ interface SessionState {
   /** True when the signed-in user holds `minimum` grade or above. */
   can: (minimum: Role) => boolean;
   /**
+   * The firm's inactivity setting, as the Worker reports it. Null until the first session
+   * probe answers, which is why IdleWatcher treats null as "not yet, do nothing".
+   */
+  idlePolicy: IdlePolicy | null;
+  /** True when the last session ended because the portal was left idle. */
+  idled: boolean;
+  /**
    * True when this firm has opened an area to the signed-in user's grade. The Worker
    * enforces the same setting, so this decides what to draw rather than what is
    * allowed: a screen hidden here is also refused there.
@@ -57,12 +65,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // case a firm is likely to configure, so the sidebar cannot flash a link the person
   // is not entitled to.
   const [visibility, setVisibility] = useState<Visibility>(DEFAULT_VISIBILITY);
+  const [idlePolicy, setIdlePolicy] = useState<IdlePolicy | null>(null);
+  const [idled, setIdled] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const { user: current, unread_notifications } = await api.session();
+      const {
+        user: current,
+        unread_notifications,
+        idle_policy,
+        idled: wasIdle,
+      } = await api.session();
       setUser(current);
       setUnread(unread_notifications ?? 0);
+      if (idle_policy) setIdlePolicy(idle_policy);
+      if (wasIdle) setIdled(true);
       if (current) {
         try {
           const { visibility: configured } = await api.visibility();
@@ -87,6 +104,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   /** Shared tail of both sign-in paths: pick up what the session needs. */
   const settle = useCallback(async (signedIn: User) => {
     setUser(signedIn);
+    setIdled(false);
     try {
       const { visibility: configured } = await api.visibility();
       setVisibility(configured);
@@ -143,10 +161,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       signOut,
       refresh,
       setUnread,
+      idlePolicy,
+      idled,
       can: (minimum: Role) => (user ? atLeast(user.role, minimum) : false),
       canSee: (area: Area) => (user ? canSeeArea(visibility, area, user.role) : false),
     }),
-    [user, loading, unread, signIn, completeSignIn, signOut, refresh, visibility],
+    [
+      user,
+      loading,
+      unread,
+      signIn,
+      completeSignIn,
+      signOut,
+      refresh,
+      visibility,
+      idlePolicy,
+      idled,
+    ],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
