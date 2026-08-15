@@ -14,6 +14,13 @@ import {
   isRequiredFor as twoFactorRequiredFor,
   readPolicy as readTwoFactorPolicy,
 } from "../shared/twofactor";
+import {
+  IDLE_SIGNED_OUT_CODE,
+  IDLE_SIGNED_OUT_MESSAGE,
+  TOUCH_AFTER_SECONDS,
+  readIdlePolicy,
+  type IdlePolicy,
+} from "../shared/session-policy";
 
 /**
  * The PBKDF2 work factor is a deployment setting rather than a constant, because
@@ -315,17 +322,32 @@ export async function destroySession(env: Env, request: Request): Promise<void> 
 }
 
 /** Resolves the signed-in user, or null when there is no valid session. */
-export async function currentUser(
+/** The firm's inactivity setting. */
+export async function idlePolicy(env: Env): Promise<IdlePolicy> {
+  const row = await env.DB.prepare(`SELECT value FROM settings WHERE key = ?`)
+    .bind("idle_timeout_minutes")
+    .first<{ value: string }>();
+  return readIdlePolicy(row?.value);
+}
+
+/**
+ * Who is signed in, and if nobody, whether that is because they were idle.
+ *
+ * The reason matters. Without it the browser cannot tell "your session ran out while you
+ * were away" from "you are not signed in", and somebody who steps away for lunch comes
+ * back to a sign-in screen with no explanation for where their afternoon went.
+ */
+export async function currentSession(
   env: Env,
   request: Request,
-): Promise<AuthenticatedUser | null> {
+): Promise<{ user: AuthenticatedUser | null; idled: boolean }> {
   const token = readCookie(request, SESSION_COOKIE);
-  if (!token) return null;
+  if (!token) return { user: null, idled: false };
 
   const id = await digest(token);
   const row = await env.DB.prepare(
     `SELECT u.id, u.email, u.full_name, u.role, u.title, u.must_change_password,
-            u.email_notifications, u.status, s.expires_at
+            u.email_notifications, u.status, s.expires_at, s.last_seen_at
        FROM sessions s
        JOIN users u ON u.id = s.user_id
       WHERE s.id = ?`,
@@ -341,27 +363,63 @@ export async function currentUser(
       email_notifications: 0 | 1;
       status: string;
       expires_at: string;
+      last_seen_at: string;
     }>();
 
-  if (!row) return null;
+  if (!row) return { user: null, idled: false };
 
-  if (new Date(row.expires_at).getTime() <= Date.now()) {
+  const now = Date.now();
+
+  if (new Date(row.expires_at).getTime() <= now) {
     await env.DB.prepare(`DELETE FROM sessions WHERE id = ?`).bind(id).run();
-    return null;
+    return { user: null, idled: false };
   }
 
-  if (row.status !== "active") return null;
+  if (row.status !== "active") return { user: null, idled: false };
+
+  /*
+   * The inactivity window, enforced here rather than only in the browser. This is the
+   * half that holds for a tab closed without signing out, or a cookie lifted off a
+   * machine: neither will ever run the page's own timer.
+   */
+  const policy = await idlePolicy(env);
+  const lastSeen = new Date(row.last_seen_at).getTime();
+  if (policy.enabled && Number.isFinite(lastSeen)) {
+    const idleMs = now - lastSeen;
+    if (idleMs > policy.minutes * 60_000) {
+      await env.DB.prepare(`DELETE FROM sessions WHERE id = ?`).bind(id).run();
+      return { user: null, idled: true };
+    }
+    // Written back only when it has gone stale, so continuous work is not a write per
+    // request. See TOUCH_AFTER_SECONDS for what that costs at the boundary.
+    if (idleMs > TOUCH_AFTER_SECONDS * 1000) {
+      await env.DB.prepare(`UPDATE sessions SET last_seen_at = ? WHERE id = ?`)
+        .bind(new Date(now).toISOString(), id)
+        .run();
+    }
+  }
 
   return {
-    id: row.id,
-    email: row.email,
-    full_name: row.full_name,
-    role: row.role,
-    title: row.title,
-    must_change_password: row.must_change_password,
-    email_notifications: row.email_notifications,
-    session_id: id,
+    user: {
+      id: row.id,
+      email: row.email,
+      full_name: row.full_name,
+      role: row.role,
+      title: row.title,
+      must_change_password: row.must_change_password,
+      email_notifications: row.email_notifications,
+      session_id: id,
+    },
+    idled: false,
   };
+}
+
+/** The caller, or null. Keeps the older shape for everything that does not need a reason. */
+export async function currentUser(
+  env: Env,
+  request: Request,
+): Promise<AuthenticatedUser | null> {
+  return (await currentSession(env, request)).user;
 }
 
 /** Strips server-only fields before a user record goes over the wire. */
@@ -386,8 +444,12 @@ export async function requireUser(
     allowTwoFactorPending = false,
   }: { allowPasswordPending?: boolean; allowTwoFactorPending?: boolean } = {},
 ): Promise<AuthenticatedUser> {
-  const user = await currentUser(env, request);
-  if (!user) throw unauthorized();
+  const { user, idled } = await currentSession(env, request);
+  if (!user) {
+    throw idled
+      ? new HttpError(401, IDLE_SIGNED_OUT_MESSAGE, IDLE_SIGNED_OUT_CODE)
+      : unauthorized();
+  }
   if (user.must_change_password === 1 && !allowPasswordPending) {
     throw forbidden(
       "You are signed in with a temporary password. Set a new password before continuing.",

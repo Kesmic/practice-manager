@@ -3,8 +3,9 @@ import {
   assertPasswordPolicy,
   clearedCookie,
   createSession,
-  currentUser,
+  currentSession,
   decoyHash,
+  idlePolicy,
   destroySession,
   hashPassword,
   pruneSessions,
@@ -274,8 +275,13 @@ export function registerAuthRoutes(router: Router<Env>): void {
   });
 
   router.get("/api/auth/me", async ({ request, env }) => {
-    const user = await currentUser(env, request);
-    if (!user) return json({ user: null });
+    const { user, idled } = await currentSession(env, request);
+    const idle = await idlePolicy(env);
+    if (!user) {
+      // `idled` is what lets the sign-in screen explain the absence rather than leaving
+      // somebody to wonder where their afternoon went.
+      return json({ user: null, idled, idle_policy: idle });
+    }
 
     const unread = await env.DB.prepare(
       `SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL`,
@@ -283,7 +289,12 @@ export function registerAuthRoutes(router: Router<Env>): void {
       .bind(user.id)
       .first<{ n: number }>();
 
-    return json({ user: publicUser(user), unread_notifications: unread?.n ?? 0 });
+    return json({
+      user: publicUser(user),
+      unread_notifications: unread?.n ?? 0,
+      idled: false,
+      idle_policy: idle,
+    });
   });
 
   /**

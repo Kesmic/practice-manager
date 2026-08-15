@@ -4,6 +4,7 @@ import { ROLE_LABELS } from "@shared/workflow";
 import type { Area } from "@shared/visibility";
 import { useSession } from "../lib/auth";
 import { FirmLogo, FirmName } from "../lib/firm";
+import { IdleWatcher } from "./IdleWatcher";
 import { ThemeToggle } from "./ThemeToggle";
 import { Avatar } from "./ui";
 
@@ -104,6 +105,7 @@ export function Layout() {
 
   return (
     <div className="min-h-screen lg:flex">
+      <IdleWatcher />
       {/* ------------------------------------------------------------ sidebar */}
       <aside
         className={`${
