@@ -213,7 +213,8 @@ person at the firm the instant it landed.
 
 `0010_session_last_seen.sql` starts everyone's clock at the deploy instead. It is the same
 shape of problem as a policy that switches itself on during a migration, and it is avoided
-the same way. Run `npm run db:migrate:remote` after merging.
+the same way. Nothing to run by hand: the deploy workflow applies migrations to the live
+database on every push to `main`, before it deploys the app.
 
 ## What it does not change
 
