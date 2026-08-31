@@ -128,6 +128,35 @@ A Partner resets your two-step sign-in, and you set it up again on the new phone
 will want to be sure it is really you asking: expect a phone call to a number they
 already had, not an email exchange.
 
+## Not being asked for a code every single time
+
+When you sign in with a code there is a tick box: **do not ask on this device again**. Take
+it on the laptop or phone that is yours, and you will not be asked again for a month.
+
+Do not take it on a shared machine, a client's computer or anything in an internet cafe.
+The tick is what stands between whoever sits down next and everything you can reach.
+
+If a device goes missing, go to your account screen. **Devices that skip the code** lists
+every machine you have ticked, and you can drop one or all of them. It takes effect at
+once, so do it before you do anything else.
+
+## If your phone is not to hand
+
+Your firm may allow **secret questions**: two questions you write yourself, which you can
+answer instead of a code. Set them up on your account screen.
+
+Two things worth knowing before you do.
+
+**This is the weaker way in.** A code needs your phone. An answer only needs somebody to
+know a thing about you, and a colleague usually does.
+
+**Your answers do not have to be true.** Nobody is checking. An answer nobody could guess
+is better than an honest one, and you are the only person who will ever type it again.
+Pick something you cannot forget rather than something that is correct.
+
+Nobody can read your answers back, including whoever runs the firm. If you forget them,
+set them again.
+
 ## Being signed out when you step away
 
 The portal signs you out after a spell with no activity, ten minutes unless the firm has
@@ -474,6 +503,20 @@ code will ever run again.
 
 **Who must use two-step sign-in.** Covered under Two-step sign-in above.
 
+**Letting a device skip the code.** After somebody signs in with a code they can ask that
+machine not to want one again for a while. Thirty days unless you change it. The factor was
+still presented, so this costs very little: what is kept is a note that it was, tied to that
+one account, and it expires. Everyone can see and drop their own devices on their account
+screen. Switching this off forgets every device already remembered, so it takes effect at
+once rather than only for future sign-ins.
+
+**Secret questions instead of a code.** Off unless you turn it on, and worth thinking about
+before you do. A code needs a phone in somebody's hand; an answer needs a fact, and facts
+about the people at a firm named on its own website are often reachable by a stranger and
+nearly always by a colleague. A stolen phone is replaced in an afternoon; a leaked fact is
+leaked for good. If you do turn it on, everyone who sets questions is told to pick answers
+that are memorable rather than true, which is the thing that makes them worth having.
+
 ## Who sees what
 
 For each area, the lowest grade that can open it. It is enforced by the server as well as
@@ -564,6 +607,26 @@ Sign-in security**.
 
 If it happens the instant you sign in, that is something else. Tell a Partner: it usually
 means a clock somewhere is badly wrong.
+
+## "It stopped asking for a code, is that right?"
+
+Yes, if you ticked the box on this device. It lasts a month and then asks again.
+
+If you did not tick it, that is worth checking: open your account screen, look at
+**Devices that skip the code**, and drop anything you do not recognise. Then tell a
+Partner.
+
+## "It is asking for a code again and it should not be"
+
+The month ran out, somebody reset your two-step sign-in, or a Partner switched the whole
+feature off for the firm. All three are normal. Sign in with a code and tick the box
+again.
+
+## "I cannot remember my secret answers"
+
+Nobody can look them up, so there is nothing to be recovered. Sign in with a code from
+your app, then set new questions on your account screen. If you have neither the answers
+nor your phone, use a recovery code, and if those are gone too a Partner resets you.
 
 ## "It will not accept my code"
 

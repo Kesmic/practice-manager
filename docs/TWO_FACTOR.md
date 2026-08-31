@@ -220,3 +220,82 @@ database on every push to `main`, before it deploys the app.
 
 The week-long session expiry is unaffected and still applies with the timeout off. Signing
 out still works. Nothing about it touches passwords or second factors.
+
+---
+
+# Two ways to make the second step less of a daily tax
+
+Both exist because a second factor that is merely correct gets switched off. They are not
+equally priced, and the difference is the whole of what follows.
+
+## Remembering a device
+
+**Thirty days by default, up to ninety, or off.** After somebody signs in with a code they
+can tick a box, and that browser is not asked again until the period runs out.
+
+This costs almost nothing, because the factor was still presented. What is kept afterwards
+is a random 32-byte token, stored as its SHA-256 and bound to one account with an expiry.
+Somebody who steals it gets what they would have got by stealing a live session cookie,
+which is a risk the session cookie already carries and which the inactivity timeout already
+bounds.
+
+**Each person sees their own list** on their account screen, with which one they are using
+now, and can drop one or all of them. That list is the revocation, and it is why the label
+says "Chrome on Windows" rather than a hundred characters of version string: a list nobody
+can read is a list nobody prunes.
+
+### Three places it is deliberately stopped from spreading
+
+**Answering the secret questions cannot mint one.** One lucky guess would otherwise buy a
+month with no second step at all. A code or a recovery code both mean something physical
+was present; those may be remembered.
+
+**Resetting somebody's two-step sign-in forgets their devices.** Without this a reset would
+leave the machine already past the second step still past it, for up to a month, and the
+usual reason to reset is that a machine is in the wrong hands.
+
+**Switching the setting off forgets what is already remembered.** Somebody turns it off
+because they want the second step back now, not in a month.
+
+## Secret questions
+
+**Off until a Partner turns them on**, which is the opposite of every other default here
+and is the point.
+
+**This is the weaker route, and the gap is not small.** A code needs the phone in your
+hand. An answer needs a fact, and facts about the people at a firm named on its own website
+are often reachable by a stranger with a search engine and nearly always by a colleague.
+Worse, a fact cannot be taken back: a stolen phone is replaced in an afternoon, while the
+town you were born in is compromised for good.
+
+It is offered because the firm asked for it and the risk is theirs to take. What makes it
+defensible rather than ornamental:
+
+- **You write your own questions.** A stock list is a list every attacker also has, and
+  every leaked stock list too. The suggestions on the screen are prompts to edit, and none
+  of them asks for something that appears on a passport or an application form.
+- **Answers do not have to be true**, and the screen says so. An answer nobody could guess
+  beats an honest one, and you are the only person who ever has to reproduce it.
+- **Both answers must be right**, and a failure does not say which one was wrong. Saying so
+  would turn one guess at two questions into two independent guesses at one.
+- **Nothing stores an answer.** What is kept is a SHA-256 of the folded answer salted with
+  the user id, exactly as recovery codes are handled. No endpoint returns one, and nobody
+  can read them back, including whoever runs the firm.
+- **The five-attempt limit applies** exactly as it does to a code.
+- **Two identical questions, or two answers that fold together, are refused.** Two the same
+  is one secret wearing two hats, which looks like two factors and is one.
+
+### Folding an answer
+
+Case, outer space, runs of inner space and accents are all folded away before comparison,
+because an answer refused for a capital letter is indistinguishable, to the person typing
+it, from an answer they have forgotten, and the cost of that confusion is a locked-out
+partner. Punctuation is kept: the accent and case rules already cover the mistakes people
+actually make.
+
+### Turning it off does not delete anything
+
+Stored questions become unusable rather than destroyed, so a firm that switches this off to
+think about it has not silently wiped everybody's setup. Both the sign-in path and the
+editing path check the policy, so it is enforced and not merely hidden. Each person can
+delete their own.
