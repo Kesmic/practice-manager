@@ -207,6 +207,22 @@ export async function listDevices(
   return (results ?? []).map((row) => ({ ...row, this_one: row.id === thisId }));
 }
 
+/**
+ * Clears out devices whose period has run out.
+ *
+ * Called on the password step, beside the equivalent housekeeping for sessions and
+ * challenges. Without it an expired row only goes when the browser holding that exact
+ * cookie comes back, which for a laptop that was replaced is never: the table would keep
+ * a row per dead machine indefinitely. Nothing is at risk in the meantime, because the
+ * expiry is checked before a row is honoured, but a table that only ever grows is a
+ * problem stored up rather than avoided.
+ */
+export async function pruneTrustedDevices(env: Env): Promise<void> {
+  await env.DB.prepare(`DELETE FROM trusted_devices WHERE expires_at <= ?`)
+    .bind(nowIso())
+    .run();
+}
+
 /** Drops one device. Scoped to the owner, so nobody can revoke somebody else's. */
 export async function forgetDevice(
   env: Env,

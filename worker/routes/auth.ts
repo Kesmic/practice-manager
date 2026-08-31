@@ -31,6 +31,7 @@ import {
   deviceIsTrusted,
   hasQuestions,
   loadQuestions,
+  pruneTrustedDevices,
   rememberDevice,
   secretQuestionPolicy,
   trustedDevicePolicy,
@@ -190,6 +191,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
 
     await pruneSessions(env);
     await pruneChallenges(env);
+    await pruneTrustedDevices(env);
 
     /*
      * The password was right. If this account has a confirmed second factor, no session
