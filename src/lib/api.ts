@@ -125,8 +125,27 @@ export interface SessionResponse {
 export interface LoginChallenge {
   token: string;
   expires_at: string;
-  methods: Array<"totp" | "recovery">;
+  methods: Array<"totp" | "recovery" | "questions">;
   recovery_remaining: number;
+  /** Shown so they can be answered. Never carries anything that helps answer them. */
+  questions: Array<{ position: number; question: string }>;
+  can_remember_device: boolean;
+  remember_device_days: number;
+}
+
+export interface TrustedDevice {
+  id: string;
+  label: string | null;
+  created_at: string;
+  last_used_at: string;
+  expires_at: string;
+  this_one: boolean;
+}
+
+export interface SecretQuestion {
+  id: string;
+  position: number;
+  question: string;
 }
 
 export const api = {
@@ -143,12 +162,20 @@ export const api = {
       body: { email, password },
     }),
 
-  /** The second step, with either an app code or a recovery code. */
-  completeLogin: (input: { challenge: string; code?: string; recovery_code?: string }) =>
+  /** The second step: an app code, a recovery code, or the secret questions. */
+  completeLogin: (input: {
+    challenge: string;
+    code?: string;
+    recovery_code?: string;
+    answers?: string[];
+    remember_device?: boolean;
+  }) =>
     request<{
       user: User;
       used_recovery_code?: boolean;
+      used_secret_questions?: boolean;
       recovery_codes_remaining?: number;
+      remembered_device?: boolean;
     }>("/api/auth/2fa", { method: "POST", body: input }),
 
   logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
@@ -216,6 +243,8 @@ export const api = {
     request<{
       policy: string;
       idle: IdlePolicy;
+      devices: { enabled: boolean; days?: number };
+      questions: { enabled: boolean };
       outstanding: number;
       people: Array<{
         id: string;
@@ -244,6 +273,54 @@ export const api = {
       must_enrol_again: boolean;
       message: string;
     }>(`/api/users/${userId}/2fa/reset`, { method: "POST" }),
+
+  // -------------------------------------------------- remembered devices
+  trustedDevices: () =>
+    request<{
+      policy: { enabled: boolean; days?: number };
+      devices: TrustedDevice[];
+    }>("/api/2fa/devices"),
+
+  forgetDevice: (id: string) =>
+    request<{ ok: true; devices: TrustedDevice[] }>(`/api/2fa/devices/${id}`, {
+      method: "DELETE",
+    }),
+
+  forgetAllDevices: () =>
+    request<{ ok: true; devices: TrustedDevice[] }>("/api/2fa/devices/forget-all", {
+      method: "POST",
+    }),
+
+  setDevicePolicy: (input: { enabled: boolean; days?: number }) =>
+    request<{ devices: { enabled: boolean; days?: number }; forgot_existing?: boolean }>(
+      "/api/2fa/device-policy",
+      { method: "PUT", body: input },
+    ),
+
+  // ------------------------------------------------------ secret questions
+  secretQuestions: () =>
+    request<{
+      policy: { enabled: boolean };
+      questions: SecretQuestion[];
+      suggestions: string[];
+    }>("/api/2fa/questions"),
+
+  setSecretQuestions: (questions: Array<{ question: string; answer: string }>) =>
+    request<{ ok: true; questions: SecretQuestion[] }>("/api/2fa/questions", {
+      method: "PUT",
+      body: { questions },
+    }),
+
+  clearSecretQuestions: () =>
+    request<{ ok: true; questions: SecretQuestion[] }>("/api/2fa/questions", {
+      method: "DELETE",
+    }),
+
+  setQuestionPolicy: (enabled: boolean) =>
+    request<{ questions: { enabled: boolean }; people_with_questions: number }>(
+      "/api/2fa/question-policy",
+      { method: "PUT", body: { enabled } },
+    ),
 
   // ------------------------------------------------------------------ users
   users: (includeSuspended = false) =>

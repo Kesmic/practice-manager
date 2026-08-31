@@ -69,6 +69,21 @@ const DEFAULTS: Record<string, string> = {
    * quietly stop protecting them.
    */
   idle_timeout_minutes: "",
+  /**
+   * Days a remembered device may skip the second step, or "off". Empty means the default.
+   *
+   * Its own endpoint, because switching it off has to forget the devices already
+   * remembered as well as write the value, and a generic setting write would leave every
+   * existing pass running while reporting that it had been turned off.
+   */
+  trusted_device_days: "",
+  /**
+   * Whether secret questions may stand in for a code. Empty means off.
+   *
+   * Its own endpoint so that the weaker route is turned on by a deliberate act rather
+   * than as one field among many in a general settings save.
+   */
+  secret_questions_enabled: "",
 };
 
 /** Everything except the settings that have their own, validating endpoints. */
@@ -76,7 +91,9 @@ const EDITABLE = Object.keys(DEFAULTS).filter(
   (key) =>
     !key.startsWith("intake_") &&
     key !== "nav_visibility" &&
-    key !== "idle_timeout_minutes",
+    key !== "idle_timeout_minutes" &&
+    key !== "trusted_device_days" &&
+    key !== "secret_questions_enabled",
 );
 
 /**

@@ -18,6 +18,10 @@ import {
   IDLE_OFF,
   IDLE_WARNING_SECONDS,
 } from "@shared/session-policy";
+import {
+  TRUSTED_DEVICES_OFF,
+  TRUSTED_DEVICE_DAY_CHOICES,
+} from "@shared/second-factor-options";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { formatDateTime } from "../lib/format";
@@ -40,6 +44,8 @@ export function SignInSecurityAdmin({
   const [resetting, setResetting] = useState<Overview["people"][number] | null>(null);
   /** The inactivity setting being edited: "off", or a number of minutes as a string. */
   const [idleDraft, setIdleDraft] = useState<string>("");
+  /** The remembered-device setting: "off", or a number of days as a string. */
+  const [deviceDraft, setDeviceDraft] = useState<string>("");
 
   const load = useCallback(() => {
     void api
@@ -48,6 +54,9 @@ export function SignInSecurityAdmin({
         setData(res);
         setDraft(res.policy);
         setIdleDraft(res.idle.enabled ? String(res.idle.minutes) : IDLE_OFF);
+        setDeviceDraft(
+          res.devices.enabled ? String(res.devices.days) : TRUSTED_DEVICES_OFF,
+        );
       })
       .catch((err) =>
         setLocalError(
@@ -101,6 +110,53 @@ export function SignInSecurityAdmin({
       setError(null);
       // Picked up by everyone else's browser on their next request, and by this one now.
       await refresh();
+      load();
+    } catch (err) {
+      setLocalError(
+        err instanceof ApiRequestError ? err.message : "Could not save that.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveDevices = async () => {
+    setBusy(true);
+    setLocalError(null);
+    try {
+      const off = deviceDraft === TRUSTED_DEVICES_OFF;
+      const res = await api.setDevicePolicy(
+        off ? { enabled: false } : { enabled: true, days: Number(deviceDraft) },
+      );
+      setNotice(
+        res.devices.enabled
+          ? `A device can now skip the code for ${res.devices.days} days once somebody asks it to.`
+          : "Every sign-in will ask for a code again, including on devices that were already remembered.",
+      );
+      setError(null);
+      load();
+    } catch (err) {
+      setLocalError(
+        err instanceof ApiRequestError ? err.message : "Could not save that.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveQuestions = async (enabled: boolean) => {
+    setBusy(true);
+    setLocalError(null);
+    try {
+      const res = await api.setQuestionPolicy(enabled);
+      setNotice(
+        res.questions.enabled
+          ? "Secret questions are now allowed. Each person sets their own two, on their account screen."
+          : res.people_with_questions > 0
+            ? `Secret questions are off. ${res.people_with_questions} ${res.people_with_questions === 1 ? "person has" : "people have"} questions stored, which are now unusable but not deleted.`
+            : "Secret questions are off. A code or a recovery code is the only way past the second step.",
+      );
+      setError(null);
       load();
     } catch (err) {
       setLocalError(
@@ -243,6 +299,103 @@ export function SignInSecurityAdmin({
         <p className="muted mt-3">
           Nobody is locked out by this. Someone who has not enrolled is confined to
           setting it up, which is why turning it on does not stop the firm working.
+        </p>
+      </section>
+
+      <section className="card p-4">
+        <h2 className="card-title">Letting a device skip the code</h2>
+        <p className="muted mb-3 mt-0.5">
+          After somebody signs in with a code, they can ask that machine not to want one
+          again for a while. The factor was still presented: what is kept is a note that
+          it was, bound to that one account, and it expires.
+        </p>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-700">
+              Remember a device for
+            </span>
+            <Select
+              value={deviceDraft}
+              onChange={(e) => setDeviceDraft(e.target.value)}
+              className="input w-64"
+            >
+              <option value={TRUSTED_DEVICES_OFF}>Never, always ask for a code</option>
+              {TRUSTED_DEVICE_DAY_CHOICES.map((days) => (
+                <option key={days} value={String(days)}>
+                  {days} days
+                </option>
+              ))}
+            </Select>
+          </label>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={
+              busy ||
+              deviceDraft ===
+                (data.devices.enabled ? String(data.devices.days) : TRUSTED_DEVICES_OFF)
+            }
+            onClick={() => void saveDevices()}
+          >
+            {busy ? "Saving..." : "Save"}
+          </button>
+        </div>
+
+        <p className="muted mt-3">
+          {data.devices.enabled
+            ? `Currently ${data.devices.days} days. Everyone can see and drop their own remembered devices on their account screen, which is what somebody does when a laptop goes missing.`
+            : "Currently off. Every sign-in asks for a code."}
+        </p>
+        <p className="muted mt-1 text-xs">
+          Switching this off also forgets every device already remembered, so it takes
+          effect at once rather than only for future sign-ins.
+        </p>
+      </section>
+
+      <section className="card p-4">
+        <h2 className="card-title">Secret questions instead of a code</h2>
+        <p className="muted mb-3 mt-0.5">
+          Two questions somebody sets for themselves and answers when their phone is not
+          to hand. Both answers must be right, and the same limit of five attempts
+          applies.
+        </p>
+
+        {/*
+          The warning is the point of this card. A firm turning this on should know what
+          they are trading, and know it before they click rather than afterwards.
+        */}
+        <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-inset ring-amber-200">
+          <strong>This is weaker than a code, and the difference is not small.</strong> A
+          code needs the phone in somebody's hand. An answer needs a fact, and facts about
+          the people at a firm named on its own website are often reachable by a stranger,
+          and nearly always by a colleague. A stolen phone is replaced in an afternoon; a
+          leaked fact is leaked for good. Anyone who sets questions is told to pick
+          answers that are memorable rather than true.
+        </p>
+
+        <label className="flex items-start gap-3 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={data.questions.enabled}
+            disabled={busy}
+            onChange={(e) => void saveQuestions(e.target.checked)}
+          />
+          <span>
+            Let people answer secret questions instead of a code
+            <span className="muted mt-0.5 block">
+              {data.questions.enabled
+                ? "On. Anyone with a second factor can set two questions on their account screen."
+                : "Off. A code or a recovery code is the only way past the second step."}
+            </span>
+          </span>
+        </label>
+
+        <p className="muted mt-3 text-xs">
+          Turning this off leaves anybody's questions stored but unusable, so switching it
+          off to think about it does not destroy everyone's setup. Each person can delete
+          their own.
         </p>
       </section>
 

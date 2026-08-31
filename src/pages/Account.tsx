@@ -11,6 +11,10 @@ import {
 } from "../components/ui";
 import { formatDate } from "../lib/format";
 import { TwoFactorCard } from "../components/TwoFactorCard";
+import {
+  SecretQuestionsCard,
+  TrustedDevicesCard,
+} from "../components/SecondFactorOptionsCards";
 
 export function Account() {
   const { user, refresh } = useSession();
@@ -68,6 +72,8 @@ export function Account() {
       </div>
 
       <TwoFactorCard setNotice={setDone} />
+      <SecretQuestionsCard setNotice={setDone} />
+      <TrustedDevicesCard setNotice={setDone} />
 
       <div className="card space-y-3 p-5">
         <h2 className="card-title">Notifications</h2>

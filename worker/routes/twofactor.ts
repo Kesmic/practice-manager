@@ -37,6 +37,27 @@ import {
   statusFor,
   twoFactorPolicy,
 } from "../twofactor";
+import {
+  QUESTION_SUGGESTIONS,
+  TRUSTED_DEVICES_OFF,
+  TRUSTED_DEVICE_MAX_DAYS,
+  TRUSTED_DEVICE_MIN_DAYS,
+  type QuestionDraft,
+  clampTrustedDays,
+  validateQuestions,
+  writeSecretQuestionPolicy,
+  writeTrustedDevicePolicy,
+} from "../../shared/second-factor-options";
+import {
+  clearQuestions,
+  forgetAllDevices,
+  forgetDevice,
+  listDevices,
+  loadQuestions,
+  secretQuestionPolicy,
+  setQuestions,
+  trustedDevicePolicy,
+} from "../second-factor-options";
 import { readSettings, writeSetting } from "./settings";
 
 export function registerTwoFactorRoutes(router: Router<Env>): void {
@@ -257,6 +278,8 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
     return json({
       policy,
       idle: await idlePolicy(env),
+      devices: await trustedDevicePolicy(env),
+      questions: await secretQuestionPolicy(env),
       people: results.map((row) => ({
         ...row,
         enabled: Boolean(row.confirmed_at),
@@ -336,6 +359,153 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
        */
       not_yet_enrolled: stillToEnrol?.n ?? 0,
       applies_to_self: isRequiredFor(policy, actor.role),
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Remembered devices, from the point of view of the person who owns them
+  // -------------------------------------------------------------------------
+
+  router.get("/api/2fa/devices", async ({ request, env }) => {
+    const actor = await requireUser(env, request);
+    return json({
+      policy: await trustedDevicePolicy(env),
+      devices: await listDevices(env, actor.id, request),
+    });
+  });
+
+  /**
+   * Forgets one device.
+   *
+   * Scoped to the caller's own id inside the query, so this cannot reach anybody else's
+   * list even if an id from another account is supplied.
+   */
+  router.delete("/api/2fa/devices/:id", async ({ request, env, params }) => {
+    const actor = await requireUser(env, request);
+    const dropped = await forgetDevice(env, actor.id, params.id);
+    if (!dropped) throw notFound("That device is not on your list.");
+    return json({ ok: true, devices: await listDevices(env, actor.id, request) });
+  });
+
+  /** Forgets all of them, which is what somebody does when a laptop goes missing. */
+  router.post("/api/2fa/devices/forget-all", async ({ request, env }) => {
+    const actor = await requireUser(env, request);
+    await forgetAllDevices(env, actor.id);
+    return json({ ok: true, devices: [] });
+  });
+
+  // -------------------------------------------------------------------------
+  // Secret questions
+  // -------------------------------------------------------------------------
+
+  router.get("/api/2fa/questions", async ({ request, env }) => {
+    const actor = await requireUser(env, request);
+    const policy = await secretQuestionPolicy(env);
+    return json({
+      policy,
+      // The questions, never the answers. There is no endpoint that returns an answer,
+      // because nothing stores one: only a salted hash of it.
+      questions: policy.enabled ? await loadQuestions(env, actor.id) : [],
+      suggestions: QUESTION_SUGGESTIONS,
+    });
+  });
+
+  router.put("/api/2fa/questions", async ({ request, env }) => {
+    const actor = await requireUser(env, request);
+    if (!(await secretQuestionPolicy(env)).enabled) {
+      throw forbidden("This firm does not allow secret questions as a second step.");
+    }
+
+    const body = await readJson<{ questions?: unknown }>(request);
+    const raw = Array.isArray(body.questions) ? body.questions : [];
+    const drafts: QuestionDraft[] = raw.map((entry) => ({
+      question: typeof (entry as QuestionDraft)?.question === "string" ? (entry as QuestionDraft).question : "",
+      answer: typeof (entry as QuestionDraft)?.answer === "string" ? (entry as QuestionDraft).answer : "",
+    }));
+
+    const problem = validateQuestions(drafts);
+    if (problem) throw badRequest(problem);
+
+    await setQuestions(env, actor.id, drafts);
+    return json({ ok: true, questions: await loadQuestions(env, actor.id) });
+  });
+
+  router.delete("/api/2fa/questions", async ({ request, env }) => {
+    const actor = await requireUser(env, request);
+    await clearQuestions(env, actor.id);
+    return json({ ok: true, questions: [] });
+  });
+
+  // -------------------------------------------------------------------------
+  // The firm's settings for both
+  // -------------------------------------------------------------------------
+
+  /** How long a remembered device lasts, or off. */
+  router.put("/api/2fa/device-policy", async ({ request, env }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ days?: unknown; enabled?: unknown }>(request);
+
+    if (body.enabled === false) {
+      await writeSetting(env, "trusted_device_days", TRUSTED_DEVICES_OFF, actor.id);
+      /*
+       * Switching it off has to drop what is already remembered, or the setting would
+       * describe the future and leave every existing thirty-day pass running. Somebody
+       * turns this off because they want the second step back now.
+       */
+      await env.DB.prepare(`DELETE FROM trusted_devices`).run();
+      return json({ devices: { enabled: false }, forgot_existing: true });
+    }
+
+    const raw = body.days;
+    const days = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
+    if (!Number.isFinite(days)) {
+      throw badRequest("Give a number of days, or enabled: false to switch it off.");
+    }
+    if (days < TRUSTED_DEVICE_MIN_DAYS || days > TRUSTED_DEVICE_MAX_DAYS) {
+      throw badRequest(
+        `A remembered device has to last between ${TRUSTED_DEVICE_MIN_DAYS} and ${TRUSTED_DEVICE_MAX_DAYS} days.`,
+      );
+    }
+
+    const policy = { enabled: true as const, days: clampTrustedDays(days) };
+    await writeSetting(
+      env,
+      "trusted_device_days",
+      writeTrustedDevicePolicy(policy),
+      actor.id,
+    );
+    return json({ devices: policy });
+  });
+
+  /** Whether secret questions may stand in for a code at all. */
+  router.put("/api/2fa/question-policy", async ({ request, env }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ enabled?: unknown }>(request);
+    const enabled = body.enabled === true;
+
+    await writeSetting(
+      env,
+      "secret_questions_enabled",
+      writeSecretQuestionPolicy({ enabled }),
+      actor.id,
+    );
+
+    /*
+     * Turning it off leaves the stored questions alone rather than deleting them.
+     *
+     * They are unusable while the setting is off, because both the sign-in path and the
+     * editing path check the policy first. Keeping them means a firm that switches this
+     * off to think about it, and back on a week later, has not silently destroyed
+     * everybody's setup in the meantime. Deleting is available and explicit: each person
+     * can clear their own.
+     */
+    const affected = await env.DB.prepare(
+      `SELECT COUNT(DISTINCT user_id) AS n FROM secret_questions`,
+    ).first<{ n: number }>();
+
+    return json({
+      questions: { enabled },
+      people_with_questions: affected?.n ?? 0,
     });
   });
 }

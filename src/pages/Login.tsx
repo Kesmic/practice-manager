@@ -70,7 +70,15 @@ export function Login() {
   */
   const [challenge, setChallenge] = useState<LoginChallenge | null>(null);
   const [code, setCode] = useState("");
-  const [useRecovery, setUseRecovery] = useState(false);
+  /*
+    Which of the three routes is on screen. A single mode rather than a pair of booleans,
+    because two booleans allow a fourth state that means nothing and has to be defended
+    against everywhere it is read.
+  */
+  const [mode, setMode] = useState<"totp" | "recovery" | "questions">("totp");
+  const [answers, setAnswers] = useState<string[]>([]);
+  const [remember, setRemember] = useState(false);
+  const useRecovery = mode === "recovery";
 
   if (loading) return <Spinner label="Checking your session" />;
   if (user) {
@@ -87,8 +95,10 @@ export function Login() {
       if (next) {
         // Password accepted, second factor still to come.
         setChallenge(next);
-        setUseRecovery(false);
+        setMode("totp");
         setCode("");
+        setAnswers(next.questions.map(() => ""));
+        setRemember(false);
         return;
       }
       navigate("/", { replace: true });
@@ -109,7 +119,17 @@ export function Login() {
     try {
       const result = await completeSignIn({
         challenge: challenge.token,
-        ...(useRecovery ? { recovery_code: code } : { code }),
+        ...(mode === "questions"
+          ? { answers }
+          : mode === "recovery"
+            ? { recovery_code: code }
+            : { code }),
+        /*
+          Only offered on the two routes that mean something physical was present. The
+          questions are the weaker way in, and letting them mint a month of no second
+          step would compound that rather than contain it.
+        */
+        ...(mode !== "questions" && remember ? { remember_device: true } : {}),
       });
       if (result.used_recovery_code) {
         // Said here rather than after landing, because it is the one moment the person
@@ -138,6 +158,9 @@ export function Login() {
   const startOver = () => {
     setChallenge(null);
     setCode("");
+    setAnswers([]);
+    setMode("totp");
+    setRemember(false);
     setError(null);
     setPassword("");
   };
@@ -224,52 +247,108 @@ export function Login() {
                 One more step
               </h1>
               <p className="muted mt-1">
-                {useRecovery
-                  ? "Enter one of the recovery codes you saved when you set this up."
-                  : "Enter the six-digit code from your authenticator app."}
+                {mode === "questions"
+                  ? "Answer both of your secret questions."
+                  : useRecovery
+                    ? "Enter one of the recovery codes you saved when you set this up."
+                    : "Enter the six-digit code from your authenticator app."}
               </p>
 
               <form onSubmit={submitCode} className="mt-7 space-y-4" noValidate>
                 <ErrorBanner error={error} onDismiss={() => setError(null)} />
 
-                <Field
-                  label={useRecovery ? "Recovery code" : "Six-digit code"}
-                  required
-                  hint={
-                    useRecovery
-                      ? "Each one works once. Case and the hyphen do not matter."
-                      : "The code changes every thirty seconds."
-                  }
-                >
-                  {(id) => (
-                    <TextInput
-                      id={id}
-                      // A numeric keypad for the app code, plain text for a recovery
-                      // code, which has letters in it.
-                      inputMode={useRecovery ? "text" : "numeric"}
-                      autoComplete={useRecovery ? "off" : "one-time-code"}
-                      autoFocus
+                {mode === "questions" ? (
+                  challenge.questions.map((item, index) => (
+                    <Field
+                      key={item.position}
+                      label={item.question}
                       required
-                      spellCheck={false}
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                      placeholder={useRecovery ? "ABCDE-FGHJK" : "123456"}
-                      className="input text-center text-lg tracking-[0.3em]"
+                      hint={index === 0 ? "Capitals and extra spaces do not matter." : undefined}
+                    >
+                      {(id) => (
+                        <TextInput
+                          id={id}
+                          autoFocus={index === 0}
+                          required
+                          spellCheck={false}
+                          autoComplete="off"
+                          value={answers[index] ?? ""}
+                          onChange={(e) =>
+                            setAnswers((current) => {
+                              const next = [...current];
+                              next[index] = e.target.value;
+                              return next;
+                            })
+                          }
+                          className="input"
+                        />
+                      )}
+                    </Field>
+                  ))
+                ) : (
+                  <Field
+                    label={useRecovery ? "Recovery code" : "Six-digit code"}
+                    required
+                    hint={
+                      useRecovery
+                        ? "Each one works once. Case and the hyphen do not matter."
+                        : "The code changes every thirty seconds."
+                    }
+                  >
+                    {(id) => (
+                      <TextInput
+                        id={id}
+                        // A numeric keypad for the app code, plain text for a recovery
+                        // code, which has letters in it.
+                        inputMode={useRecovery ? "text" : "numeric"}
+                        autoComplete={useRecovery ? "off" : "one-time-code"}
+                        autoFocus
+                        required
+                        spellCheck={false}
+                        value={code}
+                        onChange={(e) => setCode(e.target.value)}
+                        placeholder={useRecovery ? "ABCDE-FGHJK" : "123456"}
+                        className="input text-center text-lg tracking-[0.3em]"
+                      />
+                    )}
+                  </Field>
+                )}
+
+                {/*
+                  Offered on the code and recovery-code routes only. Answering the secret
+                  questions is the weaker way in, and a month of no second step earned by
+                  it would undo the point of having one.
+                */}
+                {challenge.can_remember_device && mode !== "questions" && (
+                  <label className="flex items-start gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
                     />
-                  )}
-                </Field>
+                    <span>
+                      Do not ask for a code on this device for{" "}
+                      {challenge.remember_device_days} days.
+                      <span className="muted mt-0.5 block">
+                        Only on a machine that is yours. On a shared or public computer,
+                        leave this alone.
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 <button type="submit" className="btn-primary w-full py-2.5" disabled={busy}>
                   {busy ? "Checking..." : "Sign in"}
                 </button>
 
                 <div className="space-y-2 text-center text-xs text-slate-500">
-                  {challenge.methods.includes("recovery") && (
+                  {challenge.methods.includes("recovery") && mode !== "questions" && (
                     <button
                       type="button"
                       className="link"
                       onClick={() => {
-                        setUseRecovery((on) => !on);
+                        setMode(useRecovery ? "totp" : "recovery");
                         setCode("");
                         setError(null);
                       }}
@@ -279,18 +358,35 @@ export function Login() {
                         : "I do not have my phone"}
                     </button>
                   )}
+                  {challenge.methods.includes("questions") && (
+                    <button
+                      type="button"
+                      className="link block w-full"
+                      onClick={() => {
+                        setMode(mode === "questions" ? "totp" : "questions");
+                        setCode("");
+                        setAnswers(challenge.questions.map(() => ""));
+                        setError(null);
+                      }}
+                    >
+                      {mode === "questions"
+                        ? "Use the code from my app instead"
+                        : "Answer my secret questions instead"}
+                    </button>
+                  )}
                   {useRecovery && challenge.recovery_remaining > 0 && (
                     <p>
                       {challenge.recovery_remaining} recovery code(s) left. Each one works
                       once.
                     </p>
                   )}
-                  {!challenge.methods.includes("recovery") && (
-                    <p>
-                      You have no recovery codes left. If you cannot produce a code, a
-                      Partner can reset your two-step sign-in.
-                    </p>
-                  )}
+                  {!challenge.methods.includes("recovery") &&
+                    !challenge.methods.includes("questions") && (
+                      <p>
+                        You have no recovery codes left. If you cannot produce a code, a
+                        Partner can reset your two-step sign-in.
+                      </p>
+                    )}
                   <button type="button" className="link" onClick={startOver}>
                     Start again
                   </button>

@@ -203,6 +203,16 @@ export async function clearEnrolment(env: Env, userId: string): Promise<void> {
     env.DB.prepare(`DELETE FROM recovery_codes WHERE user_id = ?`).bind(userId),
     // Any half-finished sign-in for this person is meaningless now.
     env.DB.prepare(`DELETE FROM login_challenges WHERE user_id = ?`).bind(userId),
+    /*
+     * And every browser that was remembered against the enrolment being removed.
+     *
+     * Without this, resetting somebody's two-step sign-in would leave the machine that
+     * was already past it still past it, for up to a month. That is the exact opposite
+     * of what a reset is for: the usual reason to reset is that the phone, or the
+     * laptop, is in the wrong hands. Written inline rather than by calling into
+     * second-factor-options, to keep the dependency running one way.
+     */
+    env.DB.prepare(`DELETE FROM trusted_devices WHERE user_id = ?`).bind(userId),
   ]);
 }
 

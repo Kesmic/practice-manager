@@ -27,6 +27,15 @@ import {
   spendRecoveryCode,
 } from "../twofactor";
 import {
+  checkAnswers,
+  deviceIsTrusted,
+  hasQuestions,
+  loadQuestions,
+  rememberDevice,
+  secretQuestionPolicy,
+  trustedDevicePolicy,
+} from "../second-factor-options";
+import {
   HttpError,
   Router,
   badRequest,
@@ -50,6 +59,7 @@ async function finishLogin(
   request: Request,
   userId: string,
   extra: Record<string, unknown> = {},
+  extraCookies: string[] = [],
 ): Promise<Response> {
   await env.DB.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`)
     .bind(nowIso(), userId)
@@ -64,7 +74,18 @@ async function finishLogin(
     .bind(userId)
     .first();
 
-  return json({ user, ...extra }, 200, { "Set-Cookie": cookie });
+  /*
+   * Tuples rather than an object, because a session cookie and a remembered-device
+   * cookie both go out under Set-Cookie and an object cannot hold the same key twice.
+   * Two cookies folded into one header is not two cookies, so the end-to-end suite
+   * asserts that both actually arrive.
+   */
+  const headers: Array<[string, string]> = [
+    ["Set-Cookie", cookie],
+    ...extraCookies.map((value) => ["Set-Cookie", value] as [string, string]),
+  ];
+
+  return json({ user, ...extra }, 200, headers);
 }
 
 export function registerAuthRoutes(router: Router<Env>): void {
@@ -177,19 +198,49 @@ export function registerAuthRoutes(router: Router<Env>): void {
      * needs the code as well.
      */
     if (await isEnabled(env, row.id)) {
+      /*
+       * A browser that already completed the second step, and was asked to be
+       * remembered, goes straight in. What it presents is not a factor: it is a note
+       * that the factor was presented on this machine, bound to this account, with an
+       * expiry. Losing it is no worse than losing a live session cookie, which is a risk
+       * the session cookie already carries.
+       */
+      const devices = await trustedDevicePolicy(env);
+      if (devices.enabled && (await deviceIsTrusted(env, request, row.id))) {
+        return finishLogin(env, request, row.id, { remembered_device: true });
+      }
+
       const { token, expiresAt } = await createChallenge(
         env,
         row.id,
         request.headers.get("User-Agent"),
       );
       const remaining = await recoveryRemaining(env, row.id);
+
+      const questionsAllowed = (await secretQuestionPolicy(env)).enabled;
+      const questionsSet = questionsAllowed && (await hasQuestions(env, row.id));
+
+      const methods = ["totp"];
+      if (remaining > 0) methods.push("recovery");
+      if (questionsSet) methods.push("questions");
+
       return json({
         user: null,
         challenge: {
           token,
           expires_at: expiresAt,
-          methods: remaining > 0 ? ["totp", "recovery"] : ["totp"],
+          methods,
           recovery_remaining: remaining,
+          // The questions themselves, because they have to be shown to be answered.
+          // Nothing here helps answer them.
+          questions: questionsSet
+            ? (await loadQuestions(env, row.id)).map((q) => ({
+                position: q.position,
+                question: q.question,
+              }))
+            : [],
+          can_remember_device: devices.enabled,
+          remember_device_days: devices.enabled ? devices.days : 0,
         },
       });
     }
@@ -209,6 +260,8 @@ export function registerAuthRoutes(router: Router<Env>): void {
       challenge?: unknown;
       code?: unknown;
       recovery_code?: unknown;
+      answers?: unknown;
+      remember_device?: unknown;
     }>(request);
 
     const challenge = await loadChallenge(env, body.challenge);
@@ -216,6 +269,50 @@ export function registerAuthRoutes(router: Router<Env>): void {
       throw unauthorized(
         "That sign-in has expired or was not recognised. Enter your email and password again.",
       );
+    }
+
+    /*
+     * Whether this sign-in may leave a remembered device behind.
+     *
+     * Deliberately not offered to somebody who got in by answering their secret
+     * questions. Those are the weak route, and letting them mint a thirty-day pass would
+     * compound the weakness rather than contain it: one lucky guess would buy a month of
+     * no second step at all. A code or a recovery code both mean something physical was
+     * present, and those may be remembered.
+     */
+    const devicePolicy = await trustedDevicePolicy(env);
+    const wantsRemember = body.remember_device === true && devicePolicy.enabled;
+    const rememberCookies = async () =>
+      wantsRemember && devicePolicy.enabled
+        ? [
+            await rememberDevice(
+              env,
+              challenge.user_id,
+              request.headers.get("User-Agent"),
+              devicePolicy.days,
+            ),
+          ]
+        : [];
+
+    // The secret questions, when the firm allows them and this is the route taken.
+    const usingQuestions = Array.isArray(body.answers) && body.answers.length > 0;
+    if (usingQuestions) {
+      if (!(await secretQuestionPolicy(env)).enabled) {
+        throw forbidden("This firm does not allow secret questions as a second step.");
+      }
+      const matched = await checkAnswers(env, challenge.user_id, body.answers);
+      if (!matched) {
+        const { exhausted, remaining } = await countFailure(env, challenge);
+        // Which answer was wrong is deliberately not said: that would turn one guess at
+        // two questions into two independent guesses at one.
+        throw unauthorized(
+          exhausted
+            ? "Those answers are not right, and there have been too many attempts. Enter your email and password again."
+            : `Those answers are not right. ${remaining} attempt(s) left.`,
+        );
+      }
+      await consumeChallenge(env, challenge);
+      return finishLogin(env, request, challenge.user_id, { used_secret_questions: true });
     }
 
     const usingRecovery = typeof body.recovery_code === "string" && body.recovery_code.trim() !== "";
@@ -232,10 +329,13 @@ export function registerAuthRoutes(router: Router<Env>): void {
       }
       await consumeChallenge(env, challenge);
       const left = await recoveryRemaining(env, challenge.user_id);
-      return finishLogin(env, request, challenge.user_id, {
-        recovery_codes_remaining: left,
-        used_recovery_code: true,
-      });
+      return finishLogin(
+        env,
+        request,
+        challenge.user_id,
+        { recovery_codes_remaining: left, used_recovery_code: true, remembered_device: wantsRemember },
+        await rememberCookies(),
+      );
     }
 
     const row = await loadTotp(env, challenge.user_id);
@@ -266,7 +366,13 @@ export function registerAuthRoutes(router: Router<Env>): void {
     }
 
     await consumeChallenge(env, challenge);
-    return finishLogin(env, request, challenge.user_id);
+    return finishLogin(
+      env,
+      request,
+      challenge.user_id,
+      { remembered_device: wantsRemember },
+      await rememberCookies(),
+    );
   });
 
   router.post("/api/auth/logout", async ({ request, env }) => {
