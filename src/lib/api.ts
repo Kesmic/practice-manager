@@ -292,10 +292,12 @@ export const api = {
     }),
 
   setDevicePolicy: (input: { enabled: boolean; days?: number }) =>
-    request<{ devices: { enabled: boolean; days?: number }; forgot_existing?: boolean }>(
-      "/api/2fa/device-policy",
-      { method: "PUT", body: input },
-    ),
+    request<{
+      devices: { enabled: boolean; days?: number };
+      forgot_existing?: boolean;
+      /** How many already-remembered devices had their expiry brought forward. */
+      shortened?: number;
+    }>("/api/2fa/device-policy", { method: "PUT", body: input }),
 
   // ------------------------------------------------------ secret questions
   secretQuestions: () =>

@@ -129,9 +129,11 @@ export function SignInSecurityAdmin({
         off ? { enabled: false } : { enabled: true, days: Number(deviceDraft) },
       );
       setNotice(
-        res.devices.enabled
-          ? `A device can now skip the code for ${res.devices.days} days once somebody asks it to.`
-          : "Every sign-in will ask for a code again, including on devices that were already remembered.",
+        !res.devices.enabled
+          ? "Every sign-in will ask for a code again, including on devices that were already remembered."
+          : res.shortened
+            ? `A device can now skip the code for ${res.devices.days} days. ${res.shortened} ${res.shortened === 1 ? "device that was" : "devices that were"} already remembered had the shorter period applied too.`
+            : `A device can now skip the code for ${res.devices.days} days once somebody asks it to.`,
       );
       setError(null);
       load();
@@ -348,8 +350,9 @@ export function SignInSecurityAdmin({
             : "Currently off. Every sign-in asks for a code."}
         </p>
         <p className="muted mt-1 text-xs">
-          Switching this off also forgets every device already remembered, so it takes
-          effect at once rather than only for future sign-ins.
+          Switching this off forgets every device already remembered, and shortening the
+          period applies to them as well, so either change takes effect at once rather
+          than only for future sign-ins.
         </p>
       </section>
 

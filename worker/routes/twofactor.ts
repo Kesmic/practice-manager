@@ -474,7 +474,28 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
       writeTrustedDevicePolicy(policy),
       actor.id,
     );
-    return json({ devices: policy });
+
+    /*
+     * Shortening the period applies to devices already remembered, not only to future
+     * ones.
+     *
+     * The expiry is stamped into the row when the device is remembered, so without this a
+     * Partner cutting thirty days to seven would leave every existing thirty-day pass
+     * running to its original date, while the screen said seven. Switching the setting
+     * off already tears up what is outstanding, and somebody shortening it means the same
+     * thing by a smaller amount: sooner, not eventually.
+     *
+     * Only rows expiring later than the new window are touched, so a device with two days
+     * left keeps its two days rather than being handed five.
+     */
+    const cap = new Date(Date.now() + policy.days * 86_400_000).toISOString();
+    const capped = await env.DB.prepare(
+      `UPDATE trusted_devices SET expires_at = ? WHERE expires_at > ?`,
+    )
+      .bind(cap, cap)
+      .run();
+
+    return json({ devices: policy, shortened: capped.meta?.changes ?? 0 });
   });
 
   /** Whether secret questions may stand in for a code at all. */
