@@ -126,7 +126,14 @@ export interface SessionResponse {
 export interface LoginChallenge {
   token: string;
   expires_at: string;
-  methods: Array<"totp" | "questions" | "recovery">;
+  /** The way in. Always just the authenticator app. */
+  methods: Array<"totp">;
+  /**
+   * The ways back in, for somebody who cannot produce a code. Security questions sit
+   * here rather than beside the app on purpose: they are a recovery route, and neither
+   * they nor a recovery code will remember a device.
+   */
+  recovery_methods: Array<"questions" | "recovery">;
   recovery_remaining: number;
   /**
    * The security questions to put to this person, empty unless the firm allows them and
@@ -167,6 +174,8 @@ export const api = {
       used_recovery_code?: boolean;
       recovery_codes_remaining?: number;
       used_security_questions?: boolean;
+      /** True when "remember this device" was ticked but the route taken cannot. */
+      device_not_remembered?: boolean;
     }>("/api/auth/2fa", { method: "POST", body: input }),
 
   // ------------------------------------------- security questions and devices

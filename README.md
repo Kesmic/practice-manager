@@ -24,10 +24,12 @@ them.
 
 **Two contract templates** - a contract of employment, and an Associate Consultant
 Agreement for independent professionals engaged on a contract *for* service, paid a
-fixed fee per assigned client rather than a salary. Each is copied per person,
-completed, and issued to them alone. Both ship as drafts to be reviewed before use,
-and the Associate template carries its own notes on what the firm must change about
-its onboarding before putting a contractor through it.
+fixed fee per assigned client rather than a salary. The Associate agreement is drafted
+as an instrument rather than an explainer: parties and recitals, an interpretation
+clause, twenty-two numbered clauses and three schedules. Each is copied per person,
+completed, and issued to them alone. Both ship as drafts to be reviewed by a lawyer
+before use, and the Associate template names the clauses most likely to be tested and
+what the firm must change about its onboarding before putting a contractor through it.
 
 **Contracts signed on the portal** - the employee reads the document, ticks an
 explicit attestation and types their full name. The system requires the typed
@@ -132,8 +134,10 @@ The workflow, the grades and the controls are documented in
   account, so a shared machine trusted by one colleague still challenges the next, and
   it is dropped by a password change, by re-enrolling or disabling a second factor, and
   by a Partner resetting somebody's enrolment.
-- **Security questions are off until a Partner turns them on**, and a sign-in that uses
-  them is announced in every Partner's inbox.
+- **Security questions are recovery only, and off until a Partner turns them on.** They
+  sit beside recovery codes behind "cannot use your app", never as a second way in;
+  using one is announced in every Partner's inbox; and no recovery route can remember a
+  device - only a code from the app does that.
 - **An employee cannot change their own job title, grade or pay.**
 - **A line manager cannot see their reports' home address or date of birth.**
 - **Pay details are partner-only**, and are kept in their own table so no ordinary
@@ -169,8 +173,8 @@ shared/files.ts      the client file: providers recognised from a link, what
 shared/login-policy.ts
                      how many sign-in attempts, over how long, and why those numbers
 shared/security-questions.ts
-                     the weaker second factor: why it is off by default, and what
-                     makes a set of questions worth having
+                     the recovery route: why it is off by default, why it can never
+                     remember a device, and what makes a set of questions worth having
 shared/device-trust.ts
                      how long a device may be remembered, and what it is called
 shared/types.ts      wire types shared across the boundary

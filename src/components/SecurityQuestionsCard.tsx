@@ -1,6 +1,10 @@
 /**
  * Saving, replacing and removing security questions.
  *
+ * These are a recovery route, not a second way to sign in. The screen says so, because
+ * somebody who reads this as "another option" will use it as one, and the whole reason
+ * it is tolerable is that it is reached only when the phone cannot be.
+ *
  * The screen says plainly that this is the weaker way in, because somebody deciding
  * whether to set it up is the one person in a position to weigh that - and because the
  * alternative, a form that presents it as simply another option, would be the interface
@@ -132,16 +136,20 @@ export function SecurityQuestionsCard({
 
   return (
     <section className="card p-5">
-      <h2 className="text-base font-semibold text-slate-900">Security questions</h2>
+      <h2 className="text-base font-semibold text-slate-900">
+        Security questions <span className="font-normal text-slate-500">(recovery only)</span>
+      </h2>
       <p className="muted mt-1">
-        An alternative to the code from your app, for the day you do not have your phone.
-        You are asked <strong>all</strong> of your questions at once.
+        A way back in for the day you cannot reach your phone, alongside your recovery
+        codes. It is not a second way to sign in: your app stays the way in, and you are
+        asked <strong>all</strong> of your questions at once when you use this.
       </p>
 
       <p className="mt-3 rounded-md bg-amber-50 p-3 text-xs text-amber-800 ring-1 ring-amber-200">
         These are weaker than the app. Answers can often be researched, and a colleague
         may already know some of them, so choose questions whose answers are not on your
-        HR record, your CV or anywhere public. Signing in this way tells every Partner.
+        HR record, your CV or anywhere public. Getting in this way tells every Partner,
+        and it will not remember your device - only a code from your app does that.
         {!state.answers_keyed && (
           <span className="mt-1 block">
             On this deployment answers are stored without the PASSWORD_PEPPER secret, so a
@@ -155,8 +163,8 @@ export function SecurityQuestionsCard({
 
       {!enrolled ? (
         <p className="mt-4 text-sm text-slate-600">
-          Set up the authenticator app first. Questions stand in for a code, so there has
-          to be a code to stand in for.
+          Set up the authenticator app first. These are how you get back in when the app
+          is out of reach, so there has to be an app to be out of reach of.
         </p>
       ) : rows ? (
         <form onSubmit={save} className="mt-4 space-y-4">

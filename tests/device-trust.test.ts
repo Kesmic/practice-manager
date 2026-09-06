@@ -16,8 +16,10 @@ import {
   MIN_TRUST_DAYS,
   clampTrustDays,
   describeDevice,
+  mayRememberDevice,
   readDeviceTrustPolicy,
   writeDeviceTrustPolicy,
+  type SecondFactorRoute,
 } from "../shared/device-trust";
 
 test("an unset policy offers to remember a device for thirty days", () => {
@@ -56,6 +58,25 @@ test("a policy survives a round trip through storage", () => {
   ]) {
     assert.deepEqual(readDeviceTrustPolicy(writeDeviceTrustPolicy(policy)), policy);
   }
+});
+
+test("only the app path may remember a device", () => {
+  /*
+    The rule that makes security questions tolerable at all. A recovery route mints no
+    remembered device: a recovery code is a single-use secret spent getting back in, and
+    a security answer is a researchable fact that stays true, so letting either buy
+    thirty days of skipping the second step would make the weakest factor decide how
+    often the strongest is asked for.
+  */
+  assert.equal(mayRememberDevice("totp"), true);
+  assert.equal(mayRememberDevice("questions"), false);
+  assert.equal(mayRememberDevice("recovery"), false);
+});
+
+test("exactly one route may remember a device", () => {
+  // Guards against a fourth route being added later and quietly defaulting to allowed.
+  const routes: SecondFactorRoute[] = ["totp", "questions", "recovery"];
+  assert.deepEqual(routes.filter(mayRememberDevice), ["totp"]);
 });
 
 test("a device gets a name somebody can recognise their own machine by", () => {

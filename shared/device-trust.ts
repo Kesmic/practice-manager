@@ -77,6 +77,25 @@ export function writeDeviceTrustPolicy(policy: DeviceTrustPolicy): string {
   return policy.enabled ? String(clampTrustDays(policy.days)) : DEVICE_TRUST_OFF;
 }
 
+/** How somebody got through the second step. */
+export type SecondFactorRoute = "totp" | "questions" | "recovery";
+
+/**
+ * Whether a device may be remembered on the strength of the route just taken.
+ *
+ * Only the authenticator app. The two recovery routes exist for somebody who cannot
+ * produce a code, and neither is worth thirty days of not being asked for one: a
+ * recovery code is a single-use secret spent getting back in, and a security answer is a
+ * researchable fact that stays true for ever. Letting either mint a remembered device
+ * would make the weakest factor the one deciding how often the strongest is asked for.
+ *
+ * A function rather than a condition written out at the call site, so the rule has one
+ * home and can be tested without standing up a sign-in.
+ */
+export function mayRememberDevice(route: SecondFactorRoute): boolean {
+  return route === "totp";
+}
+
 /** One remembered device, as the account screen sees it. */
 export interface TrustedDevice {
   id: string;

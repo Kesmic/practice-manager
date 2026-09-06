@@ -1,5 +1,12 @@
 /**
- * Security questions as an alternative second factor.
+ * Security questions as a recovery route.
+ *
+ * Deliberately not a second way to sign in. They sit beside recovery codes, behind
+ * "cannot use your app", and answering them will not remember a device - only a code
+ * from the authenticator app does that. The distinction is the point: a factor this weak
+ * is tolerable as the thing that gets a partner back into their own files on the morning
+ * they drop their phone in a gutter, and is not tolerable as the thing anybody reaches
+ * for by habit.
  *
  * ## Read this before switching it on
  *
@@ -11,8 +18,12 @@
  * app asks "do you have the phone"; a question asks "do you know a fact about this
  * person", and those are not the same question.
  *
+ * There is one way in which they are weaker than the recovery codes they sit beside: a
+ * recovery code is spent when it is used, while an answer is a fact that stays true. Ten
+ * codes are ten chances; three answers are a standing key.
+ *
  * So the capability is here, because a firm is entitled to decide its own trade-off
- * between a locked-out partner and a researchable factor, but three things hold:
+ * between a locked-out partner and a researchable factor, but four things hold:
  *
  * **Off unless the firm turns it on.** Same reasoning as the two-factor policy in
  * `twofactor.ts`: an absent setting means off. A migration does not make this decision
@@ -22,12 +33,18 @@
  * attacker retries until they are asked the two they know. Enrolment takes at least
  * three questions and sign-in asks for all of them at once.
  *
- * **Signing in this way is announced.** The person and the firm's partners get an inbox
+ * **Getting in this way is announced.** The person and the firm's partners get an inbox
  * entry saying the account was reached with questions rather than a code. A factor that
  * can be researched should not be usable in silence.
+ *
+ * **It cannot remember a device.** A device is remembered on the strength of whatever
+ * vouched for it, and this is not strong enough to be worth thirty days of skipping the
+ * second step. Otherwise one afternoon's research would buy a month of unchallenged
+ * access, and the weakest factor would be the one deciding how often the strongest is
+ * asked for.
  */
 
-/** Whether the firm permits questions to stand in for a code. */
+/** Whether the firm permits questions as a way back in. */
 export const SECURITY_QUESTIONS_ON = "on";
 export const SECURITY_QUESTIONS_OFF = "off";
 

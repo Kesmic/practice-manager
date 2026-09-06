@@ -252,9 +252,9 @@ export function Login() {
               </h1>
               <p className="muted mt-1">
                 {method === "recovery"
-                  ? "Enter one of the recovery codes you saved when you set this up."
+                  ? "Getting back in with a recovery code. Enter one of the codes you saved when you set this up."
                   : method === "questions"
-                    ? "Answer every question exactly as you saved it. Capitals, accents and punctuation do not matter."
+                    ? "Getting back in with your security questions. Answer every one of them, as you saved it - capitals, accents and punctuation do not matter."
                     : "Enter the six-digit code from your authenticator app."}
               </p>
 
@@ -311,7 +311,12 @@ export function Login() {
                   </Field>
                 )}
 
-                {challenge.device_trust.offered && (
+                {/*
+                  Offered only on the app path. The two recovery routes cannot remember a
+                  device - the server refuses regardless - so showing the box there would
+                  be an offer the system does not honour.
+                */}
+                {challenge.device_trust.offered && method === "totp" && (
                   <label className="flex cursor-pointer items-start gap-2 text-xs text-slate-600">
                     <input
                       type="checkbox"
@@ -336,44 +341,85 @@ export function Login() {
 
                 <div className="space-y-2 text-center text-xs text-slate-500">
                   {/*
-                    Every way through this step that is actually available, named plainly,
-                    rather than one link that toggles. With three methods a toggle stops
-                    being able to say where it leads.
+                    The app on one side, the ways back in on the other, and never as a
+                    flat list of three peers. Somebody who can reach their phone should
+                    reach for it; the rest is for when they cannot.
                   */}
-                  {(["totp", "questions", "recovery"] as const)
-                    .filter((option) => option !== method && challenge.methods.includes(option))
-                    .map((option) => (
+                  {method === "totp" ? (
+                    challenge.recovery_methods.length > 0 ? (
+                      <>
+                        <p className="text-slate-500">Cannot use your app?</p>
+                        {challenge.recovery_methods.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className="link block w-full"
+                            onClick={() => {
+                              setMethod(option);
+                              setCode("");
+                              setAnswers({});
+                              setError(null);
+                            }}
+                          >
+                            {option === "questions"
+                              ? "Answer my security questions"
+                              : "Use a recovery code"}
+                          </button>
+                        ))}
+                      </>
+                    ) : (
+                      <p>
+                        You have no recovery codes left. If you cannot produce a code, a
+                        Partner can reset your two-step sign-in.
+                      </p>
+                    )
+                  ) : (
+                    <>
                       <button
-                        key={option}
                         type="button"
                         className="link block w-full"
                         onClick={() => {
-                          setMethod(option);
+                          setMethod("totp");
                           setCode("");
                           setAnswers({});
                           setError(null);
                         }}
                       >
-                        {option === "totp"
-                          ? "Use the code from my app instead"
-                          : option === "questions"
-                            ? "Answer my security questions instead"
-                            : "Use a recovery code instead"}
+                        Use the code from my app instead
                       </button>
-                    ))}
+                      {challenge.recovery_methods
+                        .filter((option) => option !== method)
+                        .map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className="link block w-full"
+                            onClick={() => {
+                              setMethod(option);
+                              setCode("");
+                              setAnswers({});
+                              setError(null);
+                            }}
+                          >
+                            {option === "questions"
+                              ? "Answer my security questions instead"
+                              : "Use a recovery code instead"}
+                          </button>
+                        ))}
+                    </>
+                  )}
                   {method === "recovery" && challenge.recovery_remaining > 0 && (
                     <p>
                       {challenge.recovery_remaining} recovery code(s) left. Each one works
                       once.
                     </p>
                   )}
-                  {!challenge.methods.includes("recovery") &&
-                    !challenge.methods.includes("questions") && (
-                      <p>
-                        You have no recovery codes left. If you cannot produce a code, a
-                        Partner can reset your two-step sign-in.
-                      </p>
-                    )}
+                  {method !== "totp" && challenge.device_trust.offered && (
+                    <p>
+                      This device will not be remembered - only a code from your app can
+                      do that.
+                    </p>
+                  )}
                   <button type="button" className="link" onClick={startOver}>
                     Start again
                   </button>

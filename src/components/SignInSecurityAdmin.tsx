@@ -182,18 +182,21 @@ export function SignInSecurityAdmin({
       <ErrorBanner error={localError} onDismiss={() => setLocalError(null)} />
 
       <section className="card p-4">
-        <h2 className="card-title">Security questions</h2>
+        <h2 className="card-title">Security questions for recovery</h2>
         <p className="muted mb-3 mt-0.5">
-          Lets somebody answer their saved questions instead of producing a code from
-          their authenticator app.
+          A second way back in for somebody who cannot reach their authenticator app,
+          alongside their recovery codes. The app stays the way in: questions are offered
+          only behind "cannot use your app", and answering them will not remember a
+          device.
         </p>
         <p className="mb-3 rounded-md bg-amber-50 p-3 text-xs text-amber-800 ring-1 ring-amber-200">
-          <strong>This weakens two-step sign-in.</strong> Answers can be researched, are
-          often reused across other sites, and in a firm this size a colleague may already
-          know several of them. An authenticator app asks whether somebody has the phone;
-          a question asks whether they know a fact. Turn this on if the alternative is a
-          partner locked out of their own files, not as a convenience. Anyone who signs in
-          this way is announced in the inbox of every Partner.
+          <strong>Even as recovery, this weakens two-step sign-in.</strong> Answers can be
+          researched, are often reused across other sites, and in a firm this size a
+          colleague may already know several of them. An authenticator app asks whether
+          somebody has the phone; a question asks whether they know a fact, and unlike a
+          recovery code the answer is reusable rather than spent. Turn this on if the
+          alternative is a partner locked out of their own files, not as a convenience.
+          Anyone who gets in this way is announced in the inbox of every Partner.
         </p>
         <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
           <input
@@ -203,7 +206,7 @@ export function SignInSecurityAdmin({
             disabled={busy}
             onChange={(e) => void saveQuestionsPolicy(e.target.checked)}
           />
-          <span>Accept security questions in place of a code</span>
+          <span>Accept security questions as a way back in</span>
         </label>
         <p className="hint mt-2">
           {data.security_questions.people_with_questions === 0

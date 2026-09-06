@@ -46,6 +46,7 @@ import {
   forgetAllDevices,
   rememberDevice,
 } from "../device-trust";
+import { mayRememberDevice, type SecondFactorRoute } from "../../shared/device-trust";
 import {
   HttpError,
   Router,
@@ -353,16 +354,25 @@ export function registerAuthRoutes(router: Router<Env>): void {
         offeredQuestions(env, row.id),
       ]);
 
-      const methods = ["totp"];
-      if (questions.length) methods.push("questions");
-      if (remaining > 0) methods.push("recovery");
+      /*
+       * The app is the way in. Everything else is a way back in.
+       *
+       * Split into two lists rather than one, because the difference is the whole point:
+       * a code proves possession of the phone, while a recovery code and a set of
+       * security questions are what somebody falls back on when they cannot produce one.
+       * Presenting all three as peers would invite the weakest to become the habit.
+       */
+      const recoveryMethods: string[] = [];
+      if (questions.length) recoveryMethods.push("questions");
+      if (remaining > 0) recoveryMethods.push("recovery");
 
       return json({
         user: null,
         challenge: {
           token,
           expires_at: expiresAt,
-          methods,
+          methods: ["totp"],
+          recovery_methods: recoveryMethods,
           recovery_remaining: remaining,
           // Sent with the challenge rather than fetched separately: an endpoint that
           // handed out somebody's questions for an email address alone would be a way to
@@ -411,14 +421,19 @@ export function registerAuthRoutes(router: Router<Env>): void {
     if (keys) await assertLoginAllowed(env, keys);
 
     /*
-     * Whether to remember this browser, decided once and applied on every way through
-     * this endpoint - so a person who signs in with a recovery code or with questions
-     * gets the same offer as one who used the app. The cookie is only ever minted after
-     * a factor has actually been satisfied, further down.
+     * Whether to remember this browser.
+     *
+     * Honoured only on the authenticator-app path. A device is remembered on the
+     * strength of the factor that vouched for it, and only a code from the app is strong
+     * enough to be worth thirty days. The two recovery paths below ignore this and say so
+     * in their response, so the screen can tell somebody their tick did not take effect
+     * rather than leaving them to assume it did.
      */
     const wantsRemembered = body.remember_device === true;
-    const remember = async () =>
-      wantsRemembered ? rememberDevice(env, request, challenge.user_id) : null;
+    const remember = async (route: SecondFactorRoute) =>
+      wantsRemembered && mayRememberDevice(route)
+        ? rememberDevice(env, request, challenge.user_id)
+        : null;
 
     const usingQuestions =
       typeof body.answers === "object" && body.answers !== null && !Array.isArray(body.answers);
@@ -430,7 +445,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
       // has to be the policy as it stands now.
       if (!questionsEnabled(await questionsPolicy(env))) {
         throw forbidden(
-          "This firm does not accept security questions in place of a code. Use the code from your authenticator app.",
+          "This firm does not accept security questions as a way back in. Use the code from your authenticator app.",
         );
       }
 
@@ -466,12 +481,24 @@ export function registerAuthRoutes(router: Router<Env>): void {
 
       await consumeChallenge(env, challenge);
       await announceQuestionSignIn(env, challenge.user_id);
+      /*
+       * No remembered device on this path, whatever was ticked.
+       *
+       * Security questions are a way back in, not a way in, and the answers are
+       * reusable facts rather than a single-use secret. Letting them mint thirty days of
+       * skipping the second step would turn one afternoon's research into a month of
+       * unchallenged access - and would quietly make the weakest factor the one that
+       * decides how often the strongest is asked for.
+       */
       return finishLogin(
         env,
         request,
         challenge.user_id,
-        { used_security_questions: true },
-        await remember(),
+        {
+          used_security_questions: true,
+          device_not_remembered: wantsRemembered,
+        },
+        await remember("questions"),
       );
     }
 
@@ -488,12 +515,18 @@ export function registerAuthRoutes(router: Router<Env>): void {
       }
       await consumeChallenge(env, challenge);
       const left = await recoveryRemaining(env, challenge.user_id);
+      // A recovery code is spent getting back in; it does not also buy a month of not
+      // being asked. Same reasoning as the questions path above.
       return finishLogin(
         env,
         request,
         challenge.user_id,
-        { recovery_codes_remaining: left, used_recovery_code: true },
-        await remember(),
+        {
+          recovery_codes_remaining: left,
+          used_recovery_code: true,
+          device_not_remembered: wantsRemembered,
+        },
+        await remember("recovery"),
       );
     }
 
@@ -502,7 +535,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
       // The enrolment was reset between the two steps. The password already succeeded,
       // so let them in rather than stranding them at a step that no longer applies.
       await consumeChallenge(env, challenge);
-      return finishLogin(env, request, challenge.user_id, {}, await remember());
+      return finishLogin(env, request, challenge.user_id, {}, await remember("totp"));
     }
 
     const result = await checkTotp(env, row, body.code);
@@ -526,7 +559,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
     }
 
     await consumeChallenge(env, challenge);
-    return finishLogin(env, request, challenge.user_id, {}, await remember());
+    return finishLogin(env, request, challenge.user_id, {}, await remember("totp"));
   });
 
   router.post("/api/auth/logout", async ({ request, env }) => {

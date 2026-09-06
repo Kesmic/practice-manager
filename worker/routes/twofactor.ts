@@ -388,14 +388,14 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
 
     if (!questionsEnabled(await questionsPolicy(env))) {
       throw forbidden(
-        "This firm does not use security questions. A Partner can turn them on under Portal settings, Sign-in security.",
+        "This firm does not use security questions for recovery. A Partner can turn them on under Portal settings, Sign-in security.",
       );
     }
 
     const row = await loadTotp(env, actor.id);
     if (!row?.confirmed_at) {
       throw badRequest(
-        "Set up the authenticator app first. Security questions stand in for a code, so there has to be a code to stand in for.",
+        "Set up the authenticator app first. Security questions are how you get back in when the app is out of reach, so there has to be an app to be out of reach of.",
       );
     }
     const check = await checkTotp(env, row, body.code);
@@ -495,8 +495,8 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
        * enrolment on the way. Nothing accepts them while it is off.
        */
       note: body.enabled
-        ? "Security questions are weaker than an authenticator code: the answers can often be researched or guessed by a colleague. Anyone signing in this way is announced in the inbox of every Partner."
-        : "Saved answers are kept but will not be accepted. Nobody can sign in with questions while this is off.",
+        ? "Security questions can now be used to get back in when somebody cannot reach their app. They are weaker than a code and weaker than a recovery code, which is spent when used while an answer stays true. Anyone who uses them is announced in the inbox of every Partner, and they will not remember a device."
+        : "Saved answers are kept but will not be accepted. Nobody can get in with questions while this is off.",
     });
   });
 

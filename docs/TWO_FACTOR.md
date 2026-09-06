@@ -247,10 +247,11 @@ a factor and become a formality, and a firm that wants longer than that actually
 second factor - which is a different switch on the same screen, and should be reached
 deliberately.
 
-### Security questions
+### Security questions, for recovery only
 
-A person can save three to five questions and answer all of them at once in place of a
-code.
+A person can save three to five questions and answer all of them at once to get back in
+when they cannot reach their authenticator app. They sit beside recovery codes behind
+"cannot use your app" on the sign-in screen, and are never offered as a second way in.
 
 **This is the weaker option, and the firm has to turn it on.** NIST stopped recognising
 security questions as an authenticator, for reasons that apply squarely here: answers can
@@ -265,10 +266,18 @@ What holds it together where a firm decides the trade is worth making:
   until they are asked the two they know. All of them are asked together.
 - **Never told which answer was wrong.** Reporting "two of three correct" would turn one
   set into three independent one-question guesses.
-- **Announced.** Anyone who signs in this way appears in every Partner's inbox, and in
+- **Announced.** Anyone who gets in this way appears in every Partner's inbox, and in
   their own. A factor that can be researched should not be usable in silence.
-- **The app first.** Questions stand in for a code, so the authenticator app has to be
-  set up before they can be saved, and saving them needs a current code.
+- **It cannot remember a device**, and neither can a recovery code. Only a code from the
+  app can. Otherwise one afternoon's research would buy a month of skipping the second
+  step, and the weakest factor would decide how often the strongest is asked for. The
+  sign-in screen says so where the tick is not offered.
+- **Weaker than the recovery codes they sit beside**, in one specific way: a recovery
+  code is spent when it is used, while an answer is a fact that stays true. Ten codes are
+  ten chances; three answers are a standing key.
+- **The app first.** These are how somebody gets back in when the app is out of reach, so
+  the app has to be set up before they can be saved, and saving them needs a current code
+  - otherwise a found unattended screen could be turned into a back door.
 - **Answers are keyed, not just hashed.** "What was your first car" has a few thousand
   plausible values, so a plain digest in a leaked database is a dictionary attack that
   finishes in seconds. The digest is keyed with `PASSWORD_PEPPER`, which is not in the
