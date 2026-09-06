@@ -129,7 +129,14 @@ export interface Engagement {
   client_id: string;
   code: string;
   name: string;
+  /**
+   * The engagement's primary service line - the first one chosen, and the one it is
+   * filed under. Kept alongside `service_lines` rather than derived from it because it
+   * is a stored column, and because a list has to sort on something.
+   */
   service_line: ServiceLine;
+  /** Every service line this engagement covers, primary first. Never empty. */
+  service_lines: ServiceLine[];
   period_label: string | null;
   period_start: string | null;
   period_end: string | null;
