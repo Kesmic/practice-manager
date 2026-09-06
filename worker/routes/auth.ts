@@ -15,6 +15,13 @@ import {
 } from "../auth";
 import { newId, nowIso, normaliseEmail, requireString } from "../db";
 import {
+  assertLoginAllowed,
+  attemptKeys,
+  clearAccountFailures,
+  recordFailure,
+  type AttemptKeys,
+} from "../throttle";
+import {
   checkTotp,
   consumeChallenge,
   countFailure,
@@ -62,9 +69,40 @@ async function finishLogin(
        FROM users WHERE id = ?`,
   )
     .bind(userId)
-    .first();
+    .first<{ email: string }>();
+
+  /*
+   * A completed sign-in wipes this account's failed attempts, so somebody who could not
+   * remember their password is not still locked out five minutes after they remembered
+   * it. Done here rather than in the login route because the two-step path only finishes
+   * one request later, and until it does the sign-in has not actually happened.
+   *
+   * The email comes from the row rather than from what was typed: the second step never
+   * sees an email address at all.
+   */
+  if (user?.email) {
+    await clearAccountFailures(env, await attemptKeys(request, user.email));
+  }
 
   return json({ user, ...extra }, 200, { "Set-Cookie": cookie });
+}
+
+/**
+ * The rate-limit keys for a second-step attempt.
+ *
+ * The challenge holds a user id and nothing else, so the account key has to be looked up.
+ * Returns null when the account has vanished between the two steps, in which case the
+ * attempt is unattributable and the route falls through to its own error.
+ */
+async function twoFactorKeys(
+  env: Env,
+  request: Request,
+  userId: string,
+): Promise<AttemptKeys | null> {
+  const row = await env.DB.prepare(`SELECT email FROM users WHERE id = ?`)
+    .bind(userId)
+    .first<{ email: string }>();
+  return row ? attemptKeys(request, row.email) : null;
 }
 
 export function registerAuthRoutes(router: Router<Env>): void {
@@ -86,11 +124,22 @@ export function registerAuthRoutes(router: Router<Env>): void {
         "Bootstrap is disabled because BOOTSTRAP_SECRET is not configured.",
       );
     }
+
+    /*
+     * The bootstrap secret is guessable in exactly the way a password is, and until the
+     * first administrator exists it is the only thing standing between a stranger and an
+     * admin account on a freshly deployed portal. It is counted under its own account key
+     * so a run of failed bootstrap attempts cannot lock a real person out.
+     */
+    const keys = await attemptKeys(request, "@bootstrap");
+    await assertLoginAllowed(env, keys);
+
     if (
       typeof body.secret !== "string" ||
       body.secret.length !== env.BOOTSTRAP_SECRET.length ||
       body.secret !== env.BOOTSTRAP_SECRET
     ) {
+      await recordFailure(env, keys);
       throw forbidden("Bootstrap secret is incorrect.");
     }
 
@@ -143,6 +192,13 @@ export function registerAuthRoutes(router: Router<Env>): void {
       throw badRequest("Email and password are both required.");
     }
 
+    /*
+     * Before the hash, not after. A refused attempt should cost this Worker nothing, and
+     * on the Free plan PBKDF2 is most of the request's CPU budget.
+     */
+    const keys = await attemptKeys(request, email);
+    await assertLoginAllowed(env, keys);
+
     const row = await env.DB.prepare(
       `SELECT id, password_hash, status, must_change_password
          FROM users WHERE lower(email) = ?`,
@@ -161,6 +217,9 @@ export function registerAuthRoutes(router: Router<Env>): void {
       row?.password_hash ?? decoyHash(env),
     );
     if (!row || !ok) {
+      // Counted whether or not the address belongs to anybody. Counting only real
+      // accounts would make the limit itself the tell for which addresses exist.
+      await recordFailure(env, keys);
       throw unauthorized("Email or password is incorrect.");
     }
     if (row.status !== "active") {
@@ -218,11 +277,23 @@ export function registerAuthRoutes(router: Router<Env>): void {
       );
     }
 
+    /*
+     * The second step counts against the same limit as the first.
+     *
+     * A challenge already caps itself at five codes, but nothing stops an attacker who
+     * holds the password from starting a fresh challenge for each guess - and six digits
+     * is a million codes, not enough to be safe against unlimited tries. Counting these
+     * here is what makes the per-challenge cap mean something.
+     */
+    const keys = await twoFactorKeys(env, request, challenge.user_id);
+    if (keys) await assertLoginAllowed(env, keys);
+
     const usingRecovery = typeof body.recovery_code === "string" && body.recovery_code.trim() !== "";
 
     if (usingRecovery) {
       const spent = await spendRecoveryCode(env, challenge.user_id, body.recovery_code);
       if (!spent) {
+        if (keys) await recordFailure(env, keys);
         const { exhausted, remaining } = await countFailure(env, challenge);
         throw unauthorized(
           exhausted
@@ -248,6 +319,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
 
     const result = await checkTotp(env, row, body.code);
     if (!result.ok) {
+      if (keys) await recordFailure(env, keys);
       const { exhausted, remaining } = await countFailure(env, challenge);
       if (result.reason === "unreadable") {
         throw unauthorized(

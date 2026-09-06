@@ -31,6 +31,31 @@ export async function nextRef(
   return `${prefix}-${String(row.value).padStart(width, "0")}`;
 }
 
+/**
+ * A condition every statement in a batch can be made to depend on.
+ *
+ * Used by the workflow route so that a whole transition - the status change, its audit
+ * event and its notifications - either all happens or none of it does, depending on the
+ * deliverable still being in the status the decision was made against. See
+ * `worker/routes/workflow.ts`.
+ *
+ * Expressed as `INSERT ... SELECT ... WHERE EXISTS`, which inserts nothing rather than
+ * raising, so a batch built this way no-ops cleanly instead of failing.
+ */
+export interface StatusGuard {
+  taskId: string;
+  status: string;
+}
+
+/** The `WHERE EXISTS` fragment and its binds, or an always-true fragment. */
+function guardClause(guard?: StatusGuard): { sql: string; binds: unknown[] } {
+  if (!guard) return { sql: "", binds: [] };
+  return {
+    sql: " WHERE EXISTS (SELECT 1 FROM tasks WHERE id = ? AND status = ?)",
+    binds: [guard.taskId, guard.status],
+  };
+}
+
 /** Appends an immutable audit-trail entry. */
 export function eventStatement(
   env: Env,
@@ -42,10 +67,12 @@ export function eventStatement(
     toStatus?: string | null;
     detail?: string | null;
   },
+  guard?: StatusGuard,
 ): D1PreparedStatement {
+  const where = guardClause(guard);
   return env.DB.prepare(
     `INSERT INTO task_events (id, task_id, actor_id, kind, from_status, to_status, detail, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?${where.sql}`,
   ).bind(
     newId(),
     input.taskId,
@@ -55,6 +82,7 @@ export function eventStatement(
     input.toStatus ?? null,
     input.detail ?? null,
     nowIso(),
+    ...where.binds,
   );
 }
 
@@ -74,10 +102,12 @@ export function notificationStatement(
     title: string;
     body?: string | null;
   },
+  guard?: StatusGuard,
 ): D1PreparedStatement {
+  const where = guardClause(guard);
   return env.DB.prepare(
     `INSERT INTO notifications (id, user_id, task_id, kind, title, body, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     SELECT ?, ?, ?, ?, ?, ?, ?${where.sql}`,
   ).bind(
     newId(),
     input.userId,
@@ -86,6 +116,7 @@ export function notificationStatement(
     input.title,
     input.body ?? null,
     nowIso(),
+    ...where.binds,
   );
 }
 
@@ -98,12 +129,13 @@ export function notifyMany(
   recipients: Array<string | null | undefined>,
   actorId: string,
   payload: { taskId: string | null; kind: string; title: string; body?: string | null },
+  guard?: StatusGuard,
 ): D1PreparedStatement[] {
   const unique = [
     ...new Set(recipients.filter((id): id is string => !!id && id !== actorId)),
   ];
   return unique.map((userId) =>
-    notificationStatement(env, { userId, ...payload }),
+    notificationStatement(env, { userId, ...payload }, guard),
   );
 }
 

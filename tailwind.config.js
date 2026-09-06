@@ -30,6 +30,8 @@ export default {
         rose: ramp("rose"),
         emerald: ramp("emerald"),
         violet: ramp("violet"),
+        blue: ramp("blue"),
+        indigo: ramp("indigo"),
         /** The firm's secondary colour, set by an administrator. */
         accent: ramp("accent"),
 
