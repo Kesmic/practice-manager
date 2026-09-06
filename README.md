@@ -22,6 +22,13 @@ the welcome message from the MD, the documents they owe a response to, what
 personal details are still missing, their own steps, and the steps the firm owes
 them.
 
+**Two contract templates** - a contract of employment, and an Associate Consultant
+Agreement for independent professionals engaged on a contract *for* service, paid a
+fixed fee per assigned client rather than a salary. Each is copied per person,
+completed, and issued to them alone. Both ship as drafts to be reviewed before use,
+and the Associate template carries its own notes on what the firm must change about
+its onboarding before putting a contractor through it.
+
 **Contracts signed on the portal** - the employee reads the document, ticks an
 explicit attestation and types their full name. The system requires the typed
 name to match their account, waits until they have scrolled to the end, and
@@ -47,7 +54,10 @@ Details in **[docs/PORTAL.md](docs/PORTAL.md)**.
 
 **Client and engagement records** - entity type, tax and registration numbers,
 financial year end, risk rating, engagement partner and manager, and engagements
-that group deliverables under a signed letter, a fee and a budget.
+that group deliverables under a signed letter, a fee and a budget. An engagement
+covers as many service lines as the letter does: one subscription engagement can
+be bookkeeping, payroll and tax compliance at once, and the service-line filter
+finds it under any of them.
 
 **Two public intake links** - one for prospective clients, one for existing clients
 asking for more work. Each is a single unguessable address the firm copies onto its

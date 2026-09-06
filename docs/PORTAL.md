@@ -71,8 +71,9 @@ The seeded handbook covers: code of conduct and ethics, client confidentiality
 and data protection, independence and conflicts of interest, anti-money
 laundering, IT security and acceptable use, leave and absence, working hours and
 remote work, equal opportunity and anti-harassment, performance and development,
-grievance and disciplinary procedure - plus a contract of employment template to
-copy per employee.
+grievance and disciplinary procedure - plus two contract templates to copy per
+person: a contract of employment, and an Associate Consultant Agreement for
+independent contractors engaged on a contract *for* service.
 
 ---
 
@@ -150,8 +151,18 @@ delay that is often the firm's. If you want a hard block, the place to add it is
   points, not finished legal instruments. Review each against the employment law
   and professional standards that apply to the firm, then publish. They ship as
   drafts so this cannot be skipped by accident.
-- **Complete the contract template** per employee and issue it as an individually
-  addressed document. Do not publish the template itself to staff.
+- **Complete the right contract template** per person and issue it as an
+  individually addressed document. Do not publish either template itself to staff.
+  Use the contract of employment for employees, and the Associate Consultant
+  Agreement for independent contractors.
+- **An Associate is not an employee, and the onboarding programme assumes one.**
+  The standard checklist asks a new joiner to sign a contract of employment,
+  acknowledge the Employee Handbook policy by policy, register for payroll and
+  statutory deductions, and have probation objectives set. Every one of those,
+  applied to a contractor, is evidence against the arrangement their contract
+  describes. Edit those steps off an Associate's checklist, set their employment
+  type to Consultant, and leave the salary fields empty - they invoice against
+  the agreement rather than being paid through payroll.
 - **Check whether typed-name signatures satisfy your jurisdiction** for
   employment contracts. The record captured here - attestation, matched name,
   timestamp, IP, and a hash of the exact text - is strong evidence of agreement,
