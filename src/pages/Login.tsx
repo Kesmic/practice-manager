@@ -22,6 +22,9 @@
 import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiRequestError, type LoginChallenge } from "../lib/api";
+
+/** Which of the offered ways through the second step is on screen. */
+type SecondStep = "totp" | "questions" | "recovery";
 import { IDLE_SIGNED_OUT_MESSAGE } from "@shared/session-policy";
 import { useSession } from "../lib/auth";
 import { FirmLogo, FirmName, useFirm } from "../lib/firm";
@@ -70,7 +73,15 @@ export function Login() {
   */
   const [challenge, setChallenge] = useState<LoginChallenge | null>(null);
   const [code, setCode] = useState("");
-  const [useRecovery, setUseRecovery] = useState(false);
+  /*
+    Which of the offered ways through the second step this person is using. A method
+    rather than a boolean, because there are now three: the app, saved questions, and a
+    recovery code.
+  */
+  const [method, setMethod] = useState<SecondStep>("totp");
+  /** Answers keyed by question id. All are required; a partial set is refused. */
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [rememberDevice, setRememberDevice] = useState(false);
 
   if (loading) return <Spinner label="Checking your session" />;
   if (user) {
@@ -87,8 +98,12 @@ export function Login() {
       if (next) {
         // Password accepted, second factor still to come.
         setChallenge(next);
-        setUseRecovery(false);
+        setMethod("totp");
         setCode("");
+        setAnswers({});
+        // Never pre-ticked. Remembering a device weakens the second factor for a month,
+        // and that is a choice somebody makes, not a default they fail to notice.
+        setRememberDevice(false);
         return;
       }
       navigate("/", { replace: true });
@@ -109,7 +124,14 @@ export function Login() {
     try {
       const result = await completeSignIn({
         challenge: challenge.token,
-        ...(useRecovery ? { recovery_code: code } : { code }),
+        ...(method === "recovery"
+          ? { recovery_code: code }
+          : method === "questions"
+            ? { answers }
+            : { code }),
+        ...(challenge.device_trust.offered && rememberDevice
+          ? { remember_device: true }
+          : {}),
       });
       if (result.used_recovery_code) {
         // Said here rather than after landing, because it is the one moment the person
@@ -125,6 +147,9 @@ export function Login() {
         err instanceof ApiRequestError ? err.message : "That did not work. Try again.";
       setError(message);
       setCode("");
+      // The answers are cleared too: leaving them filled in invites the same wrong set
+      // to be resubmitted against a challenge that only allows five tries.
+      setAnswers({});
       // Too many attempts, or an expired challenge: back to the password.
       if (err instanceof ApiRequestError && /email and password again/.test(message)) {
         setChallenge(null);
@@ -138,6 +163,8 @@ export function Login() {
   const startOver = () => {
     setChallenge(null);
     setCode("");
+    setAnswers({});
+    setMethod("totp");
     setError(null);
     setPassword("");
   };
@@ -224,73 +251,129 @@ export function Login() {
                 One more step
               </h1>
               <p className="muted mt-1">
-                {useRecovery
+                {method === "recovery"
                   ? "Enter one of the recovery codes you saved when you set this up."
-                  : "Enter the six-digit code from your authenticator app."}
+                  : method === "questions"
+                    ? "Answer every question exactly as you saved it. Capitals, accents and punctuation do not matter."
+                    : "Enter the six-digit code from your authenticator app."}
               </p>
 
               <form onSubmit={submitCode} className="mt-7 space-y-4" noValidate>
                 <ErrorBanner error={error} onDismiss={() => setError(null)} />
 
-                <Field
-                  label={useRecovery ? "Recovery code" : "Six-digit code"}
-                  required
-                  hint={
-                    useRecovery
-                      ? "Each one works once. Case and the hyphen do not matter."
-                      : "The code changes every thirty seconds."
-                  }
-                >
-                  {(id) => (
-                    <TextInput
-                      id={id}
-                      // A numeric keypad for the app code, plain text for a recovery
-                      // code, which has letters in it.
-                      inputMode={useRecovery ? "text" : "numeric"}
-                      autoComplete={useRecovery ? "off" : "one-time-code"}
-                      autoFocus
-                      required
-                      spellCheck={false}
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                      placeholder={useRecovery ? "ABCDE-FGHJK" : "123456"}
-                      className="input text-center text-lg tracking-[0.3em]"
+                {method === "questions" ? (
+                  <div className="space-y-4">
+                    {challenge.questions.map((item, index) => (
+                      <Field key={item.id} label={item.question} required>
+                        {(id) => (
+                          <TextInput
+                            id={id}
+                            autoFocus={index === 0}
+                            required
+                            spellCheck={false}
+                            autoComplete="off"
+                            autoCapitalize="none"
+                            value={answers[item.id] ?? ""}
+                            onChange={(e) =>
+                              setAnswers((prev) => ({ ...prev, [item.id]: e.target.value }))
+                            }
+                          />
+                        )}
+                      </Field>
+                    ))}
+                  </div>
+                ) : (
+                  <Field
+                    label={method === "recovery" ? "Recovery code" : "Six-digit code"}
+                    required
+                    hint={
+                      method === "recovery"
+                        ? "Each one works once. Case and the hyphen do not matter."
+                        : "The code changes every thirty seconds."
+                    }
+                  >
+                    {(id) => (
+                      <TextInput
+                        id={id}
+                        // A numeric keypad for the app code, plain text for a recovery
+                        // code, which has letters in it.
+                        inputMode={method === "recovery" ? "text" : "numeric"}
+                        autoComplete={method === "recovery" ? "off" : "one-time-code"}
+                        autoFocus
+                        required
+                        spellCheck={false}
+                        value={code}
+                        onChange={(e) => setCode(e.target.value)}
+                        placeholder={method === "recovery" ? "ABCDE-FGHJK" : "123456"}
+                        className="input text-center text-lg tracking-[0.3em]"
+                      />
+                    )}
+                  </Field>
+                )}
+
+                {challenge.device_trust.offered && (
+                  <label className="flex cursor-pointer items-start gap-2 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={rememberDevice}
+                      onChange={(e) => setRememberDevice(e.target.checked)}
                     />
-                  )}
-                </Field>
+                    <span>
+                      Remember this device for {challenge.device_trust.days} days, so this
+                      step is not asked for again here.
+                      <span className="mt-0.5 block text-slate-500">
+                        Only on a device that is yours alone. You will still be asked for
+                        your password every time.
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 <button type="submit" className="btn-primary w-full py-2.5" disabled={busy}>
                   {busy ? "Checking..." : "Sign in"}
                 </button>
 
                 <div className="space-y-2 text-center text-xs text-slate-500">
-                  {challenge.methods.includes("recovery") && (
-                    <button
-                      type="button"
-                      className="link"
-                      onClick={() => {
-                        setUseRecovery((on) => !on);
-                        setCode("");
-                        setError(null);
-                      }}
-                    >
-                      {useRecovery
-                        ? "Use the code from my app instead"
-                        : "I do not have my phone"}
-                    </button>
-                  )}
-                  {useRecovery && challenge.recovery_remaining > 0 && (
+                  {/*
+                    Every way through this step that is actually available, named plainly,
+                    rather than one link that toggles. With three methods a toggle stops
+                    being able to say where it leads.
+                  */}
+                  {(["totp", "questions", "recovery"] as const)
+                    .filter((option) => option !== method && challenge.methods.includes(option))
+                    .map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className="link block w-full"
+                        onClick={() => {
+                          setMethod(option);
+                          setCode("");
+                          setAnswers({});
+                          setError(null);
+                        }}
+                      >
+                        {option === "totp"
+                          ? "Use the code from my app instead"
+                          : option === "questions"
+                            ? "Answer my security questions instead"
+                            : "Use a recovery code instead"}
+                      </button>
+                    ))}
+                  {method === "recovery" && challenge.recovery_remaining > 0 && (
                     <p>
                       {challenge.recovery_remaining} recovery code(s) left. Each one works
                       once.
                     </p>
                   )}
-                  {!challenge.methods.includes("recovery") && (
-                    <p>
-                      You have no recovery codes left. If you cannot produce a code, a
-                      Partner can reset your two-step sign-in.
-                    </p>
-                  )}
+                  {!challenge.methods.includes("recovery") &&
+                    !challenge.methods.includes("questions") && (
+                      <p>
+                        You have no recovery codes left. If you cannot produce a code, a
+                        Partner can reset your two-step sign-in.
+                      </p>
+                    )}
                   <button type="button" className="link" onClick={startOver}>
                     Start again
                   </button>

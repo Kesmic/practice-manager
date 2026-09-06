@@ -13,7 +13,7 @@ import {
   requireUser,
   verifyPassword,
 } from "../auth";
-import { newId, nowIso, normaliseEmail, requireString } from "../db";
+import { newId, notificationStatement, nowIso, normaliseEmail, requireString } from "../db";
 import {
   assertLoginAllowed,
   attemptKeys,
@@ -33,6 +33,19 @@ import {
   recoveryRemaining,
   spendRecoveryCode,
 } from "../twofactor";
+import {
+  checkAnswers,
+  questionPrompts,
+  questionsPolicy,
+} from "../security-questions";
+import { questionsEnabled } from "../../shared/security-questions";
+import {
+  clearedDeviceCookie,
+  deviceIsTrusted,
+  deviceTrustPolicy,
+  forgetAllDevices,
+  rememberDevice,
+} from "../device-trust";
 import {
   HttpError,
   Router,
@@ -57,6 +70,7 @@ async function finishLogin(
   request: Request,
   userId: string,
   extra: Record<string, unknown> = {},
+  deviceCookie?: string | null,
 ): Promise<Response> {
   await env.DB.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`)
     .bind(nowIso(), userId)
@@ -84,7 +98,91 @@ async function finishLogin(
     await clearAccountFailures(env, await attemptKeys(request, user.email));
   }
 
-  return json({ user, ...extra }, 200, { "Set-Cookie": cookie });
+  /*
+   * Two Set-Cookie headers where a device was remembered. `json()` appends rather than
+   * replaces, which is what makes that possible - a single header holding both would be
+   * silently ignored by every browser.
+   */
+  const headers = new Headers();
+  headers.append("Set-Cookie", cookie);
+  if (deviceCookie) headers.append("Set-Cookie", deviceCookie);
+
+  return json({ user, ...extra }, 200, headers);
+}
+
+/**
+ * Tells the account owner, and the firm's partners, that questions were used.
+ *
+ * A factor that can be researched should not be usable in silence. If somebody reaches
+ * a partner's account by knowing where they went to school, the one thing that turns
+ * that into a recoverable incident rather than an undetected one is that it left a mark
+ * somebody reads.
+ *
+ * In the inbox rather than by email, and best-effort: a notification that fails must not
+ * turn a legitimate sign-in into a failed one, so this never throws into the caller.
+ */
+async function announceQuestionSignIn(env: Env, userId: string): Promise<void> {
+  try {
+    const person = await env.DB.prepare(`SELECT full_name FROM users WHERE id = ?`)
+      .bind(userId)
+      .first<{ full_name: string }>();
+    if (!person) return;
+
+    const { results: partners } = await env.DB.prepare(
+      `SELECT id FROM users
+        WHERE status = 'active' AND role IN ('partner','admin') AND id != ?`,
+    )
+      .bind(userId)
+      .all<{ id: string }>();
+
+    const when = new Date().toISOString();
+    const recipients = [userId, ...partners.map((row) => row.id)];
+    await env.DB.batch(
+      recipients.map((recipient) =>
+        notificationStatement(env, {
+          userId: recipient,
+          taskId: null,
+          kind: "signin:security_questions",
+          title:
+            recipient === userId
+              ? "You signed in with your security questions"
+              : `${person.full_name} signed in with security questions`,
+          body:
+            recipient === userId
+              ? `This happened at ${when}. If it was not you, change your password now and tell a Partner.`
+              : `Security questions were accepted in place of an authenticator code at ${when}.`,
+        }),
+      ),
+    );
+  } catch (err) {
+    console.error("Could not record a security-question sign-in:", err);
+  }
+}
+
+/**
+ * The questions to put to somebody at the second step, or none.
+ *
+ * Empty whenever the firm has the feature switched off, so turning it off takes effect
+ * on the next sign-in for everybody, without touching a single enrolment. Somebody who
+ * had enrolled questions keeps them, and they start working again if the firm changes
+ * its mind - which is the behaviour a policy switch should have.
+ */
+async function offeredQuestions(
+  env: Env,
+  userId: string,
+): Promise<Array<{ id: string; question: string }>> {
+  if (!questionsEnabled(await questionsPolicy(env))) return [];
+  return questionPrompts(env, userId);
+}
+
+/** Whether to offer "remember this device", and for how long. */
+async function deviceTrustOffer(
+  env: Env,
+): Promise<{ offered: boolean; days: number }> {
+  const policy = await deviceTrustPolicy(env);
+  return policy.enabled
+    ? { offered: true, days: policy.days }
+    : { offered: false, days: 0 };
 }
 
 /**
@@ -236,19 +334,41 @@ export function registerAuthRoutes(router: Router<Env>): void {
      * needs the code as well.
      */
     if (await isEnabled(env, row.id)) {
+      /*
+       * A browser this person has previously vouched for skips the second step - and
+       * only the second step. The password above still had to be right, which is what
+       * keeps a stolen laptop from being a stolen account.
+       */
+      if (await deviceIsTrusted(env, request, row.id)) {
+        return finishLogin(env, request, row.id, { device_remembered: true });
+      }
+
       const { token, expiresAt } = await createChallenge(
         env,
         row.id,
         request.headers.get("User-Agent"),
       );
-      const remaining = await recoveryRemaining(env, row.id);
+      const [remaining, questions] = await Promise.all([
+        recoveryRemaining(env, row.id),
+        offeredQuestions(env, row.id),
+      ]);
+
+      const methods = ["totp"];
+      if (questions.length) methods.push("questions");
+      if (remaining > 0) methods.push("recovery");
+
       return json({
         user: null,
         challenge: {
           token,
           expires_at: expiresAt,
-          methods: remaining > 0 ? ["totp", "recovery"] : ["totp"],
+          methods,
           recovery_remaining: remaining,
+          // Sent with the challenge rather than fetched separately: an endpoint that
+          // handed out somebody's questions for an email address alone would be a way to
+          // learn things about them without ever knowing their password.
+          questions,
+          device_trust: await deviceTrustOffer(env),
         },
       });
     }
@@ -268,6 +388,8 @@ export function registerAuthRoutes(router: Router<Env>): void {
       challenge?: unknown;
       code?: unknown;
       recovery_code?: unknown;
+      answers?: unknown;
+      remember_device?: unknown;
     }>(request);
 
     const challenge = await loadChallenge(env, body.challenge);
@@ -288,7 +410,70 @@ export function registerAuthRoutes(router: Router<Env>): void {
     const keys = await twoFactorKeys(env, request, challenge.user_id);
     if (keys) await assertLoginAllowed(env, keys);
 
+    /*
+     * Whether to remember this browser, decided once and applied on every way through
+     * this endpoint - so a person who signs in with a recovery code or with questions
+     * gets the same offer as one who used the app. The cookie is only ever minted after
+     * a factor has actually been satisfied, further down.
+     */
+    const wantsRemembered = body.remember_device === true;
+    const remember = async () =>
+      wantsRemembered ? rememberDevice(env, request, challenge.user_id) : null;
+
+    const usingQuestions =
+      typeof body.answers === "object" && body.answers !== null && !Array.isArray(body.answers);
     const usingRecovery = typeof body.recovery_code === "string" && body.recovery_code.trim() !== "";
+
+    if (usingQuestions) {
+      // Checked here as well as when the challenge was issued: the firm may have turned
+      // questions off in the five minutes since, and the answer to "may this be used"
+      // has to be the policy as it stands now.
+      if (!questionsEnabled(await questionsPolicy(env))) {
+        throw forbidden(
+          "This firm does not accept security questions in place of a code. Use the code from your authenticator app.",
+        );
+      }
+
+      const result = await checkAnswers(env, challenge.user_id, body.answers);
+      if (!result.ok) {
+        if (keys) await recordFailure(env, keys);
+        const { exhausted, remaining } = await countFailure(env, challenge);
+
+        if (result.reason === "unreadable") {
+          throw unauthorized(
+            "This deployment can no longer read your saved answers, which happens if PASSWORD_PEPPER changed. Ask a Partner to reset your two-step sign-in.",
+          );
+        }
+        if (result.reason === "none_enrolled") {
+          throw unauthorized(
+            "There are no security questions saved for this account. Use the code from your authenticator app.",
+          );
+        }
+        /*
+         * One message for a wrong answer and for a missing one, and it never says which
+         * question was wrong. Reporting "two of three correct" would turn a set of
+         * questions into three separate one-question guesses, which is the weakness that
+         * makes asking a subset worthless.
+         */
+        const detail =
+          "Those answers do not match. Answer every question, spelling them as you did when you saved them.";
+        throw unauthorized(
+          exhausted
+            ? `${detail} There have been too many attempts, so enter your email and password again.`
+            : `${detail} ${remaining} attempt(s) left.`,
+        );
+      }
+
+      await consumeChallenge(env, challenge);
+      await announceQuestionSignIn(env, challenge.user_id);
+      return finishLogin(
+        env,
+        request,
+        challenge.user_id,
+        { used_security_questions: true },
+        await remember(),
+      );
+    }
 
     if (usingRecovery) {
       const spent = await spendRecoveryCode(env, challenge.user_id, body.recovery_code);
@@ -303,10 +488,13 @@ export function registerAuthRoutes(router: Router<Env>): void {
       }
       await consumeChallenge(env, challenge);
       const left = await recoveryRemaining(env, challenge.user_id);
-      return finishLogin(env, request, challenge.user_id, {
-        recovery_codes_remaining: left,
-        used_recovery_code: true,
-      });
+      return finishLogin(
+        env,
+        request,
+        challenge.user_id,
+        { recovery_codes_remaining: left, used_recovery_code: true },
+        await remember(),
+      );
     }
 
     const row = await loadTotp(env, challenge.user_id);
@@ -314,7 +502,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
       // The enrolment was reset between the two steps. The password already succeeded,
       // so let them in rather than stranding them at a step that no longer applies.
       await consumeChallenge(env, challenge);
-      return finishLogin(env, request, challenge.user_id);
+      return finishLogin(env, request, challenge.user_id, {}, await remember());
     }
 
     const result = await checkTotp(env, row, body.code);
@@ -338,7 +526,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
     }
 
     await consumeChallenge(env, challenge);
-    return finishLogin(env, request, challenge.user_id);
+    return finishLogin(env, request, challenge.user_id, {}, await remember());
   });
 
   router.post("/api/auth/logout", async ({ request, env }) => {
@@ -430,7 +618,18 @@ export function registerAuthRoutes(router: Router<Env>): void {
       .bind(user.id, user.session_id)
       .run();
 
-    return json({ ok: true });
+    /*
+     * And every remembered device, including this one.
+     *
+     * Somebody changing their password is either doing housekeeping or responding to
+     * having lost control of the account, and the system cannot tell which. A device
+     * that kept its right to skip the second step across a password change would
+     * survive precisely the action taken to end an intrusion. The cost is one extra
+     * code on each of their own machines, once.
+     */
+    await forgetAllDevices(env, user.id);
+
+    return json({ ok: true }, 200, { "Set-Cookie": clearedDeviceCookie });
   });
 }
 

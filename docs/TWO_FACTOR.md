@@ -220,3 +220,60 @@ database on every push to `main`, before it deploys the app.
 
 The week-long session expiry is unaffected and still applies with the timeout off. Signing
 out still works. Nothing about it touches passwords or second factors.
+
+---
+
+## Two ways to be asked less, and what each costs
+
+Both are the firm's to switch on under **Portal settings, Sign-in security**, and both
+are described honestly on that screen rather than presented as free convenience.
+
+### Remembering a device
+
+Somebody who has just satisfied the second step can tick **Remember this device**. That
+browser is not asked again for the period the firm sets, thirty days by default and
+ninety at most.
+
+It never skips the password. It is tied to one account, so a machine remembered by one
+colleague still challenges the next person to sign in on it. Everybody can see their own
+remembered devices under **My account**, with when each was last used and when it runs
+out, and can forget any one or all of them. It is dropped automatically by a password
+change, by enrolling or disabling a second factor, and by a Partner resetting somebody's
+enrolment - each of those is either a response to trouble or a change in what the account
+is worth, and a device that survived one would outlive the decision.
+
+Ninety days is the ceiling on purpose. Past a quarter the second factor has stopped being
+a factor and become a formality, and a firm that wants longer than that actually wants no
+second factor - which is a different switch on the same screen, and should be reached
+deliberately.
+
+### Security questions
+
+A person can save three to five questions and answer all of them at once in place of a
+code.
+
+**This is the weaker option, and the firm has to turn it on.** NIST stopped recognising
+security questions as an authenticator, for reasons that apply squarely here: answers can
+be researched, they are reused across every site that asks, and in a practice this size a
+colleague often knows several already. An authenticator app asks whether somebody has the
+phone. A question asks whether they know a fact about a person.
+
+What holds it together where a firm decides the trade is worth making:
+
+- **Off unless switched on.** An absent setting means off, like the two-factor policy.
+- **Every question, not a sample.** Systems that ask two of five let an attacker retry
+  until they are asked the two they know. All of them are asked together.
+- **Never told which answer was wrong.** Reporting "two of three correct" would turn one
+  set into three independent one-question guesses.
+- **Announced.** Anyone who signs in this way appears in every Partner's inbox, and in
+  their own. A factor that can be researched should not be usable in silence.
+- **The app first.** Questions stand in for a code, so the authenticator app has to be
+  set up before they can be saved, and saving them needs a current code.
+- **Answers are keyed, not just hashed.** "What was your first car" has a few thousand
+  plausible values, so a plain digest in a leaked database is a dictionary attack that
+  finishes in seconds. The digest is keyed with `PASSWORD_PEPPER`, which is not in the
+  database. Where no pepper is set, the account screen says so plainly - set that secret
+  before relying on this.
+
+Answers are compared with capitals, accents, punctuation and repeated spaces removed, so
+"St. Mary's Road" still matches "st marys road" eighteen months later.

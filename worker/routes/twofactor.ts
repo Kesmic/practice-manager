@@ -20,6 +20,36 @@ import {
   readPolicy,
 } from "../../shared/twofactor";
 import {
+  MAX_QUESTIONS,
+  MIN_QUESTIONS,
+  SECURITY_QUESTIONS_OFF,
+  SECURITY_QUESTIONS_ON,
+  SUGGESTED_QUESTIONS,
+  questionsEnabled,
+  readQuestionsPolicy,
+} from "../../shared/security-questions";
+import {
+  DEVICE_TRUST_OFF,
+  MAX_TRUST_DAYS,
+  MIN_TRUST_DAYS,
+  clampTrustDays,
+  writeDeviceTrustPolicy,
+} from "../../shared/device-trust";
+import {
+  clearQuestions,
+  questionPrompts,
+  questionsPolicy,
+  questionsScheme,
+  replaceQuestions,
+} from "../security-questions";
+import {
+  clearedDeviceCookie,
+  deviceTrustPolicy,
+  forgetAllDevices,
+  forgetDevice,
+  listDevices,
+} from "../device-trust";
+import {
   IDLE_OFF,
   MAX_IDLE_MINUTES,
   MIN_IDLE_MINUTES,
@@ -254,9 +284,27 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
       recovery_remaining: number;
     }>();
 
+    const [questions, trust, withQuestions, remembered] = await Promise.all([
+      questionsPolicy(env),
+      deviceTrustPolicy(env),
+      env.DB.prepare(
+        `SELECT COUNT(DISTINCT user_id) AS n FROM user_security_questions`,
+      ).first<{ n: number }>(),
+      env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM trusted_devices WHERE expires_at > ?`,
+      )
+        .bind(nowIso())
+        .first<{ n: number }>(),
+    ]);
+
     return json({
       policy,
       idle: await idlePolicy(env),
+      security_questions: {
+        enabled: questionsEnabled(questions),
+        people_with_questions: withQuestions?.n ?? 0,
+      },
+      device_trust: { policy: trust, devices_remembered: remembered?.n ?? 0 },
       people: results.map((row) => ({
         ...row,
         enabled: Boolean(row.confirmed_at),
@@ -297,6 +345,196 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
     const policy = { enabled: true as const, minutes: clampIdleMinutes(minutes) };
     await writeSetting(env, "idle_timeout_minutes", writeIdlePolicy(policy), actor.id);
     return json({ idle: policy });
+  });
+
+  // -------------------------------------------------------- security questions
+
+  /**
+   * The reader's own questions, and what the firm allows.
+   *
+   * The answers never come back, from here or anywhere. There is no endpoint that reads
+   * one: an answer that could be read back would be a password the firm keeps in clear.
+   */
+  router.get("/api/2fa/questions", async ({ request, env }) => {
+    const actor = await requireUser(env, request, {
+      allowPasswordPending: true,
+      allowTwoFactorPending: true,
+    });
+    const [policy, questions] = await Promise.all([
+      questionsPolicy(env),
+      questionPrompts(env, actor.id),
+    ]);
+    return json({
+      allowed: questionsEnabled(policy),
+      questions,
+      suggested: SUGGESTED_QUESTIONS,
+      min: MIN_QUESTIONS,
+      max: MAX_QUESTIONS,
+      answers_keyed: questionsScheme(env) === "hmac",
+    });
+  });
+
+  /**
+   * Saves a set of questions and answers, replacing any that exist.
+   *
+   * Requires a current code from the authenticator app. Without that, somebody who found
+   * an unattended signed-in screen could add three questions of their own choosing and
+   * walk back in tomorrow with the password - turning a second factor into a back door
+   * rather than adding one.
+   */
+  router.put("/api/2fa/questions", async ({ request, env }) => {
+    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    const body = await readJson<{ entries?: unknown; code?: unknown }>(request);
+
+    if (!questionsEnabled(await questionsPolicy(env))) {
+      throw forbidden(
+        "This firm does not use security questions. A Partner can turn them on under Portal settings, Sign-in security.",
+      );
+    }
+
+    const row = await loadTotp(env, actor.id);
+    if (!row?.confirmed_at) {
+      throw badRequest(
+        "Set up the authenticator app first. Security questions stand in for a code, so there has to be a code to stand in for.",
+      );
+    }
+    const check = await checkTotp(env, row, body.code);
+    if (!check.ok) throw badRequest(codeFailureMessage(check.reason));
+
+    if (!Array.isArray(body.entries)) {
+      throw badRequest('"entries" must be a list of questions and answers.');
+    }
+    const entries = body.entries.map((entry) => ({
+      question: String((entry as { question?: unknown })?.question ?? ""),
+      answer: String((entry as { answer?: unknown })?.answer ?? ""),
+    }));
+
+    const { problem } = await replaceQuestions(env, actor.id, entries);
+    if (problem) throw badRequest(problem);
+
+    /*
+     * Changing which questions guard the account changes what the account is worth to
+     * somebody who knows the answers, so the devices vouched for under the old set stop
+     * being vouched for.
+     */
+    await forgetAllDevices(env, actor.id);
+
+    return json({
+      ok: true,
+      questions: await questionPrompts(env, actor.id),
+      two_factor: await statusFor(env, actor.id, actor.role),
+    }, 200, { "Set-Cookie": clearedDeviceCookie });
+  });
+
+  /** Removes them. No code needed: this only ever takes a way in away. */
+  router.delete("/api/2fa/questions", async ({ request, env }) => {
+    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    await clearQuestions(env, actor.id);
+    return json({ ok: true, two_factor: await statusFor(env, actor.id, actor.role) });
+  });
+
+  // --------------------------------------------------------- remembered devices
+
+  /** The browsers this person has told the portal to remember. */
+  router.get("/api/2fa/devices", async ({ request, env }) => {
+    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    const [policy, devices] = await Promise.all([
+      deviceTrustPolicy(env),
+      listDevices(env, request, actor.id),
+    ]);
+    return json({ policy, devices });
+  });
+
+  /**
+   * Forgets one, by the id shown on the account screen.
+   *
+   * Scoped to the caller's own devices in the query itself, so an id copied from
+   * somebody else's screen finds nothing rather than forgetting their machine.
+   */
+  router.delete("/api/2fa/devices/:id", async ({ request, env, params }) => {
+    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    const forgotten = await forgetDevice(env, actor.id, params.id);
+    if (!forgotten) throw notFound("That device is not on your list.");
+    return json({ ok: true, devices: await listDevices(env, request, actor.id) });
+  });
+
+  /** Forgets all of them, including the browser this was asked from. */
+  router.post("/api/2fa/devices/forget-all", async ({ request, env }) => {
+    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    await forgetAllDevices(env, actor.id);
+    return json({ ok: true, devices: [] }, 200, { "Set-Cookie": clearedDeviceCookie });
+  });
+
+  /**
+   * The firm's policy on security questions.
+   *
+   * A weakening, so the response says so plainly rather than answering "ok". Whoever
+   * turns this on should see, in the same breath, what they have decided.
+   */
+  router.put("/api/2fa/questions-policy", async ({ request, env }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ enabled?: unknown }>(request);
+    if (typeof body.enabled !== "boolean") {
+      throw badRequest('"enabled" must be true or false.');
+    }
+
+    const value = body.enabled ? SECURITY_QUESTIONS_ON : SECURITY_QUESTIONS_OFF;
+    await writeSetting(env, "security_questions", value, actor.id);
+
+    const enrolled = await env.DB.prepare(
+      `SELECT COUNT(DISTINCT user_id) AS n FROM user_security_questions`,
+    ).first<{ n: number }>();
+
+    return json({
+      policy: readQuestionsPolicy(value),
+      enabled: body.enabled,
+      people_with_questions: enrolled?.n ?? 0,
+      /*
+       * Turning it off leaves saved answers in place rather than deleting them, so a
+       * firm that switches it off to think about it does not destroy everyone's
+       * enrolment on the way. Nothing accepts them while it is off.
+       */
+      note: body.enabled
+        ? "Security questions are weaker than an authenticator code: the answers can often be researched or guessed by a colleague. Anyone signing in this way is announced in the inbox of every Partner."
+        : "Saved answers are kept but will not be accepted. Nobody can sign in with questions while this is off.",
+    });
+  });
+
+  /** How long a remembered device may skip the second step, or not at all. */
+  router.put("/api/device-trust", async ({ request, env }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ days?: unknown; enabled?: unknown }>(request);
+
+    if (body.enabled === false) {
+      await writeSetting(env, "trusted_device_days", DEVICE_TRUST_OFF, actor.id);
+      /*
+       * Switching this off drops every device already remembered. Leaving them would
+       * mean the setting said "off" while people carried on skipping the second step
+       * for another month, which is the setting failing to mean anything.
+       */
+      await env.DB.prepare(`DELETE FROM trusted_devices`).run();
+      return json({ policy: { enabled: false }, devices_forgotten: true });
+    }
+
+    const raw = body.days;
+    const days = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
+    if (!Number.isFinite(days)) {
+      throw badRequest("Give a number of days, or enabled: false to switch it off.");
+    }
+    if (days < MIN_TRUST_DAYS || days > MAX_TRUST_DAYS) {
+      throw badRequest(
+        `A device can be remembered for between ${MIN_TRUST_DAYS} and ${MAX_TRUST_DAYS} days.`,
+      );
+    }
+
+    const policy = { enabled: true as const, days: clampTrustDays(days) };
+    await writeSetting(env, "trusted_device_days", writeDeviceTrustPolicy(policy), actor.id);
+    /*
+     * Applies to devices remembered from now on. Shortening the period does not reach
+     * back and expire one already granted a longer run, which is worth saying rather
+     * than leaving a partner to assume it did.
+     */
+    return json({ policy, applies_to: "devices remembered from now on" });
   });
 
   /** The firm's policy: the lowest grade obliged to use a second factor, or off. */

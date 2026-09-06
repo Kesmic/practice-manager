@@ -21,7 +21,8 @@ import {
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { formatDateTime } from "../lib/format";
-import { ErrorBanner, Modal, Select, Spinner } from "./ui";
+import { ErrorBanner, Field, Modal, Select, Spinner } from "./ui";
+import { DEVICE_TRUST_OFF, TRUST_DAY_CHOICES } from "@shared/device-trust";
 
 type Overview = Awaited<ReturnType<typeof api.twoFactorOverview>>;
 
@@ -40,6 +41,8 @@ export function SignInSecurityAdmin({
   const [resetting, setResetting] = useState<Overview["people"][number] | null>(null);
   /** The inactivity setting being edited: "off", or a number of minutes as a string. */
   const [idleDraft, setIdleDraft] = useState<string>("");
+  /** How long a remembered device lasts: "off", or a number of days as a string. */
+  const [trustDraft, setTrustDraft] = useState<string>("");
 
   const load = useCallback(() => {
     void api
@@ -48,6 +51,11 @@ export function SignInSecurityAdmin({
         setData(res);
         setDraft(res.policy);
         setIdleDraft(res.idle.enabled ? String(res.idle.minutes) : IDLE_OFF);
+        setTrustDraft(
+          res.device_trust.policy.enabled
+            ? String(res.device_trust.policy.days)
+            : DEVICE_TRUST_OFF,
+        );
       })
       .catch((err) =>
         setLocalError(
@@ -78,6 +86,46 @@ export function SignInSecurityAdmin({
     } catch (err) {
       setLocalError(
         err instanceof ApiRequestError ? err.message : "Could not save the policy.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveQuestionsPolicy = async (enabled: boolean) => {
+    setBusy(true);
+    setLocalError(null);
+    try {
+      const res = await api.setSecurityQuestionsPolicy(enabled);
+      setNotice(res.note);
+      load();
+    } catch (err) {
+      setLocalError(
+        err instanceof ApiRequestError ? err.message : "Could not save that.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveTrustPolicy = async () => {
+    setBusy(true);
+    setLocalError(null);
+    try {
+      const res = await api.setDeviceTrustPolicy(
+        trustDraft === DEVICE_TRUST_OFF
+          ? { enabled: false }
+          : { enabled: true, days: Number.parseInt(trustDraft, 10) },
+      );
+      setNotice(
+        res.policy.enabled
+          ? `A remembered device will now skip the second step for ${res.policy.days} days. Devices already remembered keep the period they were given.`
+          : "Devices are no longer remembered, and every one that was has been forgotten. Everybody will be asked for their second factor next time.",
+      );
+      load();
+    } catch (err) {
+      setLocalError(
+        err instanceof ApiRequestError ? err.message : "Could not save that.",
       );
     } finally {
       setBusy(false);
@@ -132,6 +180,86 @@ export function SignInSecurityAdmin({
   return (
     <div className="space-y-5">
       <ErrorBanner error={localError} onDismiss={() => setLocalError(null)} />
+
+      <section className="card p-4">
+        <h2 className="card-title">Security questions</h2>
+        <p className="muted mb-3 mt-0.5">
+          Lets somebody answer their saved questions instead of producing a code from
+          their authenticator app.
+        </p>
+        <p className="mb-3 rounded-md bg-amber-50 p-3 text-xs text-amber-800 ring-1 ring-amber-200">
+          <strong>This weakens two-step sign-in.</strong> Answers can be researched, are
+          often reused across other sites, and in a firm this size a colleague may already
+          know several of them. An authenticator app asks whether somebody has the phone;
+          a question asks whether they know a fact. Turn this on if the alternative is a
+          partner locked out of their own files, not as a convenience. Anyone who signs in
+          this way is announced in the inbox of every Partner.
+        </p>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={data.security_questions.enabled}
+            disabled={busy}
+            onChange={(e) => void saveQuestionsPolicy(e.target.checked)}
+          />
+          <span>Accept security questions in place of a code</span>
+        </label>
+        <p className="hint mt-2">
+          {data.security_questions.people_with_questions === 0
+            ? "Nobody has saved any questions yet. Each person sets their own under My account."
+            : `${data.security_questions.people_with_questions} person(s) have saved questions. Switching this off keeps their answers but stops accepting them.`}
+        </p>
+      </section>
+
+      <section className="card p-4">
+        <h2 className="card-title">Remember a device</h2>
+        <p className="muted mb-3 mt-0.5">
+          Lets somebody tick "remember this device" after the second step, so that browser
+          is not asked for a code again for a while. The password is still asked for every
+          single time.
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label="Remember for">
+            {(id) => (
+              <Select
+                id={id}
+                value={trustDraft}
+                onChange={(e) => setTrustDraft(e.target.value)}
+                disabled={busy}
+              >
+                {TRUST_DAY_CHOICES.map((days) => (
+                  <option key={days} value={String(days)}>
+                    {days} days
+                  </option>
+                ))}
+                <option value={DEVICE_TRUST_OFF}>
+                  Never - always ask for the second step
+                </option>
+              </Select>
+            )}
+          </Field>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={
+              busy ||
+              trustDraft ===
+                (data.device_trust.policy.enabled
+                  ? String(data.device_trust.policy.days)
+                  : DEVICE_TRUST_OFF)
+            }
+            onClick={() => void saveTrustPolicy()}
+          >
+            Save
+          </button>
+        </div>
+        <p className="hint mt-2">
+          {data.device_trust.policy.enabled
+            ? `Currently ${data.device_trust.policy.days} days, across ${data.device_trust.devices_remembered} remembered device(s). Changing it applies to devices remembered from now on. Everyone can see and forget their own under My account, and a password change forgets all of theirs.`
+            : "Off. Everyone is asked for their second factor every time they sign in."}
+        </p>
+      </section>
 
       <section className="card p-4">
         <h2 className="card-title">Sign out after inactivity</h2>

@@ -33,8 +33,15 @@ type Stage =
 
 export function TwoFactorCard({
   setNotice,
+  onChanged,
 }: {
   setNotice: (message: string | null) => void;
+  /**
+   * Called whenever this person's enrolment changes. Enrolling or disabling the app
+   * clears their security questions and every remembered device, so the cards showing
+   * those have to be told rather than left displaying what used to be true.
+   */
+  onChanged?: () => void;
 }) {
   const { user, refresh } = useSession();
   const [status, setStatus] = useState<TwoFactorStatus | null>(null);
@@ -95,6 +102,7 @@ export function TwoFactorCard({
       // The confinement for a required grade lifts the moment this succeeds, so the
       // sidebar and every screen need to hear about it.
       await refresh();
+      onChanged?.();
     });
 
   const reissue = () =>
@@ -111,7 +119,10 @@ export function TwoFactorCard({
       setStatus(res.two_factor);
       setStage({ kind: "idle" });
       setCode("");
-      setNotice("Two-step sign-in is off. Your password alone will sign you in.");
+      setNotice(
+        "Two-step sign-in is off. Your password alone will sign you in, and your security questions and remembered devices have gone with it.",
+      );
+      onChanged?.();
     });
 
   // ------------------------------------------------------------------ the codes

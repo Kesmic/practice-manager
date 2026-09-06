@@ -128,6 +128,12 @@ The workflow, the grades and the controls are documented in
 - **Manager grade closes files; only a Partner reopens one.**
 - **Temporary passwords are confined** to onboarding and the account screen until
   changed - they cannot be used to reach client work.
+- **A remembered device skips the second step, never the password.** It is bound to one
+  account, so a shared machine trusted by one colleague still challenges the next, and
+  it is dropped by a password change, by re-enrolling or disabling a second factor, and
+  by a Partner resetting somebody's enrolment.
+- **Security questions are off until a Partner turns them on**, and a sign-in that uses
+  them is announced in every Partner's inbox.
 - **An employee cannot change their own job title, grade or pay.**
 - **A line manager cannot see their reports' home address or date of birth.**
 - **Pay details are partner-only**, and are kept in their own table so no ordinary
@@ -162,6 +168,11 @@ shared/files.ts      the client file: providers recognised from a link, what
                      counts as a safe link, how a file is grouped
 shared/login-policy.ts
                      how many sign-in attempts, over how long, and why those numbers
+shared/security-questions.ts
+                     the weaker second factor: why it is off by default, and what
+                     makes a set of questions worth having
+shared/device-trust.ts
+                     how long a device may be remembered, and what it is called
 shared/types.ts      wire types shared across the boundary
 
 worker/              the API
@@ -169,6 +180,9 @@ worker/              the API
   auth.ts            PBKDF2 passwords (work factor bounded by the Worker CPU
                      budget, optional pepper), database-backed sessions
   throttle.ts        the sign-in attempt limit, counted in D1
+  security-questions.ts
+                     storing and checking answers, keyed with PASSWORD_PEPPER
+  device-trust.ts    the remembered-device cookie and the table behind it
   dates.ts           statutory deadline and recurrence arithmetic
   routes/            auth, users, clients, client-files, engagements, tasks,
                      workflow, reviews, task-items, templates, insights, intake,

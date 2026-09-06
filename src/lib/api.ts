@@ -10,6 +10,7 @@
 import type { ErasePreview, EraseScope } from "@shared/erase";
 import type { Visibility } from "@shared/visibility";
 import type { TwoFactorStatus } from "@shared/twofactor";
+import type { DeviceTrustPolicy, TrustedDevice } from "@shared/device-trust";
 import type { IdlePolicy } from "@shared/session-policy";
 import type {
   ChecklistItem,
@@ -125,8 +126,17 @@ export interface SessionResponse {
 export interface LoginChallenge {
   token: string;
   expires_at: string;
-  methods: Array<"totp" | "recovery">;
+  methods: Array<"totp" | "questions" | "recovery">;
   recovery_remaining: number;
+  /**
+   * The security questions to put to this person, empty unless the firm allows them and
+   * this person has saved a set. Sent with the challenge rather than fetched separately:
+   * an endpoint handing out somebody's questions for an email address alone would be a
+   * way to learn things about them without ever knowing their password.
+   */
+  questions: Array<{ id: string; question: string }>;
+  /** Whether to offer "remember this device", and for how long. */
+  device_trust: { offered: boolean; days: number };
 }
 
 export const api = {
@@ -144,12 +154,72 @@ export const api = {
     }),
 
   /** The second step, with either an app code or a recovery code. */
-  completeLogin: (input: { challenge: string; code?: string; recovery_code?: string }) =>
+  completeLogin: (input: {
+    challenge: string;
+    code?: string;
+    recovery_code?: string;
+    /** Keyed by question id. All of them, or none: a partial set is refused. */
+    answers?: Record<string, string>;
+    remember_device?: boolean;
+  }) =>
     request<{
       user: User;
       used_recovery_code?: boolean;
       recovery_codes_remaining?: number;
+      used_security_questions?: boolean;
     }>("/api/auth/2fa", { method: "POST", body: input }),
+
+  // ------------------------------------------- security questions and devices
+  securityQuestions: () =>
+    request<{
+      allowed: boolean;
+      questions: Array<{ id: string; question: string }>;
+      suggested: string[];
+      min: number;
+      max: number;
+      answers_keyed: boolean;
+    }>("/api/2fa/questions"),
+
+  saveSecurityQuestions: (
+    entries: Array<{ question: string; answer: string }>,
+    code: string,
+  ) =>
+    request<{
+      ok: true;
+      questions: Array<{ id: string; question: string }>;
+      two_factor: TwoFactorStatus;
+    }>("/api/2fa/questions", { method: "PUT", body: { entries, code } }),
+
+  clearSecurityQuestions: () =>
+    request<{ ok: true; two_factor: TwoFactorStatus }>("/api/2fa/questions", {
+      method: "DELETE",
+    }),
+
+  trustedDevices: () =>
+    request<{ policy: DeviceTrustPolicy; devices: TrustedDevice[] }>("/api/2fa/devices"),
+
+  forgetDevice: (id: string) =>
+    request<{ ok: true; devices: TrustedDevice[] }>(`/api/2fa/devices/${id}`, {
+      method: "DELETE",
+    }),
+
+  forgetAllDevices: () =>
+    request<{ ok: true; devices: TrustedDevice[] }>("/api/2fa/devices/forget-all", {
+      method: "POST",
+    }),
+
+  setSecurityQuestionsPolicy: (enabled: boolean) =>
+    request<{
+      enabled: boolean;
+      people_with_questions: number;
+      note: string;
+    }>("/api/2fa/questions-policy", { method: "PUT", body: { enabled } }),
+
+  setDeviceTrustPolicy: (input: { enabled: boolean; days?: number }) =>
+    request<{ policy: DeviceTrustPolicy; devices_forgotten?: boolean }>(
+      "/api/device-trust",
+      { method: "PUT", body: input },
+    ),
 
   logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
 
@@ -215,6 +285,8 @@ export const api = {
   twoFactorOverview: () =>
     request<{
       policy: string;
+      security_questions: { enabled: boolean; people_with_questions: number };
+      device_trust: { policy: DeviceTrustPolicy; devices_remembered: number };
       idle: IdlePolicy;
       outstanding: number;
       people: Array<{
