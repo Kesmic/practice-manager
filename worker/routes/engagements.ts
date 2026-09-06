@@ -20,6 +20,7 @@ import {
   ENGAGEMENT_STATUSES,
   MIN_SUPERVISOR_ROLE,
   SERVICE_LINES,
+  type ServiceLine,
 } from "../../shared/workflow";
 
 export function registerEngagementRoutes(router: Router<Env>): void {
@@ -41,7 +42,13 @@ export function registerEngagementRoutes(router: Router<Env>): void {
     }
     const serviceLine = url.searchParams.get("service_line");
     if (serviceLine) {
-      filters.push(`e.service_line = ?`);
+      // Matches an engagement that covers this line at all, not only one filed under it
+      // as its primary. Filtering on the column instead would hide a subscription
+      // engagement from the payroll filter because it happens to be filed under tax.
+      filters.push(
+        `EXISTS (SELECT 1 FROM engagement_service_lines esl
+                  WHERE esl.engagement_id = e.id AND esl.service_line = ?)`,
+      );
       binds.push(requireEnum(serviceLine, "service_line", SERVICE_LINES));
     }
     const q = url.searchParams.get("q")?.trim();
@@ -74,9 +81,9 @@ export function registerEngagementRoutes(router: Router<Env>): void {
          ORDER BY c.name, e.period_end DESC, e.name`,
     )
       .bind(...binds)
-      .all();
+      .all<{ id: string; service_line: string }>();
 
-    return json({ engagements: results });
+    return json({ engagements: await attachServiceLines(env, results) });
   });
 
   router.post("/api/engagements", async ({ request, env }) => {
@@ -87,7 +94,11 @@ export function registerEngagementRoutes(router: Router<Env>): void {
     await assertExists(env, "clients", clientId, "The selected client");
 
     const name = requireString(body.name, "name", { max: 200 });
-    const serviceLine = requireEnum(body.service_line, "service_line", SERVICE_LINES);
+    const serviceLines = readServiceLines(body);
+    if (!serviceLines) {
+      throw badRequest("Choose at least one service line for this engagement.");
+    }
+    const serviceLine = serviceLines[0];
     const fields = await readEngagementFields(env, body);
     assertPeriodOrder(fields.period_start, fields.period_end);
 
@@ -125,10 +136,9 @@ export function registerEngagementRoutes(router: Router<Env>): void {
       )
       .run();
 
-    const engagement = await env.DB.prepare(`SELECT * FROM engagements WHERE id = ?`)
-      .bind(id)
-      .first();
-    return json({ engagement }, 201);
+    await env.DB.batch(writeServiceLines(env, id, serviceLines));
+
+    return json({ engagement: await loadEngagement(env, id) }, 201);
   });
 
   router.patch("/api/engagements/:id", async ({ request, env, params }) => {
@@ -148,31 +158,129 @@ export function registerEngagementRoutes(router: Router<Env>): void {
       body.period_end === undefined ? existing.period_end : fields.period_end,
     );
 
+    const serviceLines = readServiceLines(body);
     const changes: Record<string, unknown> = {
       name:
         body.name === undefined
           ? undefined
           : requireString(body.name, "name", { max: 200 }),
-      service_line:
-        body.service_line === undefined
-          ? undefined
-          : requireEnum(body.service_line, "service_line", SERVICE_LINES),
+      // The primary follows the list, so the column and the join table cannot disagree.
+      service_line: serviceLines?.[0],
     };
     for (const key of Object.keys(fields) as Array<keyof typeof fields>) {
       if (body[key] !== undefined) changes[key] = fields[key];
     }
 
     const update = buildUpdate("engagements", changes, { id: params.id });
-    if (!update) throw badRequest("No changes supplied.");
-    await env.DB.prepare(update.sql)
-      .bind(...update.binds)
-      .run();
+    if (!update && !serviceLines) throw badRequest("No changes supplied.");
 
-    const engagement = await env.DB.prepare(`SELECT * FROM engagements WHERE id = ?`)
-      .bind(params.id)
-      .first();
-    return json({ engagement });
+    // One batch, so an engagement can never be left filed under a primary line that its
+    // own list of lines does not contain.
+    await env.DB.batch([
+      ...(update ? [env.DB.prepare(update.sql).bind(...update.binds)] : []),
+      ...(serviceLines ? writeServiceLines(env, params.id, serviceLines) : []),
+    ]);
+
+    return json({ engagement: await loadEngagement(env, params.id) });
   });
+}
+
+/** One engagement with its service lines, as every write path returns it. */
+async function loadEngagement(env: Env, id: string) {
+  const row = await env.DB.prepare(`SELECT * FROM engagements WHERE id = ?`)
+    .bind(id)
+    .first<{ id: string; service_line: string }>();
+  if (!row) throw notFound("That engagement does not exist.");
+  return (await attachServiceLines(env, [row]))[0];
+}
+
+/**
+ * The service lines an engagement covers, read from the request.
+ *
+ * Accepts `service_lines` (the list) and falls back to `service_line` (one value), so a
+ * caller written against the older shape keeps working and a client that has not been
+ * updated does not start failing validation the moment this deploys.
+ *
+ * The first entry is the primary: it is what goes in `engagements.service_line`, which
+ * is the column the list is ordered and reported on. Duplicates are dropped rather than
+ * rejected - picking the same line twice is a slip, not something worth an error - and
+ * order is otherwise preserved, because the form gives them back in the order shown.
+ *
+ * Returns null when the request says nothing about service lines at all, which on a
+ * PATCH means "leave them alone".
+ */
+export function readServiceLines(body: Record<string, unknown>): ServiceLine[] | null {
+  const raw = body.service_lines ?? (body.service_line === undefined ? undefined : [body.service_line]);
+  if (raw === undefined) return null;
+  if (!Array.isArray(raw)) throw badRequest('"service_lines" must be a list.');
+  if (raw.length === 0) {
+    throw badRequest("Choose at least one service line for this engagement.");
+  }
+  if (raw.length > SERVICE_LINES.length) {
+    throw badRequest("That is more service lines than the firm has.");
+  }
+  const seen = new Set<ServiceLine>();
+  for (const value of raw) {
+    seen.add(requireEnum(value, "service_lines", SERVICE_LINES));
+  }
+  return [...seen];
+}
+
+/** Replaces an engagement's service lines. The primary keeps position 0. */
+function writeServiceLines(
+  env: Env,
+  engagementId: string,
+  lines: ServiceLine[],
+): D1PreparedStatement[] {
+  return [
+    env.DB.prepare(`DELETE FROM engagement_service_lines WHERE engagement_id = ?`).bind(
+      engagementId,
+    ),
+    ...lines.map((line, index) =>
+      env.DB.prepare(
+        `INSERT INTO engagement_service_lines (engagement_id, service_line, position)
+         VALUES (?, ?, ?)`,
+      ).bind(engagementId, line, index),
+    ),
+  ];
+}
+
+/**
+ * Attaches the full service-line list to rows that carry only the primary.
+ *
+ * One query for the whole page rather than one per row: the list view routinely returns
+ * every engagement a client has, and a query per row is how a list view becomes slow
+ * without anybody noticing until there are enough clients to feel it.
+ */
+export async function attachServiceLines<T extends { id: string; service_line: string }>(
+  env: Env,
+  rows: T[],
+): Promise<Array<T & { service_lines: string[] }>> {
+  if (rows.length === 0) return [];
+  const placeholders = rows.map(() => "?").join(", ");
+  const { results } = await env.DB.prepare(
+    `SELECT engagement_id, service_line
+       FROM engagement_service_lines
+      WHERE engagement_id IN (${placeholders})
+      ORDER BY position`,
+  )
+    .bind(...rows.map((row) => row.id))
+    .all<{ engagement_id: string; service_line: string }>();
+
+  const byEngagement = new Map<string, string[]>();
+  for (const row of results) {
+    const list = byEngagement.get(row.engagement_id);
+    if (list) list.push(row.service_line);
+    else byEngagement.set(row.engagement_id, [row.service_line]);
+  }
+
+  // An engagement with no rows falls back to its primary. That should not happen after
+  // 0013 backfilled every existing row, but a list that silently loses its only service
+  // line would be a worse failure than a redundant fallback.
+  return rows.map((row) => ({
+    ...row,
+    service_lines: byEngagement.get(row.id) ?? [row.service_line],
+  }));
 }
 
 async function readEngagementFields(env: Env, body: Record<string, unknown>) {

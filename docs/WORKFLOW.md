@@ -29,7 +29,8 @@ will not also grant.
 Two thresholds carry most of the weight:
 
 - **Senior Associate and above may review.** An Associate can never be named as
-  reviewer, and the system refuses the assignment outright.
+  reviewer - the system refuses the assignment outright - and cannot review even where
+  they are already named, which is what holds after a change of grade.
 - **Manager and above may assign and close.** A Senior Associate may draft a
   deliverable, but a Manager releases it.
 
@@ -93,9 +94,13 @@ Whoever is the deliverable's assignee cannot begin its review, raise points on
 it, resolve points, or approve it - at any grade, including Administrator. This
 is the one rule with no override, because an override would defeat its purpose.
 
-**2. An Associate cannot be named reviewer.**
+**2. An Associate cannot review.**
 Rejected when the deliverable is created and again on every edit, so it cannot be
-introduced by a later reassignment.
+introduced by a later reassignment - and checked once more at the moment somebody
+begins a review, returns work for rework or approves it. The second check is not
+redundant: grades change. A Senior Associate named as reviewer on twenty live jobs and
+later moved down to Associate keeps their name on all twenty, and nothing revisits those
+assignments. Without the check at the point of action they could still sign the work off.
 
 **3. Mandatory procedures must be complete before submission.**
 Template checklist steps marked mandatory block `submit` and `resubmit` until

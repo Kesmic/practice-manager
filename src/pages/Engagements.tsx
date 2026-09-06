@@ -8,10 +8,12 @@ import {
   SERVICE_LINES,
   SERVICE_LINE_LABELS,
   atLeast,
+  type ServiceLine,
 } from "@shared/workflow";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import {
+  CheckboxGroup,
   EmptyState,
   ErrorBanner,
   Field,
@@ -130,7 +132,7 @@ export function Engagements() {
                   <th>Code</th>
                   <th>Client</th>
                   <th>Engagement</th>
-                  <th>Service line</th>
+                  <th>Service lines</th>
                   <th>Period</th>
                   <th>Status</th>
                   <th className="text-right">Fee</th>
@@ -150,8 +152,10 @@ export function Engagements() {
                       </Link>
                     </td>
                     <td className="min-w-48">{engagement.name}</td>
-                    <td className="whitespace-nowrap text-xs">
-                      {SERVICE_LINE_LABELS[engagement.service_line]}
+                    <td className="min-w-40 text-xs">
+                      {(engagement.service_lines ?? [engagement.service_line])
+                        .map((line) => SERVICE_LINE_LABELS[line])
+                        .join(", ")}
                     </td>
                     <td className="whitespace-nowrap text-xs">
                       {engagement.period_label ??
@@ -210,7 +214,7 @@ function NewEngagementModal({
   const blank = {
     client_id: "",
     name: "",
-    service_line: "tax_compliance",
+    service_lines: ["tax_compliance"] as ServiceLine[],
     period_label: "",
     period_start: "",
     period_end: "",
@@ -240,6 +244,12 @@ function NewEngagementModal({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    // The browser cannot require a fieldset the way it requires an input, so this is
+    // checked here as well as on the server - which refuses an empty list either way.
+    if (form.service_lines.length === 0) {
+      setError("Choose at least one service line for this engagement.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -322,17 +332,15 @@ function NewEngagementModal({
               />
             )}
           </Field>
-          <Field label="Service line" required>
-            {(id) => (
-              <Select
-                id={id}
-                value={form.service_line}
-                onChange={(e) => set("service_line")(e.target.value)}
-              >
-                {options(SERVICE_LINES, SERVICE_LINE_LABELS)}
-              </Select>
-            )}
-          </Field>
+          <CheckboxGroup
+            legend="Service lines"
+            required
+            values={SERVICE_LINES}
+            labels={SERVICE_LINE_LABELS}
+            selected={form.service_lines}
+            onChange={(service_lines) => setForm((f) => ({ ...f, service_lines }))}
+            hint="One signed letter often covers several. The first one chosen is the line the engagement is filed under."
+          />
           <Field label="Status">
             {(id) => (
               <Select

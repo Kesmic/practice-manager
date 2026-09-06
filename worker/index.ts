@@ -59,6 +59,85 @@ registerEraseRoutes(router);
 registerTwoFactorRoutes(router);
 
 /**
+ * The browser-facing security headers.
+ *
+ * These belong on the app, not on the API. `worker/http.ts` puts a short set on every
+ * JSON response, which is close to pointless - a JSON body is not a document, cannot be
+ * framed and cannot run a script. What can be framed and can run a script is the HTML
+ * and JavaScript served from here, and until now that went out bare.
+ *
+ * What each one is actually for:
+ *
+ * - **frame-ancestors / X-Frame-Options.** Without them the portal can be loaded in an
+ *   invisible frame on somebody else's page and a colleague tricked into clicking a
+ *   button they cannot see. Every destructive action in the portal is one click behind a
+ *   session that stays signed in for days, so this is the one that matters most.
+ *   `X-Frame-Options` is the same rule again for browsers that predate CSP.
+ * - **script-src 'self'.** The built bundle is the only script that may run. It turns any
+ *   future injection hole into a broken page rather than a stolen session.
+ * - **object-src / base-uri 'none'.** Two old tricks for turning a content hole into
+ *   script execution: a plugin object, and rewriting <base> so every relative script URL
+ *   resolves somewhere else.
+ * - **form-action 'self'.** A form injected into the page cannot post the fields
+ *   somebody just typed to another origin.
+ * - **connect-src 'self'.** The app talks to its own API and nothing else. There is no
+ *   analytics, no font CDN and no error reporter here, and this makes that a rule rather
+ *   than a habit.
+ *
+ * Two deliberate relaxations, both narrow:
+ *
+ * - **`img-src` allows `data:`.** The firm's logo is stored as a data URL in settings
+ *   rather than as a file, and `src/lib/logo.ts` derives the light-ink version in a
+ *   canvas, which also produces one.
+ * - **`style-src` allows `'unsafe-inline'`.** `src/lib/branding.ts` writes the
+ *   administrator's chosen colours into an injected <style> element, and the values are
+ *   chosen at runtime so neither a hash nor a fixed nonce can cover them. Inline style is
+ *   a far smaller exposure than inline script, and the portal never renders authored
+ *   text as HTML - `src/components/Markdown.tsx` emits React elements precisely so that
+ *   it cannot.
+ */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+  "object-src 'none'",
+].join("; ");
+
+function applyAppSecurityHeaders(response: Response, url: URL): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Content-Security-Policy", CSP);
+  headers.set("X-Frame-Options", "DENY");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Referrer-Policy", "same-origin");
+  // The portal uses none of these. Saying so stops an injected iframe or a future
+  // dependency reaching for them on a page the firm trusts.
+  headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+  );
+  // Only meaningful over TLS, and `wrangler pages dev` serves plain HTTP on localhost.
+  // Sent conditionally so a local run cannot pin a developer's browser to HTTPS for a
+  // hostname that has no certificate.
+  if (url.protocol === "https:") {
+    headers.set(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains",
+    );
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+/**
  * Serves a static file, falling back to the app shell so that client-side routes
  * survive a hard refresh: someone opening /deliverables/abc directly has to be
  * given index.html and let the router take it from there.
@@ -68,23 +147,28 @@ registerTwoFactorRoutes(router);
  * behaviour; doing it here means the two cannot disagree, and the intent is
  * visible in the code that depends on it.
  */
-async function serveApp(request: Request, env: Env): Promise<Response> {
+async function serveApp(request: Request, env: Env, url: URL): Promise<Response> {
   const asset = await env.ASSETS.fetch(request);
-  if (asset.status !== 404) return asset;
+  if (asset.status !== 404) return applyAppSecurityHeaders(asset, url);
 
   // Only navigations get the shell. A POST or PUT to a path that does not exist
   // is a genuine 404, and answering it with an HTML page would hide the mistake.
-  if (request.method !== "GET" && request.method !== "HEAD") return asset;
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return applyAppSecurityHeaders(asset, url);
+  }
 
   const shell = await env.ASSETS.fetch(
     new Request(new URL("/index.html", request.url), { headers: request.headers }),
   );
-  if (!shell.ok) return asset;
+  if (!shell.ok) return applyAppSecurityHeaders(asset, url);
 
-  return new Response(shell.body, {
-    status: 200,
-    headers: shell.headers,
-  });
+  return applyAppSecurityHeaders(
+    new Response(shell.body, {
+      status: 200,
+      headers: shell.headers,
+    }),
+    url,
+  );
 }
 
 export default {
@@ -92,7 +176,7 @@ export default {
     const url = new URL(request.url);
 
     if (!url.pathname.startsWith("/api/")) {
-      return serveApp(request, env);
+      return serveApp(request, env, url);
     }
 
     try {

@@ -1,8 +1,9 @@
 # What could be better in the portal
 
-An honest review of what is missing or weak, in the order I would fix it. Nothing
-here is broken. These are the gaps between what the portal does today and what a
-compliance practice actually needs from it.
+An honest review of what is missing or weak, in the order I would fix it. Mostly these
+are gaps between what the portal does today and what a compliance practice actually
+needs from it, rather than things that are broken - though **Since this was written**,
+below, records the two that were.
 
 I wrote the portal, so treat this as a self-assessment rather than an independent
 one. Where I think something is a real problem I have said so plainly.
@@ -112,7 +113,7 @@ evidence out of the system where it belongs.
 
 ---
 
-## Two things to know rather than fix
+## One thing to know rather than fix
 
 ### Password protection is weaker than I would like, and why
 
@@ -122,15 +123,36 @@ portal therefore scrambles them less thoroughly than current standards recommend
 compensated by a secret key held outside the database.
 
 That compensation is sound: it means a stolen copy of your database alone is not
-enough to attack anybody's password. But if you move to the five-dollar plan I can
-set this to full strength, and for a firm holding this data I would.
+enough to attack anybody's password. The other half is now in place too: the portal
+stops answering after ten wrong passwords on one account, so a fast hash cannot be
+attacked quickly through the front door either. But if you move to the five-dollar
+plan I can set this to full strength, and for a firm holding this data I would.
 
-### There is no two-factor authentication
+---
 
-Signing in needs an email address and a password, and nothing else. For a system
-holding client tax records that is worth knowing about, though I would rank it below
-the deadline reminders and the backups. If you want it, one-time codes from a phone
-app is the version to build. Perhaps a day.
+## Since this was written
+
+Three things on this list have been built, and one thing not on it turned out to be
+wrong. Recorded here rather than deleted, because what a review missed is worth as much
+as what it found.
+
+**Two-factor authentication now exists.** This document used to say it did not. Codes
+from an authenticator app, recovery codes for the day the phone is lost, and a policy
+setting so the firm can require it at whichever grades it chooses.
+
+**Sessions time out when a screen is left unattended**, enforced by the server rather
+than only warned about in the browser.
+
+**Sign-in attempts are now limited.** They were not, which was the more serious half of
+the password paragraph above and went unmentioned in it: a reduced work factor is only
+defensible if the number of guesses is capped, and nothing capped it. Ten failures on
+an account or fifty from one address and the portal stops answering for fifteen minutes.
+
+**Reviewing was enforced at the wrong moment.** The rule "an Associate cannot be a
+reviewer" was checked when a reviewer was chosen and never again. A Senior Associate
+moved down a grade kept their name on every live deliverable and could still sign them
+off. Now the grade is checked when they act as well. This one was found by writing the
+control down as a test, which is the argument for having tests at all.
 
 ---
 
@@ -178,6 +200,17 @@ drift and quietly break the separation between preparing and reviewing.
 
 **The portal is not indexed by search engines and has no public pages.** It is a
 staff system, and it should stay invisible.
+
+---
+
+## Still true
+
+**There is no automated check of most of the system.** There are now tests over the
+workflow engine, the sign-in limit and the deadline arithmetic - the parts where a
+mistake is a control failure - and CI runs them on every change. The routes themselves
+are still covered only by typechecking and by somebody using the portal. The natural
+next step is a handful of end-to-end tests against a local database, exercising a
+deliverable from creation to closure.
 
 ---
 

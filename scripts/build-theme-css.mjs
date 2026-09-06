@@ -54,12 +54,22 @@ const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900];
 const FULL = { 50: 900, 100: 800, 200: 700, 300: 600, 400: 500, 500: 400, 600: 300, 700: 200, 800: 100, 900: 50 };
 const TINT = { 50: 900, 100: 800, 200: 700, 300: 600, 400: 400, 500: 500, 600: 600, 700: 200, 800: 100, 900: 50 };
 
+/*
+ * Every palette the app names has to be listed here, or it silently keeps Tailwind's own
+ * fixed values and stops following the theme. That is how `blue` and `indigo` came to be
+ * wrong: the "In progress" and "Submitted for review" pills, and the "Addressed" review
+ * point, stayed pale-on-dark in dark mode while every other pill inverted around them.
+ *
+ * If you reach for a colour that is not in this list, add it here rather than using it.
+ */
 const PALETTES = [
   ["slate", colors.slate, FULL],
   ["amber", colors.amber, TINT],
   ["rose", colors.rose, TINT],
   ["emerald", colors.emerald, TINT],
   ["violet", colors.violet, TINT],
+  ["blue", colors.blue, TINT],
+  ["indigo", colors.indigo, TINT],
 ];
 
 function channels(value) {
@@ -154,4 +164,4 @@ ${dark.join("\n")}
 `;
 
 writeFileSync(new URL("../src/theme.generated.css", import.meta.url), css);
-console.log(`theme.generated.css  ${SHADES.length * 6 + 6} colours × 2 themes`);
+console.log(`theme.generated.css  ${SHADES.length * (PALETTES.length + 3) + 3} colours × 2 themes`);

@@ -22,6 +22,7 @@ import {
   RISK_RATINGS,
 } from "../../shared/workflow";
 import { OVERDUE_PREDICATE, TASK_SELECT } from "./task-sql";
+import { attachServiceLines } from "./engagements";
 
 export function registerClientRoutes(router: Router<Env>): void {
   router.get("/api/clients", async ({ request, env, url }) => {
@@ -99,7 +100,7 @@ export function registerClientRoutes(router: Router<Env>): void {
         ORDER BY e.period_end DESC, e.name`,
     )
       .bind(params.id)
-      .all();
+      .all<{ id: string; service_line: string }>();
 
     const tasks = await env.DB.prepare(
       `${TASK_SELECT}
@@ -132,7 +133,7 @@ export function registerClientRoutes(router: Router<Env>): void {
 
     return json({
       client,
-      engagements: engagements.results,
+      engagements: await attachServiceLines(env, engagements.results),
       tasks: tasks.results,
       files: files.results,
     });

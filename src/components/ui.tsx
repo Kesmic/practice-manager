@@ -208,6 +208,71 @@ export function options<T extends string>(
   ));
 }
 
+/**
+ * A labelled group of checkboxes over a fixed value list - the multi-select equivalent
+ * of `Select` + `options`.
+ *
+ * A fieldset with a legend rather than `Field`, because `Field` pairs one `<label>` with
+ * one control by id, and a group of checkboxes has no single control to point at. A
+ * label whose `htmlFor` names a div is invalid, and a screen reader reads it as nothing.
+ *
+ * Checkboxes rather than a multiple `<select>`: a multi-select list box hides how many
+ * options there are, needs a modifier key most people do not know about, and silently
+ * clears the lot on a stray click.
+ */
+export function CheckboxGroup<T extends string>({
+  legend,
+  values,
+  labels,
+  selected,
+  onChange,
+  required,
+  hint,
+}: {
+  legend: string;
+  values: readonly T[];
+  labels: Record<T, string>;
+  selected: T[];
+  onChange: (next: T[]) => void;
+  required?: boolean;
+  hint?: string;
+}) {
+  const toggle = (value: T) => {
+    // Order is preserved as the person clicked, because the first one chosen becomes the
+    // primary service line on an engagement, and re-sorting would silently change it.
+    onChange(
+      selected.includes(value)
+        ? selected.filter((v) => v !== value)
+        : [...selected, value],
+    );
+  };
+
+  return (
+    <fieldset className="min-w-0">
+      <legend className="label">
+        {legend}
+        {required && <span className="ml-1 text-rose-600">*</span>}
+      </legend>
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+        {values.map((value) => (
+          <label
+            key={value}
+            className="flex cursor-pointer items-center gap-2 text-sm text-slate-700"
+          >
+            <input
+              type="checkbox"
+              checked={selected.includes(value)}
+              onChange={() => toggle(value)}
+            />
+            {labels[value]}
+          </label>
+        ))}
+      </div>
+      {hint && <p className="hint">{hint}</p>}
+    </fieldset>
+  );
+}
+
 // --------------------------------------------------------------------- modal
 
 export function Modal({

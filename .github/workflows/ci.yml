@@ -26,6 +26,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # The workflow engine, the sign-in limit and the deadline arithmetic. These are
+      # the parts where being wrong is a control failure rather than a broken screen,
+      # so they are checked before anything is built.
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npx vite build
 

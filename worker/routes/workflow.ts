@@ -16,8 +16,9 @@ import {
   nowIso,
   optionalString,
   requireEnum,
+  type StatusGuard,
 } from "../db";
-import { Router, badRequest, forbidden, json, notFound, readJson } from "../http";
+import { Router, badRequest, conflict, forbidden, json, notFound, readJson } from "../http";
 import { notifyWatchers } from "../email";
 import { readSettings } from "./settings";
 import {
@@ -94,6 +95,23 @@ export function registerWorkflowRoutes(router: Router<Env>): void {
     }
 
     const timestamp = nowIso();
+
+    /*
+     * Everything below is conditional on the deliverable still being in the status the
+     * decision above was made against.
+     *
+     * Without it this handler is a read, a decision and then an unconditional write, and
+     * two requests that overlap - a double-clicked button, or a reviewer approving at the
+     * moment the preparer recalls the submission - both pass the gate against the same
+     * old status and both apply. The second one then moves the deliverable out of a state
+     * the state machine never said it could move out of, and writes an audit event
+     * asserting a transition that did not happen.
+     *
+     * Each statement in the batch carries the same condition, and the status change is
+     * last, so the whole transition either happens or none of it does. D1 runs a batch as
+     * one transaction, so nothing can slip in between the guard and the write.
+     */
+    const guard: StatusGuard = { taskId: task.id, status: task.status };
     const statements: D1PreparedStatement[] = [];
     const recipients: Array<string | null> = [];
     let notificationTitle = `${task.ref} - ${rule.label.toLowerCase()}`;
@@ -137,7 +155,8 @@ export function registerWorkflowRoutes(router: Router<Env>): void {
           env.DB.prepare(
             `INSERT INTO task_reviews (id, task_id, round, reviewer_id, submitted_by,
                                        submitted_at, started_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+             SELECT ?, ?, ?, ?, ?, ?, ?
+              WHERE EXISTS (SELECT 1 FROM tasks WHERE id = ? AND status = ?)
              ON CONFLICT (task_id, round) DO UPDATE
                SET reviewer_id = excluded.reviewer_id,
                    started_at  = excluded.started_at,
@@ -151,6 +170,8 @@ export function registerWorkflowRoutes(router: Router<Env>): void {
             task.submitted_by,
             task.submitted_at,
             timestamp,
+            guard.taskId,
+            guard.status,
           ),
         );
         recipients.push(task.assignee_id);
@@ -171,7 +192,7 @@ export function registerWorkflowRoutes(router: Router<Env>): void {
             "Raise at least one review point before returning this deliverable for rework.",
           );
         }
-        statements.push(closeRound(env, task, "rework", note, timestamp));
+        statements.push(closeRound(env, task, "rework", note, timestamp, guard));
         recipients.push(task.assignee_id);
         notificationTitle = `${task.ref} returned for rework`;
         break;
@@ -179,7 +200,7 @@ export function registerWorkflowRoutes(router: Router<Env>): void {
 
       case "approve":
         extra.approved_at = timestamp;
-        statements.push(closeRound(env, task, "approved", note, timestamp));
+        statements.push(closeRound(env, task, "approved", note, timestamp, guard));
         recipients.push(task.assignee_id, ...(await clientSupervisors(env, task.client_id)));
         notificationTitle = `${task.ref} approved`;
         break;
@@ -210,39 +231,65 @@ export function registerWorkflowRoutes(router: Router<Env>): void {
         break;
     }
 
-    // Build the task UPDATE from the fixed set of columns this module owns.
+    // Build the task UPDATE from the fixed set of columns this module owns. It is
+    // appended below rather than here, after everything that depends on the old status.
     const columns = ["status = ?", "updated_at = ?"];
     const binds: unknown[] = [rule.to, timestamp];
     for (const [column, value] of Object.entries(extra)) {
       columns.push(`${column} = ?`);
       binds.push(value);
     }
-    binds.push(task.id);
+    binds.push(task.id, task.status);
 
-    statements.unshift(
-      env.DB.prepare(`UPDATE tasks SET ${columns.join(", ")} WHERE id = ?`).bind(
-        ...binds,
+    statements.push(
+      eventStatement(
+        env,
+        {
+          taskId: task.id,
+          actorId: actor.id,
+          kind: `workflow:${action}`,
+          fromStatus: task.status,
+          toStatus: rule.to,
+          detail: note,
+        },
+        guard,
+      ),
+      ...notifyMany(
+        env,
+        recipients,
+        actor.id,
+        {
+          taskId: task.id,
+          kind: `workflow:${action}`,
+          title: notificationTitle,
+          body: note ?? task.title,
+        },
+        guard,
       ),
     );
 
+    // The status change goes last, so every guarded statement before it still sees the
+    // status it was written against.
     statements.push(
-      eventStatement(env, {
-        taskId: task.id,
-        actorId: actor.id,
-        kind: `workflow:${action}`,
-        fromStatus: task.status,
-        toStatus: rule.to,
-        detail: note,
-      }),
-      ...notifyMany(env, recipients, actor.id, {
-        taskId: task.id,
-        kind: `workflow:${action}`,
-        title: notificationTitle,
-        body: note ?? task.title,
-      }),
+      env.DB.prepare(
+        `UPDATE tasks SET ${columns.join(", ")} WHERE id = ? AND status = ?`,
+      ).bind(...binds),
     );
 
-    await env.DB.batch(statements);
+    const results = await env.DB.batch(statements);
+
+    /*
+     * Nothing was written if the status moved underneath us. Reported as 409 rather than
+     * 403: the action was legitimate when the screen was drawn, and what the person needs
+     * to be told is that the deliverable has moved on, not that they were not allowed.
+     */
+    const applied = results[results.length - 1]?.meta?.changes ?? 0;
+    if (applied === 0) {
+      throw conflict(
+        `${task.ref} was changed by somebody else while you were working on it. ` +
+          `Refresh the deliverable and try again.`,
+      );
+    }
 
     /*
      * The same people who get an inbox entry get an email, if email is set up.
@@ -307,12 +354,22 @@ function closeRound(
   decision: "approved" | "rework",
   summary: string | null,
   timestamp: string,
+  guard: StatusGuard,
 ): D1PreparedStatement {
   return env.DB.prepare(
     `UPDATE task_reviews
         SET decision = ?, decided_at = ?, summary = ?
-      WHERE task_id = ? AND round = ?`,
-  ).bind(decision, timestamp, summary, task.id, task.review_round);
+      WHERE task_id = ? AND round = ?
+        AND EXISTS (SELECT 1 FROM tasks WHERE id = ? AND status = ?)`,
+  ).bind(
+    decision,
+    timestamp,
+    summary,
+    task.id,
+    task.review_round,
+    guard.taskId,
+    guard.status,
+  );
 }
 
 /** The client's manager and engagement partner, used as a review fallback. */

@@ -12,7 +12,8 @@
     "deploy": "wrangler pages deploy",
     "db:migrate:local": "wrangler d1 migrations apply kesmic-practice --local",
     "db:migrate:remote": "wrangler d1 migrations apply kesmic-practice --remote",
-    "build:theme": "node scripts/build-theme-css.mjs"
+    "build:theme": "node scripts/build-theme-css.mjs",
+    "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

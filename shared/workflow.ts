@@ -331,9 +331,27 @@ export const TRANSITIONS: TransitionRule[] = [
   },
 ];
 
-/** `reopen` is deliberately partner-only, above the generic supervisor bar. */
+/**
+ * Grade floors that hold whatever the actor's relationship to the deliverable is.
+ *
+ * `reopen` is deliberately partner-only, above the generic supervisor bar.
+ *
+ * The three review actions are here because `allow: ["reviewer", ...]` names *who* the
+ * reviewer is, not what grade they hold, and the two can come apart. A Senior Associate
+ * named as reviewer on twenty live jobs who is later moved to Associate keeps their name
+ * on all twenty: `assertReviewerGrade` runs when a reviewer is chosen and nothing
+ * revisits it afterwards. Without a floor here that person could still open the review
+ * and sign the work off, which is exactly the control the firm is relying on.
+ *
+ * The floor is separate from `allow` rather than folded into it on purpose. `allow`
+ * answers "is this your deliverable to act on"; this answers "are you senior enough to
+ * take this kind of action at all". Conflating them is what let the gap open.
+ */
 const ACTION_MIN_ROLE: Partial<Record<WorkflowAction, Role>> = {
   reopen: "partner",
+  begin_review: MIN_REVIEWER_ROLE,
+  request_rework: MIN_REVIEWER_ROLE,
+  approve: MIN_REVIEWER_ROLE,
 };
 
 // ---------------------------------------------------------------------------

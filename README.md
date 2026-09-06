@@ -22,6 +22,13 @@ the welcome message from the MD, the documents they owe a response to, what
 personal details are still missing, their own steps, and the steps the firm owes
 them.
 
+**Two contract templates** - a contract of employment, and an Associate Consultant
+Agreement for independent professionals engaged on a contract *for* service, paid a
+fixed fee per assigned client rather than a salary. Each is copied per person,
+completed, and issued to them alone. Both ship as drafts to be reviewed before use,
+and the Associate template carries its own notes on what the firm must change about
+its onboarding before putting a contractor through it.
+
 **Contracts signed on the portal** - the employee reads the document, ticks an
 explicit attestation and types their full name. The system requires the typed
 name to match their account, waits until they have scrolled to the end, and
@@ -47,7 +54,10 @@ Details in **[docs/PORTAL.md](docs/PORTAL.md)**.
 
 **Client and engagement records** - entity type, tax and registration numbers,
 financial year end, risk rating, engagement partner and manager, and engagements
-that group deliverables under a signed letter, a fee and a budget.
+that group deliverables under a signed letter, a fee and a budget. An engagement
+covers as many service lines as the letter does: one subscription engagement can
+be bookkeeping, payroll and tax compliance at once, and the service-line filter
+finds it under any of them.
 
 **Two public intake links** - one for prospective clients, one for existing clients
 asking for more work. Each is a single unguessable address the firm copies onto its
@@ -93,6 +103,12 @@ The workflow, the grades and the controls are documented in
 ## Controls worth knowing about
 
 - **Nobody reviews their own work.** No override exists, at any grade.
+- **Sign-in attempts are limited.** Ten failures against one account, or fifty from one
+  address, and the portal stops answering for fifteen minutes. Counted before the
+  password is hashed, and cleared as soon as somebody signs in successfully.
+- **A status change cannot be applied twice.** Every transition is written on condition
+  that the deliverable is still in the status the decision was made against, so two
+  overlapping requests cannot both take effect.
 - **No client document is ever stored in the portal.** The client file holds links
   only, and the Worker never fetches one: a Worker retrieving an address an employee
   typed would make the firm's own infrastructure issue requests on someone else's
@@ -101,7 +117,10 @@ The workflow, the grades and the controls are documented in
 - **An intake submission creates nothing but itself.** A client record appears only
   when a Manager accepts the request, and an existing-client request has to be
   matched to a file by hand - the portal will not guess from a typed name.
-- **Associates cannot be named reviewer** - reviewing needs Senior Associate grade.
+- **Associates cannot be named reviewer**, and cannot review even where they already
+  are named. Reviewing needs Senior Associate grade both when the reviewer is chosen and
+  again at the moment they act, so somebody moved down a grade stops being able to sign
+  off the deliverables their name is still on.
 - **Mandatory procedures block submission** until they are complete.
 - **Rework requires at least one review point**, so the preparer knows what to fix.
 - **Must-fix points must be answered before resubmission** and explicitly
@@ -141,12 +160,15 @@ shared/intake.ts     client intake: the two links, request states, the field
                      limits the public form and the server both enforce
 shared/files.ts      the client file: providers recognised from a link, what
                      counts as a safe link, how a file is grouped
+shared/login-policy.ts
+                     how many sign-in attempts, over how long, and why those numbers
 shared/types.ts      wire types shared across the boundary
 
 worker/              the API
   index.ts           router; /api/* handled here, everything else is a static asset
   auth.ts            PBKDF2 passwords (work factor bounded by the Worker CPU
                      budget, optional pepper), database-backed sessions
+  throttle.ts        the sign-in attempt limit, counted in D1
   dates.ts           statutory deadline and recurrence arithmetic
   routes/            auth, users, clients, client-files, engagements, tasks,
                      workflow, reviews, task-items, templates, insights, intake,
@@ -163,7 +185,11 @@ src/                 the React app (TypeScript, Vite, Tailwind)
 
 migrations/          D1 schema, seeded job templates and seeded handbook,
                      applied by CI
+tests/               the workflow engine, the sign-in limit and the deadline
+                     arithmetic - the parts where being wrong is a control failure
+                     rather than a broken screen
 scripts/             build-worker.mjs - bundles the Worker to dist/_worker.js
+                     run-tests.mjs    - bundles tests/ and runs node --test
 docs/                user guide, deployment, custom domain, email, two-step sign-in,
                      workflow and portal documentation
 ```
@@ -230,6 +256,7 @@ end. Note that `npm run build` must run first, and again after any change to
 | Command                     | Purpose                                        |
 | --------------------------- | ---------------------------------------------- |
 | `npm run typecheck`         | TypeScript across app, Worker and shared code  |
+| `npm test`                  | The workflow, sign-in and date-arithmetic tests |
 | `npm run build`             | Typecheck, then build the app into `dist/`     |
 | `npx wrangler pages dev`    | Run the whole system locally                   |
 | `npm run db:migrate:local`  | Apply migrations to the local database         |
@@ -264,7 +291,9 @@ end. Note that `npm run build` must run first, and again after any change to
   fails outright. On the Paid plan, set `PASSWORD_ITERATIONS = "600000"` and
   `[limits] cpu_ms` (both are written and commented in `wrangler.toml`). Every
   hash records its own iteration count, so changing the setting never invalidates
-  a stored password.
+  a stored password. A fast hash is only safe against guessing if the number of guesses
+  is capped, which is what the sign-in limit in `shared/login-policy.ts` is for - it
+  matters more here than it would on a deployment running at full strength.
 - **Set `PASSWORD_PEPPER` if you stay on the Free plan.** It is HMAC'd into each
   password before the KDF and lives in Worker secrets rather than D1, so a leaked
   database export cannot be attacked offline whatever the work factor - which is
