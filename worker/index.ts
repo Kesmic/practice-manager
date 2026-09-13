@@ -15,6 +15,7 @@ import { Router, errorResponse, json } from "./http";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerClientFileRoutes } from "./routes/client-files";
 import { registerClientRoutes } from "./routes/clients";
+import { registerContractRoutes } from "./routes/contracts";
 import { registerDocumentRoutes } from "./routes/documents";
 import { registerEmployeeRoutes } from "./routes/employees";
 import { registerEraseRoutes } from "./routes/erase";
@@ -56,6 +57,7 @@ registerIntakeRoutes(router);
 registerEmployeeRoutes(router);
 registerDocumentRoutes(router);
 registerSettingsRoutes(router);
+registerContractRoutes(router);
 registerEraseRoutes(router);
 registerTwoFactorRoutes(router);
 

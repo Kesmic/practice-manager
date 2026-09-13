@@ -57,6 +57,19 @@ completed, and issued to them alone. Both ship as drafts to be reviewed by a law
 before use, and the Associate template names the clauses most likely to be tested and
 what the firm must change about its onboarding before putting a contractor through it.
 
+**Contracts completed from what the firm already knows** - both templates are
+written with bracketed placeholders, thirty-eight of them in the Associate
+agreement, and replacing them by hand per person is how a contract comes to be
+signed saying the notice period is `[NOTICE DAYS]` days. Every placeholder now
+says where its value comes from: the person's own record, a firm-wide standard
+term set once, or a detail supplied when their account is created. Three of them
+describe the person rather than the engagement - their address, TIN and Ghana
+Card number - and an administrator who does not have them leaves them blank,
+because they are among the things asked at first sign-in and the contract reads
+from the same column either way. Anything still without a value is left as its
+bracket rather than printed empty, and the screen says which, because a contract
+reading "notice of  days" is grammatical enough to sign by mistake.
+
 **Contracts signed on the portal** - the employee reads the document, ticks an
 explicit attestation and types their full name. The system requires the typed
 name to match their account, waits until they have scrolled to the end, and
@@ -194,6 +207,9 @@ shared/hr.ts         portal domain: access thresholds, document rules and what
                      a profile must carry - likewise shared by both sides
 shared/onboarding.ts the onboarding programme: five dated stages, one per
                      employment type, and where a person has got to
+shared/contract-fields.ts
+                     every placeholder in both contract templates, and where its
+                     value is supposed to come from
 shared/intake.ts     client intake: the two links, request states, the field
                      limits the public form and the server both enforce
 shared/files.ts      the client file: providers recognised from a link, what
@@ -215,13 +231,14 @@ worker/              the API
   auth.ts            PBKDF2 passwords (work factor bounded by the Worker CPU
                      budget, optional pepper), database-backed sessions
   throttle.ts        the sign-in attempt limit, counted in D1
+  contract-fields.ts resolving a contract's placeholders for one person
   security-questions.ts
                      storing and checking answers, keyed with PASSWORD_PEPPER
   device-trust.ts    the remembered-device cookie and the table behind it
   dates.ts           statutory deadline and recurrence arithmetic
   routes/            auth, users, clients, client-files, engagements, tasks,
                      workflow, reviews, task-items, templates, insights, intake,
-                     employees, documents, settings
+                     employees, documents, contracts, settings
 
 src/                 the React app (TypeScript, Vite, Tailwind)
   lib/               API client, session context, formatting

@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { User } from "@shared/types";
 import { ROLES, ROLE_LABELS } from "@shared/workflow";
+import {
+  EMPLOYMENT_TYPES,
+  EMPLOYMENT_TYPE_LABELS,
+  type EmploymentType,
+} from "@shared/hr";
+import { isEngagedNotEmployed } from "@shared/onboarding";
+import { ContractDetailsCard } from "../components/ContractDetailsCard";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import {
@@ -16,6 +23,23 @@ import {
 } from "../components/ui";
 import { formatDate, relativeTime } from "../lib/format";
 
+/** An account that has just been created, and what still has to happen to it. */
+interface CreatedAccount {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  invited: boolean;
+  invitationError: string | null;
+  /** False where the employment record could not be written; see InviteModal. */
+  recordSaved: boolean;
+  /**
+   * True for a new account, false for a password reset. The two share this dialog, and
+   * only one of them has contract details still to fill in.
+   */
+  justCreated: boolean;
+}
+
 export function Team() {
   const { user: me } = useSession();
   const [users, setUsers] = useState<User[] | null>(null);
@@ -27,12 +51,14 @@ export function Team() {
    * to email the person, which changes the instruction entirely: either "they have it"
    * or "you must pass this on yourself".
    */
-  const [credential, setCredential] = useState<{
-    email: string;
-    password: string;
-    invited: boolean;
-    invitationError: string | null;
-  } | null>(null);
+  const [credential, setCredential] = useState<CreatedAccount | null>(null);
+  /**
+   * The person whose contract details are being filled in, straight after their account
+   * was created. Kept apart from `credential` so that dismissing the one-time password
+   * does not dismiss the form as well - the password must not stay on screen while
+   * somebody works through twenty fields.
+   */
+  const [detailing, setDetailing] = useState<CreatedAccount | null>(null);
 
   const closeCredential = () => {
     const invited = credential?.invited;
@@ -42,6 +68,20 @@ export function Team() {
         ? "Invitation sent. The temporary password was also shown to you in case it does not arrive."
         : "Pass the temporary password on through a secure channel.",
     );
+  };
+
+  /**
+   * Straight from the one-time password to the contract details, in one flow.
+   *
+   * Filling these in is not a separate administrative errand: the values are what
+   * completes the person's contract, and the moment somebody has them all to hand is
+   * the moment they are setting the person up. Offered as a second step rather than a
+   * longer create form, so the temporary password is not left on screen while
+   * somebody works through twenty fields.
+   */
+  const openDetails = () => {
+    if (credential) setDetailing(credential);
+    setCredential(null);
   };
 
   const load = useCallback(async () => {
@@ -77,10 +117,15 @@ export function Team() {
       // A reset never emails: somebody who has lost their password has often lost
       // access to the mailbox too, and sending a new one there would be no help.
       setCredential({
+        id: target.id,
+        name: target.full_name,
         email: target.email,
         password: temporary_password,
         invited: false,
         invitationError: "A password reset is always handed over in person.",
+        // Nothing was created, so there is no next step to offer.
+        recordSaved: true,
+        justCreated: false,
       });
       await load();
     } catch (err) {
@@ -209,8 +254,8 @@ export function Team() {
       <InviteModal
         open={inviting}
         onClose={() => setInviting(false)}
-        onCreated={(email, password, invited, invitationError) => {
-          setCredential({ email, password, invited, invitationError });
+        onCreated={(created) => {
+          setCredential(created);
           setInviting(false);
           void load();
         }}
@@ -222,9 +267,16 @@ export function Team() {
         title={credential?.invited ? "Account created and invitation sent" : "Temporary password"}
         onClose={closeCredential}
         footer={
-          <button type="button" className="btn-primary" onClick={closeCredential}>
-            Done
-          </button>
+          <>
+            <button type="button" className="btn-secondary" onClick={closeCredential}>
+              Done
+            </button>
+            {credential?.justCreated ? (
+              <button type="button" className="btn-primary" onClick={openDetails}>
+                Next: contract details
+              </button>
+            ) : null}
+          </>
         }
       >
         {credential && (
@@ -252,8 +304,49 @@ export function Team() {
               Shown once only, whether or not the invitation was sent. Email can be delayed
               or filtered, so keep this to hand until they have signed in.
             </p>
+            {credential.justCreated && !credential.recordSaved ? (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <strong>The employment record did not save.</strong> The account is fine,
+                but set their employment type and start date on their record before
+                starting onboarding - the programme and the contract both depend on them.
+              </p>
+            ) : null}
+            {credential.justCreated ? (
+              <p className="text-sm text-slate-600">
+                Next, the details that complete their contract. Anything you do not have
+                is asked of them when they first sign in, so you can leave it blank.
+              </p>
+            ) : null}
           </div>
         )}
+      </Modal>
+
+      {/*
+        The contract details for somebody just created. Given its own dialog rather than
+        a redirect to their personnel file so the administrator finishes what they
+        started here, and can still see the list of people behind it.
+      */}
+      <Modal
+        open={!!detailing}
+        title={detailing ? `Contract details for ${detailing.name}` : "Contract details"}
+        onClose={() => setDetailing(null)}
+        footer={
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setDetailing(null)}
+          >
+            Done
+          </button>
+        }
+      >
+        {detailing ? (
+          <ContractDetailsCard
+            userId={detailing.id}
+            personName={detailing.name}
+            onSaved={(message) => setNotice(message)}
+          />
+        ) : null}
       </Modal>
     </div>
   );
@@ -266,18 +359,15 @@ function InviteModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: (
-    email: string,
-    password: string,
-    invited: boolean,
-    invitationError: string | null,
-  ) => void;
+  onCreated: (created: CreatedAccount) => void;
 }) {
   const [form, setForm] = useState({
     full_name: "",
     email: "",
     role: "associate",
     title: "",
+    employment_type: "permanent",
+    start_date: "",
     send_invitation: true,
   });
   const [error, setError] = useState<string | null>(null);
@@ -290,6 +380,8 @@ function InviteModal({
         email: "",
         role: "associate",
         title: "",
+        employment_type: "permanent",
+        start_date: "",
         send_invitation: true,
       });
       setError(null);
@@ -308,12 +400,39 @@ function InviteModal({
         title: form.title || null,
         send_invitation: form.send_invitation,
       });
-      onCreated(
-        result.user.email,
-        result.temporary_password ?? "",
-        result.invitation_sent,
-        result.invitation_error,
-      );
+      /*
+       * The employment record is written straight after the account rather than left
+       * for somebody to fill in later, because these two fields decide everything that
+       * follows: which onboarding programme the person gets, which of the two contract
+       * templates they are issued, and what date every stage of their programme falls
+       * due. Left blank, the programme has no dates and the contract is the wrong one.
+       *
+       * A failure here does not fail the whole thing. The account exists and the
+       * temporary password has to reach the administrator either way - losing it
+       * because a start date would not save would be a much worse outcome than an
+       * employment record they can complete on the next screen.
+       */
+      let recordSaved = true;
+      try {
+        await api.updateEmployee(result.user.id, {
+          employment_type: form.employment_type,
+          start_date: form.start_date || null,
+          job_title: form.title || null,
+        });
+      } catch {
+        recordSaved = false;
+      }
+
+      onCreated({
+        id: result.user.id,
+        name: result.user.full_name,
+        email: result.user.email,
+        password: result.temporary_password ?? "",
+        invited: result.invitation_sent,
+        invitationError: result.invitation_error,
+        recordSaved,
+        justCreated: true,
+      });
     } catch (err) {
       setError(
         err instanceof ApiRequestError ? err.message : "Could not create that account.",
@@ -385,6 +504,49 @@ function InviteModal({
               value={form.title}
               onChange={(event) => setForm({ ...form, title: event.target.value })}
               placeholder="Tax Associate"
+            />
+          )}
+        </Field>
+
+        {/*
+          These two are not optional in the way a job title is. The employment type
+          decides which onboarding programme the person is given and which of the two
+          contract templates they are issued; the start date is what every stage of that
+          programme is counted from. Left blank, the programme has no dates at all.
+        */}
+        <Field
+          label="Employment type"
+          required
+          hint="Decides their onboarding programme and which contract they are issued."
+        >
+          {(id) => (
+            <Select
+              id={id}
+              value={form.employment_type}
+              onChange={(event) =>
+                setForm({ ...form, employment_type: event.target.value })
+              }
+            >
+              {options(EMPLOYMENT_TYPES, EMPLOYMENT_TYPE_LABELS)}
+            </Select>
+          )}
+        </Field>
+        <p className="-mt-2 text-xs text-slate-500">
+          {isEngagedNotEmployed(form.employment_type as EmploymentType)
+            ? "An Associate Consultant is engaged under a contract for services: they are issued the Associate Consultant Agreement, invoice for their fee, and are not registered for payroll."
+            : "An employee is issued a contract of employment and registered for PAYE and SSNIT."}
+        </p>
+        <Field
+          label="Start date"
+          required
+          hint="Every stage of their onboarding is dated from this."
+        >
+          {(id) => (
+            <TextInput
+              id={id}
+              type="date"
+              value={form.start_date}
+              onChange={(event) => setForm({ ...form, start_date: event.target.value })}
             />
           )}
         </Field>

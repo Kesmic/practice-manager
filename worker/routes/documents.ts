@@ -30,6 +30,9 @@ import {
   isHrAdmin,
   requiredAction,
 } from "../../shared/hr";
+import { fieldFor, fillContract } from "../../shared/contract-fields";
+import { resolveContract, withFirmName } from "../contract-fields";
+import { readSettings } from "./settings";
 
 interface DocumentRow {
   id: string;
@@ -422,6 +425,28 @@ export function registerDocumentRoutes(router: Router<Env>): void {
       .first<{ full_name: string }>();
     if (!person) throw badRequest("The selected employee does not exist.");
 
+    /*
+     * Complete the placeholders from what the firm already knows.
+     *
+     * Both templates are written with bracketed fields - the person's name, their job
+     * title, the notice period, the fee for each tier. Substituting them here rather
+     * than leaving them to be found by hand is the difference between issuing a
+     * contract and issuing a form. Thirty-eight of them in the Associate agreement:
+     * the ones that get missed by hand are the ones deep in the schedules, which is
+     * also where the money is.
+     *
+     * Anything without a value is left as its bracket rather than blanked. A contract
+     * reading "notice of  days" is grammatical enough to skim past; one reading
+     * "notice of [NOTICE DAYS] days" is not, and the response says which are left so
+     * the screen can put them in front of whoever is issuing it.
+     */
+    const resolution = await resolveContract(env, assignedUserId);
+    const settings = await readSettings(env);
+    const merged = fillContract(
+      String(source.body),
+      resolution ? withFirmName(resolution, settings.firm_name).values : {},
+    );
+
     // Their name in the title by default, because a personnel file with four
     // documents all called "Contract of Employment (template)" is unusable.
     const title =
@@ -443,7 +468,7 @@ export function registerDocumentRoutes(router: Router<Env>): void {
         source.category,
         title,
         source.summary,
-        source.body,
+        merged.text,
         requiresSignature,
         source.requires_acknowledgement ?? 0,
         assignedUserId,
@@ -455,7 +480,31 @@ export function registerDocumentRoutes(router: Router<Env>): void {
       )
       .run();
 
-    return json({ document: await loadDocument(env, id) }, 201);
+    return json(
+      {
+        document: await loadDocument(env, id),
+        /*
+         * What the copy still needs, so the screen can say so rather than leaving it
+         * to be discovered by the employee reading their own contract.
+         *
+         * `outstanding` is what a merge field was meant to fill and could not.
+         * `awaiting_employee` is the subset of those that answer themselves when the
+         * person signs in for the first time - their address, TIN and Ghana Card
+         * number - which is a different instruction to whoever is issuing it.
+         * `manual` is what no merge field was ever going to fill: the assigned-client
+         * schedule, and the date beside each signature.
+         */
+        merge: {
+          filled: merged.filled,
+          outstanding: merged.outstanding,
+          awaiting_employee: merged.outstanding.filter(
+            (token) => fieldFor(token)?.from?.filledBy === "employee",
+          ),
+          manual: merged.manual,
+        },
+      },
+      201,
+    );
   });
 
   router.patch("/api/documents/:id", async ({ request, env, params }) => {

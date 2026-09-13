@@ -27,11 +27,13 @@ import {
   TextInput,
   options,
 } from "../components/ui";
+import { ContractDetailsCard } from "../components/ContractDetailsCard";
 import { ReviewsPanel } from "../components/ReviewsPanel";
 import { formatDate, formatDateTime, formatMoney, percent, relativeTime } from "../lib/format";
 
 type Tab =
   | "employment"
+  | "contract"
   | "onboarding"
   | "documents"
   | "reviews"
@@ -80,6 +82,7 @@ export function EmployeeDetail() {
 
   const tabs: Array<[Tab, string]> = [
     ["employment", "Employment"],
+    ...(isHr ? ([["contract", "Contract details"]] as Array<[Tab, string]>) : []),
     ["onboarding", `Onboarding (${file.onboarding.filter((i) => i.is_done).length}/${file.onboarding.length})`],
     ["documents", `Documents (${file.signatures.length})`],
   ];
@@ -175,6 +178,16 @@ export function EmployeeDetail() {
 
         <div className="p-4">
           {tab === "reviews" && <ReviewsPanel userId={user.id} />}
+          {tab === "contract" && (
+            <ContractDetailsCard
+              userId={user.id}
+              personName={user.full_name}
+              onSaved={async (message) => {
+                setNotice(message);
+                await load();
+              }}
+            />
+          )}
           {tab === "employment" && (
             <EmploymentTab
               file={file}

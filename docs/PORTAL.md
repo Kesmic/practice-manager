@@ -214,6 +214,65 @@ delay that is often the firm's.
 
 ---
 
+## Completing a contract
+
+Both contract templates are written with bracketed placeholders - `[JOB TITLE]`,
+`[ASSOCIATE TIN]`, `[NOTICE DAYS]`. Thirty-eight of them in the Associate
+agreement. Replacing them by hand, per person, in a fifteen-page instrument, is
+how a contract comes to be signed saying the notice period is `[NOTICE DAYS]`
+days.
+
+[`shared/contract-fields.ts`](../shared/contract-fields.ts) says, for every
+placeholder in both templates, where its value is supposed to come from. Three
+answers, and the distinction is the whole design:
+
+| | Where it lives | Who supplies it |
+| --- | --- | --- |
+| **From the record** | `users`, `employee_profiles`, `employee_compensation`, settings | Nobody types it again |
+| **A firm-wide term** | `settings.contract_defaults` | Set once, in Portal settings → Contract terms |
+| **This person only** | `contract_details` | The administrator, when the account is created |
+
+**Nothing already in the record is copied.** Their name, job title, start date,
+salary and address are read from where they already are. A second copy of a job
+title is how a contract comes to disagree with a personnel file.
+
+**The standard terms are set once.** The registered company name, the notice
+period, the payment days, the fee for each tier - the same in every contract the
+firm issues. Asking an administrator to retype twenty-five of those per person
+guarantees the twenty-sixth Associate is engaged on different ones. Terms with a
+conventional value start from it, and the screen says so, because the failure to
+guard against is not a blank field: it is a firm issuing thirty contracts on a
+notice period nobody ever chose. A per-person value overrides a firm-wide one,
+for the case where terms were negotiated.
+
+### What the administrator does not have
+
+Three of the placeholders describe the person rather than the engagement: their
+residential address, their TIN and their Ghana Card number. An administrator who
+has them types them in when the account is created. One who does not leaves them
+blank - they are among the fifteen things asked at first sign-in, so the gap
+fills itself, and the contract reads from the same column either way. The screen
+says which of the outstanding fields those are, because "six fields outstanding"
+sends somebody chasing three things that were going to answer themselves.
+
+### Issuing
+
+`POST /api/documents/:id/copy-for` substitutes everything it can as it makes the
+copy, and reports what is left in three groups: `filled`, `outstanding` (a merge
+field was meant to fill it and could not), and `manual` (nothing was ever going
+to - the assigned-client schedule, and the date beside each signature).
+
+**A blank value is not substituted.** Replacing `[ASSOCIATE TIN]` with an empty
+string produces "holding Taxpayer Identification Number and Ghana Card number
+...", which is grammatical, reads as finished, and is wrong. The bracket stays,
+which is ugly, and ugly is the only version somebody notices before it is issued.
+
+Dates are written out - a contract commences on 1 October 2026, not on
+2026-10-01 - while the form that collects them still holds the ISO string its
+date input needs.
+
+---
+
 ## Where things are
 
 | Screen | Path | Who |
@@ -225,6 +284,8 @@ delay that is often the firm's.
 | People directory and onboarding progress | `/people` | Manager and above |
 | Personnel file | `/people/:id` | Self, manager, HR - by section |
 | Portal settings: handbook, welcome, logo, email | `/portal-admin` | Partner and above |
+| Contract terms (firm-wide) | `/portal-admin?tab=contract` | HR reads, Partner writes |
+| One person's contract details | `/people/:id` → Contract details | HR administrator |
 | Accounts and grades | `/team` | Partner and above |
 
 ---
@@ -235,10 +296,12 @@ delay that is often the firm's.
   points, not finished legal instruments. Review each against the employment law
   and professional standards that apply to the firm, then publish. They ship as
   drafts so this cannot be skipped by accident.
-- **Complete the right contract template** per person and issue it as an
-  individually addressed document. Do not publish either template itself to staff.
-  Use the contract of employment for employees, and the Associate Consultant
-  Agreement for independent contractors.
+- **Set the firm's standard contract terms** before issuing anything. Portal
+  settings → Contract terms. The registered company name, the company number and
+  the registered office have no sensible default and will print as brackets until
+  they are set; the rest start from a conventional value, which is a starting
+  point rather than the firm's decision. Do not publish either template itself to
+  staff - a template is copied per person, and the copy is what gets signed.
 - **An Associate is not an employee**, and the programme now says so: set their
   employment type to Consultant or Contractor when the account is created and they
   get the Associate programme and the Associate agreement, with no payroll

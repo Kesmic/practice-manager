@@ -14,6 +14,7 @@ import type { DeviceTrustPolicy, TrustedDevice } from "@shared/device-trust";
 import type { ReviewDetail, ReviewObjective, ReviewSummary } from "@shared/types";
 import type { IdlePolicy } from "@shared/session-policy";
 import type { Attention } from "@shared/attention";
+import type { ContractField } from "@shared/contract-fields";
 import type {
   ChecklistItem,
   DocumentSignature,
@@ -23,6 +24,8 @@ import type {
   FirmSettings,
   MyOnboarding,
   OnboardingItem,
+  ContractDetails,
+  ContractMergeResult,
   PortalDocument,
   PortalDocumentDetail,
   Client,
@@ -772,9 +775,35 @@ export const api = {
     title?: string,
     options: { kind?: string; requires_signature?: boolean } = {},
   ) =>
-    request<{ document: PortalDocument }>(`/api/documents/${id}/copy-for`, {
-      method: "POST",
-      body: { assigned_user_id: assignedUserId, title, ...options },
+    request<{ document: PortalDocument; merge: ContractMergeResult }>(
+      `/api/documents/${id}/copy-for`,
+      {
+        method: "POST",
+        body: { assigned_user_id: assignedUserId, title, ...options },
+      },
+    ),
+
+  // ------------------------------------------------------ contract details
+  /** The firm's standard terms, the same in every contract it issues. */
+  contractDefaults: () =>
+    request<{ values: Record<string, string>; fields: ContractField[] }>(
+      "/api/contract-defaults",
+    ),
+
+  saveContractDefaults: (values: Record<string, string>) =>
+    request<{ values: Record<string, string> }>("/api/contract-defaults", {
+      method: "PUT",
+      body: { values },
+    }),
+
+  /** What one person's contract would say today, placeholder by placeholder. */
+  contractDetails: (userId: string) =>
+    request<ContractDetails>(`/api/employees/${userId}/contract-details`),
+
+  saveContractDetails: (userId: string, values: Record<string, string>) =>
+    request<{ ok: true }>(`/api/employees/${userId}/contract-details`, {
+      method: "PUT",
+      body: { values },
     }),
 
   rotateIntakeLink: (kind: string) =>

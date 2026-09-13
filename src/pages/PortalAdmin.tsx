@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { FirmSettings, PortalDocument, User } from "@shared/types";
+import type {
+  ContractMergeResult,
+  FirmSettings,
+  PortalDocument,
+  User,
+} from "@shared/types";
 import {
   DOCUMENT_KINDS,
   DOCUMENT_KIND_LABELS,
@@ -12,6 +17,8 @@ import { ApiRequestError, api } from "../lib/api";
 import { applyBranding, isHexColour } from "../lib/branding";
 import { deriveLightInk, whyNotDerivable } from "../lib/logo";
 import { useFirm } from "../lib/firm";
+import { useSession } from "../lib/auth";
+import { ContractTermsCard } from "../components/ContractTermsCard";
 import { EraseAdmin } from "../components/EraseAdmin";
 import { Markdown } from "../components/Markdown";
 import { SignInSecurityAdmin } from "../components/SignInSecurityAdmin";
@@ -34,6 +41,7 @@ import { formatDate } from "../lib/format";
 type Tab =
   | "documents"
   | "welcome"
+  | "contract"
   | "appearance"
   | "email"
   | "visibility"
@@ -43,6 +51,7 @@ type Tab =
 const TABS: Array<[Tab, string]> = [
   ["documents", "Documents and handbook"],
   ["welcome", "Welcome message and firm details"],
+  ["contract", "Contract terms"],
   ["appearance", "Logo and colours"],
   ["email", "Email notifications"],
   ["visibility", "Who sees what"],
@@ -59,6 +68,7 @@ export function PortalAdmin() {
     sidebar can link straight to one, and so a link to a particular tab survives
     being bookmarked or pasted to a colleague.
   */
+  const { can } = useSession();
   const [params, setParams] = useSearchParams();
   const asked = params.get("tab");
   const tab: Tab = TABS.some(([key]) => key === asked) ? (asked as Tab) : DEFAULT_TAB;
@@ -106,6 +116,8 @@ export function PortalAdmin() {
 
       {tab === "documents" ? (
         <DocumentsAdmin setError={setError} setNotice={setNotice} />
+      ) : tab === "contract" ? (
+        <ContractTermsCard canEdit={can("partner")} />
       ) : tab === "appearance" ? (
         <AppearanceAdmin setError={setError} setNotice={setNotice} />
       ) : tab === "email" ? (
@@ -347,6 +359,51 @@ function DocumentsAdmin({
  * altered, so it stays reusable, and each copy is its own record with its own
  * signature and its own version history.
  */
+/**
+ * What to tell the administrator about the copy that was just made.
+ *
+ * The server fills in every placeholder it can from the person's record, the firm's
+ * standard terms and whatever was supplied for them, and says which are left. Three
+ * different situations, and the instruction for each is different:
+ *
+ * - Nothing left: read it and publish it.
+ * - Something left that the person answers at first sign-in: do nothing, publish it
+ *   after they have signed in. Chasing them for it now duplicates the first-run form.
+ * - Something left that nobody will answer on its own: go and fill it in.
+ *
+ * The schedules and the signature dates are always left, and are not mentioned: saying
+ * "three placeholders remain" about the parts of the document that are meant to be
+ * completed by hand would train people to ignore the sentence.
+ */
+function describeIssue(
+  res: { document: PortalDocument; merge: ContractMergeResult },
+  personName: string,
+): string {
+  const opening = `Created “${res.document.title}” as a draft for ${personName}`;
+  const { filled, outstanding, awaiting_employee: awaiting } = res.merge;
+  const chase = outstanding.filter((t) => !awaiting.includes(t));
+
+  const counted = filled.length
+    ? `${opening}, with ${filled.length} ${filled.length === 1 ? "field" : "fields"} filled in from their record and the firm's standard terms`
+    : opening;
+
+  if (!chase.length && !awaiting.length) {
+    return `${counted}. Read it through, then publish it to them.`;
+  }
+  const parts: string[] = [];
+  if (chase.length) {
+    parts.push(
+      `${chase.length} still ${chase.length === 1 ? "needs" : "need"} filling in: ${chase.join(", ")}`,
+    );
+  }
+  if (awaiting.length) {
+    parts.push(
+      `${awaiting.length} will be answered when they first sign in (${awaiting.join(", ")})`,
+    );
+  }
+  return `${counted}. ${parts.join("; ")}.`;
+}
+
 function IssueDialog({
   template,
   users,
@@ -389,9 +446,7 @@ function IssueDialog({
       const res = await api.copyDocumentFor(template.id, userId, title || undefined, {
         kind: template.category === "Contracts" ? "contract" : template.kind,
       });
-      await onIssued(
-        `Created “${res.document.title}” as a draft for ${person?.full_name ?? "them"}. Edit it, then publish it to them.`,
-      );
+      await onIssued(describeIssue(res, person?.full_name ?? "them"));
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Could not create that copy.");
     } finally {

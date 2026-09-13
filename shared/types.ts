@@ -16,6 +16,7 @@ import type {
   ServiceLine,
   TaskStatus,
 } from "./workflow";
+import type { ContractField, ContractTemplate } from "./contract-fields";
 import type { Stage, StageProgress } from "./onboarding";
 import type {
   Criterion,
@@ -693,4 +694,48 @@ export interface ReviewDetail extends ReviewSummary {
   criteria: Criterion[];
   ratings: ReviewRating[];
   objectives: ReviewObjective[];
+}
+
+// ---------------------------------------------------------------------------
+// Contract details
+// ---------------------------------------------------------------------------
+
+/**
+ * One placeholder in a contract template, as the details screen reads it: the
+ * registry's description of the field, plus what it currently resolves to for this
+ * person and where that value came from.
+ */
+export interface ResolvedContractField extends ContractField {
+  value: string | null;
+  origin: "person" | "record" | "firm" | "fallback" | null;
+  /**
+   * The value exists but is above the reader's grade. Only pay is ever restricted, and
+   * only from HR administrators below Partner - who need to know the salary field is
+   * filled, not what it says.
+   */
+  restricted: boolean;
+  /**
+   * Nobody has to chase this one. It is among the things asked at first sign-in, so it
+   * answers itself the first time the person signs in.
+   */
+  awaiting_employee: boolean;
+}
+
+export interface ContractDetails {
+  template: ContractTemplate;
+  employment_type: EmploymentType;
+  fields: ResolvedContractField[];
+  /** How many placeholders would still be brackets if the contract were issued today. */
+  outstanding: number;
+  /** How many of those the person themselves will answer at first sign-in. */
+  awaiting_employee: number;
+}
+
+/** What a freshly issued copy of a template still needs, reported when it is created. */
+export interface ContractMergeResult {
+  filled: string[];
+  outstanding: string[];
+  awaiting_employee: string[];
+  /** Placeholders no merge field was ever going to fill: the schedules, and the dates. */
+  manual: string[];
 }
