@@ -16,6 +16,7 @@ import type {
   ServiceLine,
   TaskStatus,
 } from "./workflow";
+import type { Stage, StageProgress } from "./onboarding";
 import type {
   Criterion,
   ObjectiveStatus,
@@ -546,6 +547,11 @@ export interface OnboardingItem {
   detail: string | null;
   owner: "employee" | "hr";
   category: string | null;
+  /** Which stage of the programme this belongs to. Null on programmes created before
+   *  stages existed, which then render as one undated list. */
+  stage: Stage | null;
+  /** When it falls due, computed from the start date when the programme was created. */
+  due_date: string | null;
   is_done: 0 | 1;
   done_at: string | null;
   done_by_name: string | null;
@@ -587,6 +593,17 @@ export interface MyOnboarding {
   outstanding_documents: PortalDocument[];
   completed_documents: Array<PortalDocument & { signed_at: string; action: SignatureAction }>;
   progress: OnboardingProgress;
+  /** Every stage of the programme, with its dates and counts. */
+  stages: StageProgress[];
+  /** Which stage this person has actually got to. */
+  current_stage: Stage | null;
+  /** True once nothing the first sign-in asks for is outstanding. */
+  first_run_complete: boolean;
+  missing_bank_fields: string[];
+  bank: Record<string, string | null> | null;
+  employment_type: string | null;
+  /** Which contract template applies to this engagement. */
+  contract_template: string;
 }
 
 /** The full personnel file, assembled for the HR employee screen. */

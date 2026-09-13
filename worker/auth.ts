@@ -56,6 +56,15 @@ export function passwordIterations(env: Env): number {
   return Math.min(MAX_ITERATIONS, Math.max(MIN_ITERATIONS, parsed));
 }
 
+/**
+ * Marker on the 403 that says why somebody is being held back.
+ *
+ * Without it the browser cannot tell "you have not finished your details" from any other
+ * refusal, and would show a person a permission error for something they are entitled to
+ * do and simply have not got to yet.
+ */
+export const FIRST_RUN_PENDING_CODE = "first_run_pending";
+
 export const SESSION_COOKIE = "kpm_session";
 const DEFAULT_TTL_DAYS = 7;
 
@@ -442,7 +451,12 @@ export async function requireUser(
   {
     allowPasswordPending = false,
     allowTwoFactorPending = false,
-  }: { allowPasswordPending?: boolean; allowTwoFactorPending?: boolean } = {},
+    allowProfilePending = false,
+  }: {
+    allowPasswordPending?: boolean;
+    allowTwoFactorPending?: boolean;
+    allowProfilePending?: boolean;
+  } = {},
 ): Promise<AuthenticatedUser> {
   const { user, idled } = await currentSession(env, request);
   if (!user) {
@@ -472,7 +486,50 @@ export async function requireUser(
     );
   }
 
+  /*
+   * The first sign-in asks for everything the firm needs before somebody can be paid,
+   * checked, or put on client work - and then confines them to that form until it is
+   * given. Last, after the password and the second factor, because those two are about
+   * the account being safe and this one is about the record being complete: somebody
+   * should not be filling in bank details on a temporary password.
+   *
+   * Confinement rather than lockout, the same shape as the two above: the person can
+   * still sign in, and can reach exactly the screen that lets them finish. Locking them
+   * out would mean the way to complete onboarding was to already have completed it.
+   *
+   * One indexed lookup, and only for people who have not finished - which after the first
+   * week is everybody, so it costs nothing in the steady state.
+   */
+  if (!allowProfilePending && !(await hasFinishedFirstRun(env, user.id))) {
+    throw new HttpError(
+      403,
+      "There are a few details the firm needs before you can go further. Finish them under My details.",
+      FIRST_RUN_PENDING_CODE,
+    );
+  }
+
   return user;
+}
+
+/**
+ * Whether this person has finished what their first sign-in asked for.
+ *
+ * Reads the single stamped column rather than re-deriving completeness from a dozen
+ * fields on every request. `settleFirstRun` in routes/employees.ts is what sets it, and
+ * only ever sets it when nothing is outstanding.
+ *
+ * Absent profile row means nothing has been asked of them yet - a bootstrap
+ * administrator, or an account created before the programme existed - and those are let
+ * through rather than confined to a form nobody ever set up for them.
+ */
+async function hasFinishedFirstRun(env: Env, userId: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT profile_completed_at FROM employee_profiles WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ profile_completed_at: string | null }>();
+  if (!row) return true;
+  return Boolean(row.profile_completed_at);
 }
 
 /**

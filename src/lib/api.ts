@@ -295,6 +295,12 @@ export const api = {
       body: input,
     }),
 
+  updateOwnBank: (input: Record<string, unknown>) =>
+    request<{ bank: Record<string, string | null> }>("/api/me/bank", {
+      method: "PATCH",
+      body: input,
+    }),
+
   // --------------------------------------------------- performance reviews
   personReviews: (userId: string) =>
     request<{

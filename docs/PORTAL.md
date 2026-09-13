@@ -150,28 +150,67 @@ are recorded as *having happened* without writing the values into the trail.
 
 ## The onboarding programme
 
-Sixteen standard steps, created per employee, split between the new joiner and
-HR. It is defined in [`shared/hr.ts`](../shared/hr.ts) as
-`ONBOARDING_PROGRAMME`, so editing it there changes the programme for future
-joiners; individual one-off steps can be added per person from the employee
-record.
+Nineteen standard steps, created per person when their account is made, split
+between the new joiner and HR, **ordered into five stages** and dated from the
+person's start date. It is defined in
+[`shared/onboarding.ts`](../shared/onboarding.ts) and shared by the Worker and the
+browser, so the programme, the stage a person is at, and the dates on screen are
+computed from one definition rather than three.
 
-Employee-owned steps cover reading the welcome, completing their details,
-supplying identification and certificates, signing the contract, acknowledging
-the handbook and completing the independence declaration. HR-owned steps cover
-issuing the contract, verifying identity and right to work, references, system
-accounts, payroll registration, a buddy, induction, and setting probation
-objectives.
+| Stage | Due | What it is for |
+| --- | --- | --- |
+| Before you start | Day -1 | The firm's own preparation. Nothing here is the joiner's. |
+| Your first sign-in | Day 0 | Everything the firm needs from the joiner, asked once. |
+| Your first week | Day +5 | Reading and signing what they are agreeing to, and induction. |
+| Your first month | Day +30 | The compliance obligations that come with the work. |
+| Your first review | Probation end | Objectives set, then judged. |
+
+Where no start date has been recorded the stages carry no dates at all, rather
+than dates counted from today - which would put every step in the past the moment
+an incomplete record is opened. The first review is pinned to the probation end
+date, not to an offset, because that is the date the review is actually held on.
+
+**Which programme somebody gets follows their employment type.** An employee is
+registered for PAYE and SSNIT; an Associate Consultant settles their own tax and
+pension, so their programme confirms their GRA registration and invoicing
+arrangements instead. That single step is the whole difference, deliberately: an
+Associate still signs a contract, still gives bank details because they are still
+paid, still acknowledges the conduct standards, still completes the independence
+declaration, and still gets objectives and a first review. The contract template
+named on the first step follows the same distinction - Contract of Employment, or
+Associate Consultant Agreement.
+
+**"Where you have got to" is measured by the person's own steps**, not by
+everything on the list. Measured across the firm's steps as well, a new joiner on
+their first morning would be told they were at "Before you start" - a stage made
+entirely of things the firm does - and would go looking for something to act on
+that was never theirs. Where they have nothing outstanding anywhere, the stage
+shown is the first one the firm has not finished, which is the honest "waiting on
+us".
 
 Document signing is tracked through `documents` rather than duplicated as
 checklist items, so ticking "sign your contract" and actually signing it cannot
 disagree.
 
-**Onboarding is surfaced, not enforced.** An employee with an unsigned contract
-still gets to their work queue; the outstanding items sit prominently on their
-portal and on the HR overview. Blocking work would punish the employee for a
-delay that is often the firm's. If you want a hard block, the place to add it is
-`requireUser` in `worker/auth.ts`, next to the temporary-password gate.
+### The first sign-in is a gate
+
+The six first-sign-in steps are the one part of the programme that is enforced
+rather than surfaced. Until they are done the API answers `403 first_run_pending`
+to everything except the person's own account screen, their onboarding page, and
+the endpoints they need to get through it. Fifteen fields are required, and all of
+them are required: contact and emergency contact, identification and right to
+work, qualifications, and bank details.
+
+The reason for the gate is that this information is what the firm cannot proceed
+without and cannot get any other way. A contract cannot be completed without a
+legal name, address and TIN; the person cannot be paid without bank details; and
+right-to-work evidence is a statutory obligation with a deadline attached. Asked
+optionally, it arrives weeks late or not at all.
+
+**Everything else remains surfaced, not enforced.** An employee with an unsigned
+contract still gets to their work queue; the outstanding items sit prominently on
+their portal and on the HR overview. Blocking work would punish the employee for a
+delay that is often the firm's.
 
 ---
 
@@ -200,14 +239,13 @@ delay that is often the firm's. If you want a hard block, the place to add it is
   individually addressed document. Do not publish either template itself to staff.
   Use the contract of employment for employees, and the Associate Consultant
   Agreement for independent contractors.
-- **An Associate is not an employee, and the onboarding programme assumes one.**
-  The standard checklist asks a new joiner to sign a contract of employment,
-  acknowledge the Employee Handbook policy by policy, register for payroll and
-  statutory deductions, and have probation objectives set. Every one of those,
-  applied to a contractor, is evidence against the arrangement their contract
-  describes. Edit those steps off an Associate's checklist, set their employment
-  type to Consultant, and leave the salary fields empty - they invoice against
-  the agreement rather than being paid through payroll.
+- **An Associate is not an employee**, and the programme now says so: set their
+  employment type to Consultant or Contractor when the account is created and they
+  get the Associate programme and the Associate agreement, with no payroll
+  registration. Leave the salary fields empty - they invoice against the agreement
+  rather than being paid through payroll. Check the finished checklist before
+  issuing it: every step that treats a contractor as an employee is evidence
+  against the arrangement their contract describes.
 - **Check whether typed-name signatures satisfy your jurisdiction** for
   employment contracts. The record captured here - attestation, matched name,
   timestamp, IP, and a hash of the exact text - is strong evidence of agreement,

@@ -218,93 +218,6 @@ export const ATTESTATION: Record<SignatureAction, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Onboarding programme
-// ---------------------------------------------------------------------------
-
-export interface OnboardingSeedItem {
-  label: string;
-  detail?: string;
-  owner: "employee" | "hr";
-  category: string;
-}
-
-/**
- * The standard onboarding programme, created for every new joiner. HR-owned
- * items are the firm's side of setting someone up; employee-owned items are the
- * new joiner's. Document signing and acknowledgement are tracked separately
- * through `documents`, so they are not duplicated here.
- */
-export const ONBOARDING_PROGRAMME: OnboardingSeedItem[] = [
-  {
-    label: "Read the welcome message from the Managing Director",
-    owner: "employee",
-    category: "Welcome",
-  },
-  {
-    label: "Complete your personal and emergency contact details",
-    detail:
-      "We need these before your first day so that payroll and emergency contact records are correct.",
-    owner: "employee",
-    category: "Your details",
-  },
-  {
-    label: "Provide your bank details for payroll",
-    detail: "Give these to a partner directly - they are recorded on your file, not entered here.",
-    owner: "employee",
-    category: "Your details",
-  },
-  {
-    label: "Provide identification and right-to-work documents",
-    detail: "National identification, and any permit required to work.",
-    owner: "employee",
-    category: "Your details",
-  },
-  {
-    label: "Provide certificates of qualification and professional membership",
-    owner: "employee",
-    category: "Your details",
-  },
-  {
-    label: "Sign your contract of employment",
-    detail: "Read it in full before signing. Ask a partner about anything unclear.",
-    owner: "employee",
-    category: "Contract",
-  },
-  {
-    label: "Read and acknowledge every policy in the Employee Handbook",
-    detail: "Each policy is acknowledged separately so the record shows what you agreed to and when.",
-    owner: "employee",
-    category: "Handbook",
-  },
-  {
-    label: "Complete the annual independence declaration",
-    owner: "employee",
-    category: "Compliance",
-  },
-  { label: "Issue contract of employment", owner: "hr", category: "Contract" },
-  { label: "Verify identification and right-to-work documents", owner: "hr", category: "Checks" },
-  { label: "Take up references", owner: "hr", category: "Checks" },
-  {
-    label: "Create system accounts and assign access",
-    detail: "Portal account, email, accounting and tax software, document store.",
-    owner: "hr",
-    category: "Setup",
-  },
-  { label: "Register for payroll and statutory deductions", owner: "hr", category: "Setup" },
-  { label: "Assign a buddy and book the first-week introductions", owner: "hr", category: "Setup" },
-  {
-    label: "Hold the first-week induction on firm systems and the review process",
-    owner: "hr",
-    category: "Induction",
-  },
-  {
-    label: "Set probation objectives and diarise the probation review",
-    owner: "hr",
-    category: "Induction",
-  },
-];
-
-// ---------------------------------------------------------------------------
 // Onboarding progress
 // ---------------------------------------------------------------------------
 
@@ -341,15 +254,101 @@ export function computeProgress(input: {
  * Fields a new joiner must supply before their profile counts as complete.
  * Used both to gate onboarding and to drive the "still needed" list in the UI.
  */
+/**
+ * What the first sign-in asks for, and will not let somebody past.
+ *
+ * Everything a person is asked for once, at the start, rather than chased for over
+ * weeks. The firm needs all of it before anybody can be paid, checked or put on client
+ * work, and the failure this replaces is the one where a step sits unticked for a month
+ * because the only way to complete it was to catch somebody in a corridor.
+ *
+ * Grouped so the form can ask in a sensible order and say what each group is for.
+ */
+export const FIRST_RUN_GROUPS = [
+  {
+    key: "contact",
+    label: "How we reach you",
+    detail: "And who we call if something happens to you at work.",
+    fields: [
+      "phone",
+      "residential_address",
+      "date_of_birth",
+      "emergency_contact_name",
+      "emergency_contact_phone",
+      "emergency_contact_relationship",
+    ],
+  },
+  {
+    key: "identity",
+    label: "Identification and right to work",
+    detail:
+      "Checked before you start on client work. The document is a link into the firm's document store - nothing is uploaded here.",
+    fields: ["id_type", "id_number", "tin", "id_document_url"],
+  },
+  {
+    key: "qualifications",
+    label: "Qualifications",
+    detail: "What you hold, and where the certificate can be seen.",
+    fields: ["highest_qualification", "qualification_document_url"],
+  },
+  {
+    key: "bank",
+    label: "Bank details",
+    detail: "So you can be paid. Visible to Partners only, and held apart from the rest of your record.",
+    fields: ["bank_name", "account_name", "account_number"],
+  },
+] as const;
+
+/**
+ * The personal-record half of the first run.
+ *
+ * Bank details are not here because they live in `employee_compensation` rather than
+ * `employee_profiles` - a different table with a different access rule - and are checked
+ * separately. See `missingFirstRunFields` in the Worker.
+ */
 export const REQUIRED_PROFILE_FIELDS = [
   "phone",
   "residential_address",
   "date_of_birth",
   "emergency_contact_name",
   "emergency_contact_phone",
+  "emergency_contact_relationship",
+  "id_type",
+  "id_number",
+  "tin",
+  "id_document_url",
+  "highest_qualification",
+  "qualification_document_url",
 ] as const;
 
+/** Bank fields, which live on the compensation record rather than the profile. */
+export const REQUIRED_BANK_FIELDS = [
+  "bank_name",
+  "account_name",
+  "account_number",
+] as const;
+
+/** Whether the bank half of the first run is done. */
+export function missingBankFields(
+  bank: Record<string, unknown> | null,
+): string[] {
+  if (!bank) return [...REQUIRED_BANK_FIELDS];
+  return REQUIRED_BANK_FIELDS.filter((f) => {
+    const v = bank[f];
+    return v === null || v === undefined || v === "";
+  });
+}
+
 export const PROFILE_FIELD_LABELS: Record<string, string> = {
+  id_type: "Identification type",
+  id_number: "Identification number",
+  tin: "Taxpayer Identification Number",
+  id_document_url: "Link to your identification document",
+  qualification_document_url: "Link to your certificate",
+  bank_name: "Bank",
+  account_name: "Account name",
+  account_number: "Account number",
+  bank_branch: "Branch",
   phone: "Mobile number",
   residential_address: "Residential address",
   date_of_birth: "Date of birth",

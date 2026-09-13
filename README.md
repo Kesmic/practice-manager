@@ -17,10 +17,22 @@ Built for [Kesmic Consulting](https://www.kesmic.org).
 
 ## The employee portal
 
-**Onboarding** - a new joiner signs in and lands on a page with a progress bar,
-the welcome message from the MD, the documents they owe a response to, what
-personal details are still missing, their own steps, and the steps the firm owes
-them.
+**Onboarding** - a dated checklist, in five stages from *Before you start* to
+*Your first review*, showing the new joiner what is coming, when each stage falls
+due, which steps are theirs and which the firm's, and where they have got to. The
+programme follows the employment type chosen when the account is created: an
+employee is registered for PAYE and SSNIT, while an Associate Consultant confirms
+their own GRA registration and invoicing instead, and is issued the Associate
+agreement rather than a contract of employment. That single step is the whole
+difference - an Associate still signs a contract, is still paid, still
+acknowledges the conduct standards, and is still reviewed.
+
+**A first sign-in that asks once for everything** - the fifteen things the firm
+cannot proceed without and cannot get any other way: contact and emergency
+contact, identification and right to work, qualifications, and bank details. All
+of it is required, and until it is given the API confines the person to their
+account and their onboarding. Everything after that stage is surfaced, not
+enforced.
 
 **Probation and annual reviews** - each person rated against what their grade
 requires, on a four-point scale with no middle box to hide in, with objectives that
@@ -178,8 +190,10 @@ requires. Pages accepts a CNAME from external DNS. See
 ```
 shared/workflow.ts   the deliverable state machine, grades and gates - the single
                      source of truth, imported by BOTH the Worker and the React app
-shared/hr.ts         portal domain: access thresholds, document rules, the
-                     onboarding programme - likewise shared by both sides
+shared/hr.ts         portal domain: access thresholds, document rules and what
+                     a profile must carry - likewise shared by both sides
+shared/onboarding.ts the onboarding programme: five dated stages, one per
+                     employment type, and where a person has got to
 shared/intake.ts     client intake: the two links, request states, the field
                      limits the public form and the server both enforce
 shared/files.ts      the client file: providers recognised from a link, what

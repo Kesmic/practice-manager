@@ -672,7 +672,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
   router.post("/api/auth/password", async ({ request, env }) => {
     // Reachable while a forced password change is outstanding - that is the
     // whole point of this endpoint.
-    const user = await requireUser(env, request, { allowPasswordPending: true });
+    const user = await requireUser(env, request, { allowPasswordPending: true, allowProfilePending: true });
     const body = await readJson<{
       current_password?: string;
       new_password?: string;
