@@ -132,6 +132,25 @@ export function isOpen(status: TaskStatus): boolean {
   return OPEN_STATUSES.includes(status);
 }
 
+/**
+ * Statuses where the deadline has stopped running.
+ *
+ * Not the same as "not open": `approved` is live work, because the file is not closed
+ * until somebody closes it, but the deadline is no longer chasing anybody once the
+ * deliverable has been signed off. `cancelled` is here because an abandoned deliverable
+ * has no deadline to miss.
+ *
+ * This is the same set as `OVERDUE_PREDICATE` in `worker/routes/task-sql.ts`, which
+ * excludes exactly these three from the overdue counts. The two have to agree: a
+ * dashboard that says nothing is overdue, beside a deliverable stamped "21 days late",
+ * is the system contradicting itself.
+ */
+export const SETTLED_STATUSES: TaskStatus[] = ["approved", "closed", "cancelled"];
+
+export function isSettled(status: TaskStatus): boolean {
+  return SETTLED_STATUSES.includes(status);
+}
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------

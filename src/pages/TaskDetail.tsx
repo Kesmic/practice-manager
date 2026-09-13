@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type { ReviewPoint, TaskDetail as TaskDetailData, User } from "@shared/types";
 import {
   MIN_REVIEWER_ROLE,
@@ -138,11 +138,19 @@ export function TaskDetail() {
 
   const openPoints = data.review_points.filter((point) => !isDisposed(point.status));
 
+  /*
+    The day the work was actually finished, which is what a settled deadline is measured
+    against. Closure is the delivery to the client and so the truer date of the two;
+    approval stands in for a deliverable signed off but not yet closed.
+  */
+  const completedOn = task.closed_at ?? task.approved_at;
+
   return (
     <div className="space-y-5">
       {/* ------------------------------------------------------------ header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
+          <BackLink />
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <span className="font-mono">{task.ref}</span>
             <span>·</span>
@@ -337,13 +345,21 @@ export function TaskDetail() {
               <DetailRow label="Internal target">
                 <span className="inline-flex items-center gap-2">
                   {formatDate(task.internal_due_date)}
-                  <DuePill date={task.internal_due_date} />
+                  <DuePill
+                    date={task.internal_due_date}
+                    status={task.status}
+                    completedOn={completedOn}
+                  />
                 </span>
               </DetailRow>
               <DetailRow label="Statutory deadline">
                 <span className="inline-flex items-center gap-2">
                   {formatDate(task.statutory_due_date)}
-                  <DuePill date={task.statutory_due_date} />
+                  <DuePill
+                    date={task.statutory_due_date}
+                    status={task.status}
+                    completedOn={completedOn}
+                  />
                 </span>
               </DetailRow>
               {task.submitted_at && (
@@ -397,6 +413,41 @@ export function TaskDetail() {
 // ---------------------------------------------------------------------------
 // Naming the preparer and the reviewer after the fact
 // ---------------------------------------------------------------------------
+
+/**
+ * Takes the reader back where they came from.
+ *
+ * A deliverable is reached from half a dozen places - the dashboard, the deliverable
+ * list, a client file, an engagement, the inbox, a link in an email - and until now the
+ * only way out was the sidebar, which always lands on Deliverables regardless of where
+ * the reader started. Somebody three filters deep in a list lost the list.
+ *
+ * So this goes back through history rather than to a fixed place. The fallback matters
+ * as much as the main path: a page opened from an email link has nothing behind it in
+ * this tab, and `navigate(-1)` there would either do nothing or leave the portal
+ * entirely. React Router records its position in `history.state.idx`, so an index of
+ * zero means this page is where the tab started, and the sensible destination then is
+ * the deliverable list.
+ */
+function BackLink() {
+  const navigate = useNavigate();
+
+  const goBack = () => {
+    const idx = (window.history.state as { idx?: number } | null)?.idx;
+    if (typeof idx === "number" && idx > 0) navigate(-1);
+    else navigate("/deliverables");
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={goBack}
+      className="link mb-2 inline-flex items-center gap-1 text-xs"
+    >
+      <span aria-hidden="true">&larr;</span> Back
+    </button>
+  );
+}
 
 /**
  * Both people can be left unnamed when a deliverable is raised, so both have to

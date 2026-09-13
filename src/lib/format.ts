@@ -41,6 +41,34 @@ export function daysUntil(value: string | null | undefined): number | null {
   return Math.round((target - now) / 86_400_000);
 }
 
+/**
+ * How a deadline turned out, for work that is finished.
+ *
+ * `describeDue` below measures against today, which is right while somebody still has to
+ * act and wrong the moment they have. A deliverable closed on 11 August against a 23
+ * August target was delivered twelve days early; measured against today it accrues a day
+ * of lateness every morning and eventually reads "21 days late", which is not merely
+ * stale but the opposite of what happened.
+ *
+ * So once the work is settled the comparison moves from today to the day it was actually
+ * finished, and the pill stops being a countdown and becomes a fact.
+ */
+export function describeOutcome(
+  due: string | null | undefined,
+  completedOn: string | null | undefined,
+): { text: string; tone: "late" | "met" | "none" } {
+  if (!due || !completedOn) return { text: "", tone: "none" };
+
+  const target = Date.parse(`${due}T00:00:00Z`);
+  // `completedOn` is a full timestamp; the date part is what a deadline is measured in.
+  const done = Date.parse(`${completedOn.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(target) || Number.isNaN(done)) return { text: "", tone: "none" };
+
+  const days = Math.round((done - target) / 86_400_000);
+  if (days <= 0) return { text: "Met", tone: "met" };
+  return { text: `${days} ${days === 1 ? "day" : "days"} late`, tone: "late" };
+}
+
 /** "3 days late", "due today", "in 5 days" - the phrasing a reviewer scans for. */
 export function describeDue(value: string | null | undefined): {
   text: string;

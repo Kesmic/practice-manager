@@ -134,7 +134,16 @@ export function TaskTable({
               )}
               {has("due") && (
                 <td className="whitespace-nowrap">
-                  <DuePill date={task.internal_due_date ?? task.statutory_due_date} />
+                  {/*
+                    Status and completion date passed so a finished row reports how it
+                    turned out rather than counting days past a deadline nobody is
+                    chasing any more.
+                  */}
+                  <DuePill
+                    date={task.internal_due_date ?? task.statutory_due_date}
+                    status={task.status}
+                    completedOn={task.closed_at ?? task.approved_at}
+                  />
                 </td>
               )}
               {has("progress") && (
