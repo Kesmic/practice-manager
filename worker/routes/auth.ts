@@ -12,6 +12,7 @@ import {
   publicUser,
   requireUser,
   verifyPassword,
+  type AuthenticatedUser,
 } from "../auth";
 import { newId, notificationStatement, nowIso, normaliseEmail, requireString } from "../db";
 import {
@@ -57,7 +58,8 @@ import {
   readJson,
   unauthorized,
 } from "../http";
-import type { Role } from "../../shared/workflow";
+import { MIN_SUPERVISOR_ROLE, atLeast, type Role } from "../../shared/workflow";
+import type { Attention } from "../../shared/attention";
 
 /**
  * Creates the session and returns the signed-in user.
@@ -109,6 +111,62 @@ async function finishLogin(
   if (deviceCookie) headers.append("Set-Cookie", deviceCookie);
 
   return json({ user, ...extra }, 200, headers);
+}
+
+/**
+ * What is waiting for this person, for the sidebar badges.
+ *
+ * One batch rather than four round trips, because this runs on every session read and
+ * the sidebar is drawn on every screen. Each count is a covered index lookup, and
+ * `shared/attention.ts` argues for why this list is as short as it is.
+ */
+async function countAttention(
+  env: Env,
+  user: AuthenticatedUser,
+): Promise<Attention> {
+  const [documents, onboarding, requests, unread] = await env.DB.batch<{ n: number }>([
+    /*
+     * The same rule the handbook and onboarding screens use: published, applies to this
+     * person, wants a response, and no signature at the CURRENT version - so an amended
+     * policy reappears here exactly as it reappears there.
+     */
+    env.DB.prepare(
+      `SELECT COUNT(*) AS n
+         FROM documents d
+        WHERE d.status = 'published'
+          AND (d.requires_signature = 1 OR d.requires_acknowledgement = 1)
+          AND (d.audience = 'all' OR d.assigned_user_id = ?1)
+          AND NOT EXISTS (
+            SELECT 1 FROM document_signatures s
+             WHERE s.document_id = d.id AND s.version = d.version AND s.user_id = ?1
+          )`,
+    ).bind(user.id),
+    // Only the steps this person owns. An HR-owned step is somebody else's badge.
+    env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM onboarding_items
+        WHERE user_id = ? AND owner = 'employee' AND is_done = 0`,
+    ).bind(user.id),
+    /*
+     * Enquiries nobody has picked up or decided. Counted for everybody, and filtered
+     * below by whether this person can actually reach the screen - a badge on a link
+     * somebody cannot follow is a dead end.
+     */
+    env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM client_requests WHERE status IN ('new','in_review')`,
+    ),
+    env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL`,
+    ).bind(user.id),
+  ]);
+
+  return {
+    documents: documents.results[0]?.n ?? 0,
+    onboarding: onboarding.results[0]?.n ?? 0,
+    client_requests: atLeast(user.role, MIN_SUPERVISOR_ROLE)
+      ? (requests.results[0]?.n ?? 0)
+      : 0,
+    notifications: unread.results[0]?.n ?? 0,
+  };
 }
 
 /**
@@ -576,15 +634,17 @@ export function registerAuthRoutes(router: Router<Env>): void {
       return json({ user: null, idled, idle_policy: idle });
     }
 
-    const unread = await env.DB.prepare(
-      `SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL`,
-    )
-      .bind(user.id)
-      .first<{ n: number }>();
+    const attention = await countAttention(env, user);
 
     return json({
       user: publicUser(user),
-      unread_notifications: unread?.n ?? 0,
+      /*
+       * Kept alongside `attention.notifications`, which holds the same number. The
+       * header's inbox badge has read this field since before the sidebar had badges,
+       * and a released browser tab that has not reloaded still reads it.
+       */
+      unread_notifications: attention.notifications,
+      attention,
       idled: false,
       idle_policy: idle,
     });

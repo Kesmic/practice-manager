@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { User } from "@shared/types";
 import type { IdlePolicy } from "@shared/session-policy";
+import { NO_ATTENTION, type Attention } from "@shared/attention";
 import { atLeast, type Role } from "@shared/workflow";
 import {
   DEFAULT_VISIBILITY,
@@ -24,6 +25,8 @@ interface SessionState {
   user: User | null;
   loading: boolean;
   unread: number;
+  /** Counts for the sidebar badges. */
+  attention: Attention;
   /**
    * The password step. Resolves to a challenge when the account has a second factor, in
    * which case nothing is signed in yet and `completeSignIn` has to follow.
@@ -60,6 +63,8 @@ const SessionContext = createContext<SessionState | null>(null);
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [unread, setUnread] = useState(0);
+  /** What is waiting for this person, per sidebar destination. */
+  const [attention, setAttention] = useState<Attention>(NO_ATTENTION);
   const [loading, setLoading] = useState(true);
   // Until it has loaded, the defaults apply. They are the stricter of the two in every
   // case a firm is likely to configure, so the sidebar cannot flash a link the person
@@ -73,11 +78,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const {
         user: current,
         unread_notifications,
+        attention: waiting,
         idle_policy,
         idled: wasIdle,
       } = await api.session();
       setUser(current);
       setUnread(unread_notifications ?? 0);
+      setAttention(waiting ?? NO_ATTENTION);
       if (idle_policy) setIdlePolicy(idle_policy);
       if (wasIdle) setIdled(true);
       if (current) {
@@ -92,6 +99,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch {
       // A failed session probe means "not signed in" as far as the UI cares.
       setUser(null);
+      setAttention(NO_ATTENTION);
     } finally {
       setLoading(false);
     }
@@ -114,8 +122,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       const session = await api.session();
       setUnread(session.unread_notifications ?? 0);
+      setAttention(session.attention ?? NO_ATTENTION);
     } catch {
       setUnread(0);
+      setAttention(NO_ATTENTION);
     }
   }, []);
 
@@ -156,6 +166,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       unread,
+      attention,
       signIn,
       completeSignIn,
       signOut,
@@ -170,6 +181,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       unread,
+      attention,
       signIn,
       completeSignIn,
       signOut,

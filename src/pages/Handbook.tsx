@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { PortalDocument } from "@shared/types";
-import { requiredAction } from "@shared/hr";
+import { awaitsResponse } from "@shared/hr";
 import { ApiRequestError, api } from "../lib/api";
 import { EmptyState, ErrorBanner, Spinner, TextInput } from "../components/ui";
 import { formatDate } from "../lib/format";
@@ -60,9 +60,7 @@ export function Handbook() {
     [documents],
   );
 
-  const outstanding = (documents ?? []).filter(
-    (doc) => requiredAction(doc) && !doc.my_action,
-  );
+  const outstanding = (documents ?? []).filter(awaitsResponse);
 
   if (error && !documents) return <ErrorBanner error={error} />;
   if (!documents) return <Spinner label="Loading the handbook" />;
@@ -137,7 +135,7 @@ export function Handbook() {
                         <span className="pill bg-emerald-50 text-emerald-700 ring-emerald-200">
                           Acknowledged {formatDate(doc.my_signed_at)}
                         </span>
-                      ) : requiredAction(doc) ? (
+                      ) : awaitsResponse(doc) ? (
                         <span className="pill bg-amber-50 text-amber-800 ring-amber-200">
                           Action needed
                         </span>
@@ -172,7 +170,7 @@ export function Handbook() {
                   <span className="pill bg-emerald-50 text-emerald-700 ring-emerald-200">
                     Signed {formatDate(doc.my_signed_at)}
                   </span>
-                ) : requiredAction(doc) ? (
+                ) : awaitsResponse(doc) ? (
                   <span className="pill bg-amber-50 text-amber-800 ring-amber-200">
                     Action needed
                   </span>

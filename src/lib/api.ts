@@ -12,6 +12,7 @@ import type { Visibility } from "@shared/visibility";
 import type { TwoFactorStatus } from "@shared/twofactor";
 import type { DeviceTrustPolicy, TrustedDevice } from "@shared/device-trust";
 import type { IdlePolicy } from "@shared/session-policy";
+import type { Attention } from "@shared/attention";
 import type {
   ChecklistItem,
   DocumentSignature,
@@ -116,6 +117,8 @@ const qs = (params: Record<string, string | number | undefined | null>): string 
 export interface SessionResponse {
   user: User | null;
   unread_notifications?: number;
+  /** Per-destination counts for the sidebar badges. */
+  attention?: Attention;
   /** The firm's inactivity setting, so the browser knows what to count down to. */
   idle_policy?: IdlePolicy;
   /** True when the session just ended because the portal was left idle. */
