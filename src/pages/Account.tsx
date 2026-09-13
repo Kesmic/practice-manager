@@ -11,6 +11,8 @@ import {
 } from "../components/ui";
 import { formatDate } from "../lib/format";
 import { TwoFactorCard } from "../components/TwoFactorCard";
+import { SecurityQuestionsCard } from "../components/SecurityQuestionsCard";
+import { TrustedDevicesCard } from "../components/TrustedDevicesCard";
 
 export function Account() {
   const { user, refresh } = useSession();
@@ -18,6 +20,14 @@ export function Account() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /*
+    Bumped whenever the second factor changes, which re-mounts the two cards below it.
+    Enrolling or disabling the app clears saved questions and every remembered device,
+    and a screen still listing them afterwards would tell somebody they have protection
+    they no longer have.
+  */
+  const [factorsVersion, setFactorsVersion] = useState(0);
+  const bumpFactors = () => setFactorsVersion((n) => n + 1);
 
   const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -67,7 +77,20 @@ export function Account() {
         </dl>
       </div>
 
-      <TwoFactorCard setNotice={setDone} />
+      <TwoFactorCard setNotice={setDone} onChanged={bumpFactors} />
+
+      {/*
+        Keyed on a counter bumped whenever the second factor changes, so enrolling or
+        disabling the app re-reads both of these. Enrolment clears saved questions and
+        every remembered device, and a screen still showing them afterwards would be
+        telling somebody they have protection they no longer have.
+      */}
+      <SecurityQuestionsCard
+        key={`questions-${factorsVersion}`}
+        onChanged={bumpFactors}
+        setNotice={setDone}
+      />
+      <TrustedDevicesCard key={`devices-${factorsVersion}`} setNotice={setDone} />
 
       <div className="card space-y-3 p-5">
         <h2 className="card-title">Notifications</h2>

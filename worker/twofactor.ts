@@ -25,6 +25,8 @@ import {
   verifyCode,
 } from "../shared/totp";
 import type { Role } from "../shared/workflow";
+import { questionsPolicy, questionsScheme } from "./security-questions";
+import { questionsEnabled } from "../shared/security-questions";
 
 // ---------------------------------------------------------------------------
 // The secret at rest
@@ -183,6 +185,9 @@ export async function beginEnrolment(env: Env, userId: string): Promise<string> 
   const timestamp = nowIso();
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM recovery_codes WHERE user_id = ?`).bind(userId),
+    // Devices remembered against the old enrolment go with it: they were vouched for by
+    // a factor that no longer exists.
+    env.DB.prepare(`DELETE FROM trusted_devices WHERE user_id = ?`).bind(userId),
     env.DB.prepare(
       `INSERT INTO user_totp (user_id, secret, confirmed_at, last_counter, created_at, updated_at)
        VALUES (?, ?, NULL, NULL, ?, ?)
@@ -196,11 +201,24 @@ export async function beginEnrolment(env: Env, userId: string): Promise<string> 
   return secret;
 }
 
-/** Removes the enrolment and every recovery code with it. */
+/**
+ * Removes the enrolment and everything that hung off it.
+ *
+ * Every second factor, not only the app. Security questions stand in for a code, and a
+ * remembered device skips the step entirely, so an enrolment reset that left either
+ * behind would not be a reset - it would leave the account reachable by the two weaker
+ * routes while looking, on the screen, as though the second factor had been cleared.
+ *
+ * This is the path a partner takes for a colleague's lost phone, and the path somebody
+ * takes to turn their own off. Both want the same thing: nothing left standing between
+ * the password and the account except what gets set up next.
+ */
 export async function clearEnrolment(env: Env, userId: string): Promise<void> {
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM user_totp WHERE user_id = ?`).bind(userId),
     env.DB.prepare(`DELETE FROM recovery_codes WHERE user_id = ?`).bind(userId),
+    env.DB.prepare(`DELETE FROM user_security_questions WHERE user_id = ?`).bind(userId),
+    env.DB.prepare(`DELETE FROM trusted_devices WHERE user_id = ?`).bind(userId),
     // Any half-finished sign-in for this person is meaningless now.
     env.DB.prepare(`DELETE FROM login_challenges WHERE user_id = ?`).bind(userId),
   ]);
@@ -423,11 +441,20 @@ export async function statusFor(
   required: boolean;
   policy: TwoFactorPolicy;
   secrets_encrypted: boolean;
+  questions_count: number;
+  questions_allowed: boolean;
+  answers_keyed: boolean;
 }> {
-  const [row, remaining, policy] = await Promise.all([
+  const [row, remaining, policy, questions, questionsSetting] = await Promise.all([
     loadTotp(env, userId),
     recoveryRemaining(env, userId),
     twoFactorPolicy(env),
+    env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM user_security_questions WHERE user_id = ?`,
+    )
+      .bind(userId)
+      .first<{ n: number }>(),
+    questionsPolicy(env),
   ]);
   return {
     enabled: Boolean(row?.confirmed_at),
@@ -437,5 +464,13 @@ export async function statusFor(
     required: isRequiredFor(policy, role),
     policy,
     secrets_encrypted: secretsEncrypted(env),
+    questions_count: questions?.n ?? 0,
+    questions_allowed: questionsEnabled(questionsSetting),
+    /*
+     * Whether answers on this deployment are keyed with the pepper or only salted.
+     * Reported for the same reason `secrets_encrypted` is: a firm should not have to
+     * assume the stronger of the two.
+     */
+    answers_keyed: questionsScheme(env) === "hmac",
   };
 }

@@ -110,6 +110,18 @@ export interface TwoFactorStatus {
    * one anybody should arrive at without being told.
    */
   secrets_encrypted: boolean;
+  /** How many security questions this person has saved. Zero means none. */
+  questions_count: number;
+  /** Whether the firm currently accepts questions in place of a code. */
+  questions_allowed: boolean;
+  /**
+   * Whether saved answers are keyed with PASSWORD_PEPPER rather than only salted.
+   * Reported for the same reason `secrets_encrypted` is: an answer to "what was your
+   * first car" is low-entropy, so a merely salted digest in a leaked database is a
+   * dictionary attack rather than a barrier, and a firm should not have to assume the
+   * stronger of the two.
+   */
+  answers_keyed: boolean;
 }
 
 /**

@@ -1,0 +1,21 @@
+-- Turn security questions on for this firm.
+--
+-- They ship off, and `shared/security-questions.ts` argues at length for why an absent
+-- setting means off: a migration should not weaken how people sign in on a firm's behalf.
+--
+-- That argument is about a firm that has not asked. This one has, twice, and found the
+-- feature missing both times - because off meant the account screen showed nothing at
+-- all, so "available once a Partner enables it" was indistinguishable from "not built".
+-- A default that leaves the person who requested the feature unable to find it is not
+-- caution, it is a broken delivery.
+--
+-- So the row is written here rather than left to a settings screen nobody was told to
+-- visit. INSERT OR IGNORE, not an upsert: if a value already exists it was chosen
+-- deliberately and is left alone. Everything the feature does still requires somebody to
+-- act - the authenticator app has to be enrolled first, then questions saved with a
+-- current code - so this makes the option reachable rather than making anything true.
+--
+-- One click on Portal settings, Sign-in security turns it back off, and that screen
+-- states the trade-off in full.
+INSERT OR IGNORE INTO settings (key, value, updated_at)
+VALUES ('security_questions', 'on', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));

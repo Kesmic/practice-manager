@@ -18,12 +18,13 @@ import {
   SEVERITY_STYLES,
   STATUS_LABELS,
   STATUS_STYLES,
+  isSettled,
   type Priority,
   type ReviewPointStatus,
   type ReviewSeverity,
   type TaskStatus,
 } from "@shared/workflow";
-import { describeDue } from "../lib/format";
+import { describeDue, describeOutcome } from "../lib/format";
 
 // ---------------------------------------------------------------------- pills
 
@@ -56,16 +57,48 @@ export function ReviewStatusPill({ status }: { status: ReviewPointStatus }) {
   );
 }
 
-/** Due-date chip that colours itself by lateness. */
-export function DuePill({ date }: { date: string | null | undefined }) {
+const DUE_STYLES: Record<string, string> = {
+  late: "bg-rose-50 text-rose-700 ring-rose-200",
+  soon: "bg-amber-50 text-amber-800 ring-amber-200",
+  ok: "bg-slate-100 text-slate-600 ring-slate-200",
+  met: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+};
+
+/**
+ * Due-date chip.
+ *
+ * While the work is live this counts towards or past the deadline, which is what
+ * somebody scanning a queue needs. Once it is settled the countdown stops and the chip
+ * reports how it actually turned out, measured against the day the work was finished
+ * rather than against today.
+ *
+ * Without `status` it behaves as it always did - a live countdown - so a caller that has
+ * only a date is not forced to invent one.
+ */
+export function DuePill({
+  date,
+  status,
+  completedOn,
+}: {
+  date: string | null | undefined;
+  status?: TaskStatus;
+  /** When the work was finished: `closed_at`, or `approved_at` before it was closed. */
+  completedOn?: string | null;
+}) {
+  if (status && isSettled(status)) {
+    /*
+     * A cancelled deliverable has no completion date and no deadline to have met, so it
+     * gets no chip at all. Showing "Met" would claim an achievement; showing lateness
+     * would chase work nobody is doing.
+     */
+    const outcome = describeOutcome(date, completedOn);
+    if (outcome.tone === "none") return <span className="text-xs text-slate-400">-</span>;
+    return <span className={`pill ${DUE_STYLES[outcome.tone]}`}>{outcome.text}</span>;
+  }
+
   const { text, tone } = describeDue(date);
   if (tone === "none") return <span className="text-xs text-slate-400">-</span>;
-  const styles: Record<string, string> = {
-    late: "bg-rose-50 text-rose-700 ring-rose-200",
-    soon: "bg-amber-50 text-amber-800 ring-amber-200",
-    ok: "bg-slate-100 text-slate-600 ring-slate-200",
-  };
-  return <span className={`pill ${styles[tone]}`}>{text}</span>;
+  return <span className={`pill ${DUE_STYLES[tone]}`}>{text}</span>;
 }
 
 // --------------------------------------------------------------------- states
