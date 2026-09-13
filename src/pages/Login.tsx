@@ -504,9 +504,8 @@ export function Login() {
               {showReset && (
                 <p className="mt-2 rounded-md bg-slate-100 p-3 text-left leading-relaxed">
                   Ask an administrator to reset it. They can issue you a new temporary
-                  password from <strong>Accounts and grades</strong>, which you will be
-                  asked to replace with one of your own the first time you sign in. For
-                  your security it has to reach you by phone or in person, not by email.
+                  password, which you will be asked to replace with one of your own the
+                  first time you sign in.
                 </p>
               )}
             </div>
