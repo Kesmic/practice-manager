@@ -77,9 +77,6 @@ export function SecurityQuestionsCard({
   }, [load]);
 
   if (!state) return <Spinner label="Loading security questions" />;
-  // Nothing to show a firm that does not use them. The setting is a Partner's to change,
-  // and an explanation of a feature nobody can reach is just noise on the account screen.
-  if (!state.allowed) return null;
 
   const begin = () => {
     setRows(
@@ -161,7 +158,17 @@ export function SecurityQuestionsCard({
 
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
 
-      {!enrolled ? (
+      {/*
+        Rendered even when the firm has these switched off, rather than hidden.
+        A card that vanishes cannot be told apart from a feature that was never built -
+        which is exactly how this was reported missing - so the state is stated instead.
+      */}
+      {!state.allowed ? (
+        <p className="mt-4 text-sm text-slate-600">
+          This firm does not currently accept security questions. A Partner can turn them
+          on under <strong>Portal settings</strong>, Sign-in security.
+        </p>
+      ) : !enrolled ? (
         <p className="mt-4 text-sm text-slate-600">
           Set up the authenticator app first. These are how you get back in when the app
           is out of reach, so there has to be an app to be out of reach of.
