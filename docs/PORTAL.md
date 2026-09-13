@@ -75,6 +75,20 @@ grievance and disciplinary procedure - plus two contract templates to copy per
 person: a contract of employment, and an Associate Consultant Agreement for
 independent contractors engaged on a contract *for* service.
 
+Alongside them is the **Annual Independence and Conflicts Declaration**, which
+everyone signs once a year. Unlike a policy, which the firm states and staff
+acknowledge, a declaration is each person asserting something about themselves, so
+it is captured as a signature: typed name, timestamp, address and a hash of the
+exact text. Two bracketed fields have to be completed before it is published - the
+year end, and who to write to when there is something to declare.
+
+**Re-issuing it each year needs no new feature.** Amending the body of a published
+document raises its version, and outstanding-document queries match signatures
+against the current version, so editing the year end puts the declaration back in
+front of everybody and leaves every previous year's signature standing as the
+record of what was declared then. Nothing schedules that edit; it is a diary note
+for whoever runs HR.
+
 ---
 
 ## HR records and who can see what

@@ -22,6 +22,13 @@ the welcome message from the MD, the documents they owe a response to, what
 personal details are still missing, their own steps, and the steps the firm owes
 them.
 
+**An annual independence declaration** - signed once a year by everyone, confirming
+no undisclosed financial interest, relationship, position or benefit involving a
+client. Captured as a signature rather than a tick, because a declaration is a
+person asserting something about themselves and what the firm needs afterwards is
+evidence of who asserted it and when. Editing the year end raises its version,
+which asks the firm again and leaves each previous year's signature intact.
+
 **Two contract templates** - a contract of employment, and an Associate Consultant
 Agreement for independent professionals engaged on a contract *for* service, paid a
 fixed fee per assigned client rather than a salary. The Associate agreement is drafted
