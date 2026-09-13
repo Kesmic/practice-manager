@@ -13,6 +13,7 @@ import {
   TextArea,
   TextInput,
 } from "../components/ui";
+import { ReviewsPanel } from "../components/ReviewsPanel";
 import { formatDate } from "../lib/format";
 
 /** Fields the employee maintains themselves. Employment terms are HR-controlled. */
@@ -116,6 +117,14 @@ export function MyProfile() {
           are maintained by the firm - speak to a partner if anything there is wrong.
         </p>
       </div>
+
+      {/*
+        Somebody's own reviews belong on their own page, not only on a file that a
+        manager opens about them. A review still being written does not appear here -
+        the server withholds drafts from their subject, because a judgement still being
+        formed is not yet a judgement.
+      */}
+      {user && <ReviewsPanel userId={user.id} />}
 
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <SuccessBanner message={notice} onDismiss={() => setNotice(null)} />

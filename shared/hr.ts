@@ -166,6 +166,35 @@ export function requiredAction(doc: {
   return null;
 }
 
+/**
+ * Whether this document is waiting on the reader.
+ *
+ * `requiredAction` above answers a different question - what kind of response the
+ * document is set up to want - and says nothing about whether it is in force. An
+ * unpublished draft still carries `requires_signature`, so anything counting outstanding
+ * work from that flag alone counts documents nobody can respond to.
+ *
+ * That is not hypothetical. HR administrators are served drafts as well as published
+ * documents, so the handbook told them eleven documents needed their response when five
+ * did, and marked drafts "Action needed" beside a Publish button that had not been
+ * pressed. The sidebar badge is counted server-side with `status = 'published'` in the
+ * WHERE clause, which is what put the two numbers side by side and made it visible.
+ *
+ * One function, so the badge, the banner and the row pill cannot disagree again.
+ */
+export function awaitsResponse(doc: {
+  status: DocumentStatus;
+  requires_signature: 0 | 1;
+  requires_acknowledgement: 0 | 1;
+  /** The reader's own response, where they have given one. Typed loosely because the
+   *  wire type carries it as a plain string. */
+  my_action?: string | null;
+}): boolean {
+  if (doc.status !== "published") return false;
+  if (!requiredAction(doc)) return false;
+  return !doc.my_action;
+}
+
 export const ACTION_VERB: Record<SignatureAction, string> = {
   signed: "Sign",
   acknowledged: "Acknowledge",

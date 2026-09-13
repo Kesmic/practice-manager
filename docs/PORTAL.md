@@ -91,6 +91,37 @@ for whoever runs HR.
 
 ---
 
+## Probation and annual reviews
+
+Each review rates the person against the criteria that apply at their grade - technical
+competence, quality of submitted work, deadlines, client handling, judgement, conduct,
+development, and supervision from Senior Associate up. Four points, and deliberately no
+middle: a five-point scale in a small firm becomes everybody scoring three, which records
+nothing, tells the person nothing they can act on, and is worth nothing when a decision
+turns on it. A rating below expectation is refused without a comment saying what has to
+change.
+
+**A review has two voices.** The reviewer writes it, then sends it; the person reads it,
+adds their own comments and signs. Their comments are theirs - no reviewer route writes
+that column - and they stay on file whether the person agrees or not. Signing records
+that they have read it, not that they accept it, and the screen says so.
+
+**A draft is private to its author.** Half-formed judgements about a colleague are not
+readable by that colleague, enforced on every path rather than by a screen simply not
+linking to them. A peer cannot read a review at any stage, whatever their grade: the
+people who can are the subject, their line manager, and HR administration.
+
+**Once both have signed, nothing amends it.** Not the ratings, not the narrative, not the
+outcome. A record that can be revised after the fact is worth nothing at the only moment
+it is ever needed. Anything further goes in a new review. Withdrawing a review from
+somebody after they have seen it is allowed, and is written to the HR trail.
+
+**Probation reviews decide.** Confirm, extend or do not confirm, and an extension needs a
+date to work towards. Objectives set in one review are judged in the next, so the open
+ones appear on the person's file waiting for that.
+
+---
+
 ## HR records and who can see what
 
 Employee data is split across three tables, because the three groups have

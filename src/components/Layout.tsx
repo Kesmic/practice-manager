@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ROLE_LABELS } from "@shared/workflow";
 import type { Area } from "@shared/visibility";
+import { badgeLabel, badgeText, type Attention } from "@shared/attention";
 import { useSession } from "../lib/auth";
 import { FirmLogo, FirmName } from "../lib/firm";
 import { IdleWatcher } from "./IdleWatcher";
@@ -27,6 +28,15 @@ interface NavItem {
   minimum?: "manager" | "partner";
   /** Heading the item sits under in the sidebar. */
   section: string;
+  /**
+   * Which attention count, if any, badges this item. Only destinations where the count
+   * can reach zero and is cleared by this person doing something specific - see
+   * `shared/attention.ts` for why the deliverable queues are deliberately not among
+   * them.
+   */
+  badge?: keyof Attention;
+  /** Singular noun a screen reader uses for the badge: "6 documents needing...". */
+  badgeNoun?: string;
 }
 
 const NAV: NavItem[] = [
@@ -38,13 +48,27 @@ const NAV: NavItem[] = [
     label: "Client requests",
     area: "client_requests",
     section: "Work",
+    badge: "client_requests",
+    badgeNoun: "client request",
   },
   { to: "/engagements", label: "Engagements", area: "engagements", section: "Work" },
   { to: "/templates", label: "Job templates", area: "templates", section: "Work" },
   { to: "/reports", label: "Reports", area: "reports", section: "Work" },
 
-  { to: "/onboarding", label: "My onboarding", section: "My portal" },
-  { to: "/handbook", label: "Employee handbook", section: "My portal" },
+  {
+    to: "/onboarding",
+    label: "My onboarding",
+    section: "My portal",
+    badge: "onboarding",
+    badgeNoun: "step",
+  },
+  {
+    to: "/handbook",
+    label: "Employee handbook",
+    section: "My portal",
+    badge: "documents",
+    badgeNoun: "document",
+  },
   { to: "/my-profile", label: "My details", section: "My portal" },
   { to: "/guide", label: "How to use the portal", section: "My portal" },
 
@@ -65,8 +89,33 @@ const NAV: NavItem[] = [
   },
 ];
 
+/**
+ * The red count beside a sidebar item.
+ *
+ * Renders nothing at zero rather than a grey nought: a badge that is always present
+ * stops being a signal, and the absence of one is itself the message that there is
+ * nothing to do here.
+ *
+ * The number alone would be announced as "Employee handbook 6", which a screen reader
+ * user would reasonably hear as a heading number, so the digits are hidden from the
+ * accessibility tree and a full sentence given instead.
+ */
+function NavBadge({ count, noun }: { count: number; noun: string }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className="inline-flex min-w-5 shrink-0 items-center justify-center rounded-full
+                 bg-rose-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white"
+      role="status"
+    >
+      <span aria-hidden="true">{badgeText(count)}</span>
+      <span className="sr-only">{badgeLabel(count, noun)}</span>
+    </span>
+  );
+}
+
 export function Layout() {
-  const { user, unread, signOut, can, canSee } = useSession();
+  const { user, unread, attention, refresh, signOut, can, canSee } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -97,6 +146,21 @@ export function Layout() {
   const sections = ["Work", "My portal", "Administration"].filter((section) =>
     visible.some((item) => item.section === section),
   );
+
+  /*
+    Re-read the counts whenever the person lands on a different screen.
+
+    Without this a badge is only ever as fresh as the page load: sign the last
+    outstanding document and the sidebar would still claim one is waiting until the tab
+    was reloaded, which is precisely the moment a badge most needs to be right. One
+    session read per navigation is four counted index lookups, and it is the same request
+    the provider already makes on mount.
+  */
+  useEffect(() => {
+    if (user) void refresh();
+    // Keyed on the path alone: a query-string change is the same screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -138,13 +202,17 @@ export function Layout() {
                     to={href(item)}
                     onClick={() => setMenuOpen(false)}
                     aria-current={isCurrent(item) ? "page" : undefined}
-                    className={`block rounded-md px-3 py-2 text-sm transition-colors ${
+                    className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
                       isCurrent(item)
                         ? "bg-panel/15 font-semibold text-white"
                         : "text-white/80 hover:bg-panel/10 hover:text-white"
                     }`}
                   >
-                    {item.label}
+                    <span className="truncate">{item.label}</span>
+                    <NavBadge
+                      count={item.badge ? attention[item.badge] : 0}
+                      noun={item.badgeNoun ?? "item"}
+                    />
                   </Link>
                 ))}
             </div>
