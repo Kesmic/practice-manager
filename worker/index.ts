@@ -21,6 +21,7 @@ import { registerEraseRoutes } from "./routes/erase";
 import { registerEngagementRoutes } from "./routes/engagements";
 import { registerInsightRoutes } from "./routes/insights";
 import { registerIntakeRoutes } from "./routes/intake";
+import { registerPerformanceRoutes } from "./routes/performance";
 import { registerReviewRoutes } from "./routes/reviews";
 import { registerSettingsRoutes } from "./routes/settings";
 import { registerTaskItemRoutes } from "./routes/task-items";
@@ -57,6 +58,10 @@ registerDocumentRoutes(router);
 registerSettingsRoutes(router);
 registerEraseRoutes(router);
 registerTwoFactorRoutes(router);
+
+// Probation and annual reviews. Named apart from `reviews` above, which is the review
+// points raised against a deliverable - a different thing entirely.
+registerPerformanceRoutes(router);
 
 /**
  * The browser-facing security headers.

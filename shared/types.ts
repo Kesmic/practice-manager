@@ -17,6 +17,15 @@ import type {
   TaskStatus,
 } from "./workflow";
 import type {
+  Criterion,
+  ObjectiveStatus,
+  OverallOutcome,
+  ProbationDecision,
+  Rating,
+  ReviewKind,
+  ReviewStatus,
+} from "./performance";
+import type {
   DocumentAudience,
   DocumentKind,
   DocumentStatus,
@@ -610,4 +619,61 @@ export interface FirmSettings {
   /** Six-digit hex, or "" for the default. Recolours the whole interface. */
   primary_color: string;
   secondary_color: string;
+}
+
+// ---------------------------------------------------------------------------
+// Performance reviews
+// ---------------------------------------------------------------------------
+
+/** A review as it appears in a list on somebody's file. */
+export interface ReviewSummary {
+  id: string;
+  kind: ReviewKind;
+  status: ReviewStatus;
+  period_label: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  overall: OverallOutcome | null;
+  probation_decision: ProbationDecision | null;
+  reviewer_signed_at: string | null;
+  employee_signed_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  reviewer_name: string | null;
+}
+
+export interface ReviewRating {
+  criterion: string;
+  rating: Rating | null;
+  comment: string | null;
+}
+
+export interface ReviewObjective {
+  id: string;
+  objective: string;
+  target_date: string | null;
+  status: ObjectiveStatus;
+  assessment?: string | null;
+  position: number;
+  source_review_id?: string | null;
+  assessed_in_id?: string | null;
+}
+
+/** One review in full, as the review screen reads it. */
+export interface ReviewDetail extends ReviewSummary {
+  subject_id: string;
+  subject_name: string;
+  subject_role: Role;
+  reviewer_id: string | null;
+  strengths: string | null;
+  development: string | null;
+  reviewer_comments: string | null;
+  employee_comments: string | null;
+  probation_extend_to: string | null;
+  shared_at: string | null;
+  updated_at: string;
+  /** The criteria that apply at this person's grade. */
+  criteria: Criterion[];
+  ratings: ReviewRating[];
+  objectives: ReviewObjective[];
 }

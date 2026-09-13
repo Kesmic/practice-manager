@@ -9,6 +9,7 @@ import { Clients } from "./pages/Clients";
 import { Dashboard } from "./pages/Dashboard";
 import { DocumentView } from "./pages/DocumentView";
 import { EmployeeDetail } from "./pages/EmployeeDetail";
+import { ReviewDetailPage } from "./pages/ReviewDetail";
 import { Engagements } from "./pages/Engagements";
 import { Guide } from "./pages/Guide";
 import { Handbook } from "./pages/Handbook";
@@ -113,6 +114,7 @@ export function App() {
           }
         />
         <Route path="/people/:id" element={<EmployeeDetail />} />
+        <Route path="/reviews/:id" element={<ReviewDetailPage />} />
         <Route
           path="/portal-admin"
           element={

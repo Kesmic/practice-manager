@@ -11,6 +11,7 @@ import type { ErasePreview, EraseScope } from "@shared/erase";
 import type { Visibility } from "@shared/visibility";
 import type { TwoFactorStatus } from "@shared/twofactor";
 import type { DeviceTrustPolicy, TrustedDevice } from "@shared/device-trust";
+import type { ReviewDetail, ReviewObjective, ReviewSummary } from "@shared/types";
 import type { IdlePolicy } from "@shared/session-policy";
 import type { Attention } from "@shared/attention";
 import type {
@@ -293,6 +294,94 @@ export const api = {
       method: "PUT",
       body: input,
     }),
+
+  // --------------------------------------------------- performance reviews
+  personReviews: (userId: string) =>
+    request<{
+      subject: { id: string; full_name: string; role: Role };
+      can_review: boolean;
+      reviews: ReviewSummary[];
+      open_objectives: ReviewObjective[];
+    }>(`/api/people/${userId}/reviews`),
+
+  startReview: (userId: string, input: Record<string, unknown>) =>
+    request<{ review: ReviewDetail }>(`/api/people/${userId}/reviews`, {
+      method: "POST",
+      body: input,
+    }),
+
+  review: (id: string) =>
+    request<{ review: ReviewDetail; can_write: boolean; is_subject: boolean }>(
+      `/api/reviews/${id}`,
+    ),
+
+  updateReview: (id: string, input: Record<string, unknown>) =>
+    request<{ review: ReviewDetail }>(`/api/reviews/${id}`, {
+      method: "PATCH",
+      body: input,
+    }),
+
+  rateReview: (id: string, criterion: string, input: { rating?: string | null; comment?: string | null }) =>
+    request<{ review: ReviewDetail }>(`/api/reviews/${id}/ratings/${criterion}`, {
+      method: "PUT",
+      body: input,
+    }),
+
+  addObjective: (id: string, input: Record<string, unknown>) =>
+    request<{ review: ReviewDetail }>(`/api/reviews/${id}/objectives`, {
+      method: "POST",
+      body: input,
+    }),
+
+  updateObjective: (id: string, objectiveId: string, input: Record<string, unknown>) =>
+    request<{ review: ReviewDetail }>(`/api/reviews/${id}/objectives/${objectiveId}`, {
+      method: "PATCH",
+      body: input,
+    }),
+
+  removeObjective: (id: string, objectiveId: string) =>
+    request<{ review: ReviewDetail }>(`/api/reviews/${id}/objectives/${objectiveId}`, {
+      method: "DELETE",
+    }),
+
+  shareReview: (id: string) =>
+    request<{ review: ReviewDetail }>(`/api/reviews/${id}/share`, {
+      method: "POST",
+      body: {},
+    }),
+
+  recallReview: (id: string) =>
+    request<{ review: ReviewDetail }>(`/api/reviews/${id}/recall`, {
+      method: "POST",
+      body: {},
+    }),
+
+  respondToReview: (id: string, input: { comments?: string | null; sign?: boolean }) =>
+    request<{ review: ReviewDetail }>(`/api/reviews/${id}/respond`, {
+      method: "POST",
+      body: input,
+    }),
+
+  myReviews: () =>
+    request<{
+      writing: Array<ReviewSummary & { subject_name: string }>;
+      awaiting_my_signature: Array<ReviewSummary & { reviewer_name: string | null }>;
+    }>("/api/me/reviews"),
+
+  performanceOverview: () =>
+    request<{
+      people: Array<{
+        id: string;
+        full_name: string;
+        role: Role;
+        employment_status: string | null;
+        probation_end_date: string | null;
+        confirmed_on: string | null;
+        completed: number;
+        last_review_at: string | null;
+        in_progress: string | null;
+      }>;
+    }>("/api/performance/overview"),
 
   twoFactorOverview: () =>
     request<{

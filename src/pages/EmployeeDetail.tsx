@@ -27,9 +27,17 @@ import {
   TextInput,
   options,
 } from "../components/ui";
+import { ReviewsPanel } from "../components/ReviewsPanel";
 import { formatDate, formatDateTime, formatMoney, percent, relativeTime } from "../lib/format";
 
-type Tab = "employment" | "onboarding" | "documents" | "personal" | "pay" | "trail";
+type Tab =
+  | "employment"
+  | "onboarding"
+  | "documents"
+  | "reviews"
+  | "personal"
+  | "pay"
+  | "trail";
 
 export function EmployeeDetail() {
   const { id = "" } = useParams();
@@ -75,6 +83,7 @@ export function EmployeeDetail() {
     ["onboarding", `Onboarding (${file.onboarding.filter((i) => i.is_done).length}/${file.onboarding.length})`],
     ["documents", `Documents (${file.signatures.length})`],
   ];
+  tabs.push(["reviews", "Performance"]);
   if (file.personal) tabs.push(["personal", "Personal details"]);
   if (file.compensation !== null || can("partner")) tabs.push(["pay", "Pay and bank"]);
   if (isHr) tabs.push(["trail", "HR trail"]);
@@ -165,6 +174,7 @@ export function EmployeeDetail() {
         </div>
 
         <div className="p-4">
+          {tab === "reviews" && <ReviewsPanel userId={user.id} />}
           {tab === "employment" && (
             <EmploymentTab
               file={file}

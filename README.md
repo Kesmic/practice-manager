@@ -22,6 +22,13 @@ the welcome message from the MD, the documents they owe a response to, what
 personal details are still missing, their own steps, and the steps the firm owes
 them.
 
+**Probation and annual reviews** - each person rated against what their grade
+requires, on a four-point scale with no middle box to hide in, with objectives that
+carry to the next review and get judged there. A review is written, then sent to the
+person, who adds their own comments and signs; once both have signed nothing amends
+it. Drafts are invisible to their subject, and peers cannot read a review at any
+stage whatever their grade.
+
 **An annual independence declaration** - signed once a year by everyone, confirming
 no undisclosed financial interest, relationship, position or benefit involving a
 client. Captured as a signature rather than a tick, because a declaration is a
@@ -179,6 +186,9 @@ shared/files.ts      the client file: providers recognised from a link, what
                      counts as a safe link, how a file is grouped
 shared/login-policy.ts
                      how many sign-in attempts, over how long, and why those numbers
+shared/performance.ts
+                     probation and annual reviews: the criteria, the scale, and who
+                     may write or read one
 shared/security-questions.ts
                      the recovery route: why it is off by default, why it can never
                      remember a device, and what makes a set of questions worth having
