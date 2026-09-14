@@ -17,6 +17,7 @@ import type {
   TaskStatus,
 } from "./workflow";
 import type { ContractField, ContractTemplate } from "./contract-fields";
+import type { ReportSchedule, ReportState } from "./status-reports";
 import type { Stage, StageProgress } from "./onboarding";
 import type {
   Criterion,
@@ -738,4 +739,64 @@ export interface ContractMergeResult {
   awaiting_employee: string[];
   /** Placeholders no merge field was ever going to fill: the schedules, and the dates. */
   manual: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Status reports
+// ---------------------------------------------------------------------------
+
+/** A deliverable named in a status report, with whatever was said about it. */
+export interface StatusReportTask {
+  id: string;
+  ref: string;
+  title: string;
+  status: TaskStatus;
+  client_name: string;
+  note: string | null;
+}
+
+export interface StatusReport {
+  id: string;
+  user_id?: string;
+  /** The reporting day this answers for, not the day it was written. */
+  due_on: string;
+  /** The first day it covers. Stored, so a later change of schedule cannot re-date it. */
+  period_from: string;
+  body: string;
+  blockers: string | null;
+  submitted_at: string;
+  updated_at: string;
+  tasks: StatusReportTask[];
+}
+
+/** Everything the person's own status-report screen needs, in one round trip. */
+export interface StatusReportView {
+  schedule: ReportSchedule;
+  state: ReportState;
+  /** The reporting day currently being answered for. */
+  due_on: string | null;
+  period_from: string | null;
+  next_due_on: string | null;
+  /** Reporting days that passed without a report, since this person arrived. */
+  missed: string[];
+  /** The current report, where it has already been written. */
+  current: StatusReport | null;
+  /** Their own live work, for the reference picker. */
+  tasks: StatusReportTask[];
+  recent: StatusReport[];
+}
+
+export interface TeamStatusReports {
+  schedule: ReportSchedule;
+  due_on: string | null;
+  period_from: string | null;
+  outstanding: number;
+  people: Array<{
+    id: string;
+    full_name: string;
+    role: Role;
+    open_tasks: number;
+    report_id: string | null;
+    report?: StatusReport;
+  }>;
 }

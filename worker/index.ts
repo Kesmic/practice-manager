@@ -25,6 +25,7 @@ import { registerIntakeRoutes } from "./routes/intake";
 import { registerPerformanceRoutes } from "./routes/performance";
 import { registerReviewRoutes } from "./routes/reviews";
 import { registerSettingsRoutes } from "./routes/settings";
+import { registerStatusReportRoutes } from "./routes/status-reports";
 import { registerTaskItemRoutes } from "./routes/task-items";
 import { registerTaskRoutes } from "./routes/tasks";
 import { registerTwoFactorRoutes } from "./routes/twofactor";
@@ -58,6 +59,7 @@ registerEmployeeRoutes(router);
 registerDocumentRoutes(router);
 registerSettingsRoutes(router);
 registerContractRoutes(router);
+registerStatusReportRoutes(router);
 registerEraseRoutes(router);
 registerTwoFactorRoutes(router);
 

@@ -133,6 +133,16 @@ The portal stores no document content, grants no access, and never fetches a lin
 following one means signing in to Microsoft or Google as yourself. What the portal adds
 is the answer to "where is it", which is what was actually missing.
 
+**Twice-weekly status reports** - one short written report per person per
+reporting day, Wednesdays and Fridays by default and changeable by the firm,
+covering everything assigned to them with the deliverables it concerns picked
+from their own work. Not one report per deliverable: somebody carrying nine open
+jobs would write nine reports twice a week, and a requirement that costs that
+much is one people learn to satisfy without saying anything. Each report answers
+for the days since the previous one, so every day of the year falls in exactly
+one report - which a fixed forty-eight-hour window does not, leaving the weekend
+in none. A report filed late is still recorded against the day it was owed.
+
 **Dashboards and practice reports** - personal work queues, overdue exposure,
 workload by person, service line summaries, and review quality by preparer.
 
@@ -210,6 +220,9 @@ shared/onboarding.ts the onboarding programme: five dated stages, one per
 shared/contract-fields.ts
                      every placeholder in both contract templates, and where its
                      value is supposed to come from
+shared/status-reports.ts
+                     when a status report is due, what period it answers for,
+                     and who is behind
 shared/intake.ts     client intake: the two links, request states, the field
                      limits the public form and the server both enforce
 shared/files.ts      the client file: providers recognised from a link, what
@@ -238,13 +251,13 @@ worker/              the API
   dates.ts           statutory deadline and recurrence arithmetic
   routes/            auth, users, clients, client-files, engagements, tasks,
                      workflow, reviews, task-items, templates, insights, intake,
-                     employees, documents, contracts, settings
+                     employees, documents, contracts, status-reports, settings
 
 src/                 the React app (TypeScript, Vite, Tailwind)
   lib/               API client, session context, formatting
   components/        layout and shared UI
   pages/             dashboard, deliverables, task detail, clients, engagements,
-                     client requests, the two public intake forms,
+                     status reports, client requests, the two public intake forms,
                      templates, reports, team, inbox, account,
                      onboarding, handbook, document view, my details,
                      people, employee file, portal admin

@@ -60,6 +60,8 @@ import {
 } from "../http";
 import { MIN_SUPERVISOR_ROLE, atLeast, type Role } from "../../shared/workflow";
 import type { Attention } from "../../shared/attention";
+import { MISSED_LOOKBACK_DAYS, missedDays } from "../../shared/status-reports";
+import { readReportSchedule } from "./status-reports";
 
 /**
  * Creates the session and returns the signed-in user.
@@ -124,7 +126,10 @@ async function countAttention(
   env: Env,
   user: AuthenticatedUser,
 ): Promise<Attention> {
-  const [documents, onboarding, requests, unread] = await env.DB.batch<{ n: number }>([
+  const schedule = await readReportSchedule(env);
+  const [documents, onboarding, requests, unread, filed, joined] = await env.DB.batch<
+    Record<string, unknown>
+  >([
     /*
      * The same rule the handbook and onboarding screens use: published, applies to this
      * person, wants a response, and no signature at the CURRENT version - so an amended
@@ -157,16 +162,43 @@ async function countAttention(
     env.DB.prepare(
       `SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL`,
     ).bind(user.id),
+    /*
+     * The reporting days this person has already answered for, over the window the
+     * missed-report count looks back across. The dates rather than a count: which
+     * reporting days fall in the window is a calendar question, answered in
+     * shared/status-reports.ts, and asking SQL to work out when Wednesdays fall would
+     * put the schedule in two places.
+     */
+    env.DB.prepare(
+      `SELECT due_on FROM status_reports
+        WHERE user_id = ? AND due_on >= date('now', ?)`,
+    ).bind(user.id, `-${MISSED_LOOKBACK_DAYS} days`),
+    env.DB.prepare(
+      `SELECT COALESCE(p.start_date, date(u.created_at)) AS joined
+         FROM users u LEFT JOIN employee_profiles p ON p.user_id = u.id
+        WHERE u.id = ?`,
+    ).bind(user.id),
   ]);
 
   return {
-    documents: documents.results[0]?.n ?? 0,
-    onboarding: onboarding.results[0]?.n ?? 0,
+    documents: count(documents.results),
+    onboarding: count(onboarding.results),
     client_requests: atLeast(user.role, MIN_SUPERVISOR_ROLE)
-      ? (requests.results[0]?.n ?? 0)
+      ? count(requests.results)
       : 0,
-    notifications: unread.results[0]?.n ?? 0,
+    notifications: count(unread.results),
+    status_reports: missedDays(
+      new Date().toISOString().slice(0, 10),
+      schedule,
+      filed.results.map((row) => String(row.due_on)),
+      (joined.results[0]?.joined as string | null | undefined) ?? null,
+    ).length,
   };
+}
+
+/** Reads the single number out of a `SELECT COUNT(*) AS n` result. */
+function count(results: Array<Record<string, unknown>>): number {
+  return Number(results[0]?.n ?? 0);
 }
 
 /**

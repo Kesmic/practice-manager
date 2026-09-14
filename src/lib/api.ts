@@ -15,6 +15,7 @@ import type { ReviewDetail, ReviewObjective, ReviewSummary } from "@shared/types
 import type { IdlePolicy } from "@shared/session-policy";
 import type { Attention } from "@shared/attention";
 import type { ContractField } from "@shared/contract-fields";
+import type { ReportSchedule } from "@shared/status-reports";
 import type {
   ChecklistItem,
   DocumentSignature,
@@ -27,6 +28,9 @@ import type {
   ContractDetails,
   ContractMergeResult,
   PortalDocument,
+  StatusReport,
+  StatusReportView,
+  TeamStatusReports,
   PortalDocumentDetail,
   Client,
   ClientRequestSummary,
@@ -782,6 +786,40 @@ export const api = {
         body: { assigned_user_id: assignedUserId, title, ...options },
       },
     ),
+
+  // -------------------------------------------------------- status reports
+  /** The person's own report: which one is current, and what they may reference. */
+  myStatusReport: () => request<StatusReportView>("/api/me/status-report"),
+
+  /** Writes the current report, or amends it if one is already in. */
+  submitStatusReport: (input: {
+    body: string;
+    blockers: string | null;
+    tasks: Array<{ task_id: string; note: string | null }>;
+  }) =>
+    request<{ report: StatusReport }>("/api/me/status-report", {
+      method: "POST",
+      body: input,
+    }),
+
+  /** Who has reported and who has not, for the reporting day just passed. */
+  teamStatusReports: (dueOn?: string) =>
+    request<TeamStatusReports>(
+      `/api/status-reports${dueOn ? `?due_on=${encodeURIComponent(dueOn)}` : ""}`,
+    ),
+
+  /** One person's reports, for them and whoever supervises them. */
+  statusReportsFor: (userId: string) =>
+    request<{ reports: StatusReport[] }>(`/api/employees/${userId}/status-reports`),
+
+  statusReportPolicy: () =>
+    request<{ schedule: ReportSchedule }>("/api/status-report-policy"),
+
+  saveStatusReportPolicy: (schedule: ReportSchedule) =>
+    request<{ schedule: ReportSchedule }>("/api/status-report-policy", {
+      method: "PUT",
+      body: schedule,
+    }),
 
   // ------------------------------------------------------ contract details
   /** The firm's standard terms, the same in every contract it issues. */

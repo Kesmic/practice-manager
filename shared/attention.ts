@@ -25,6 +25,14 @@ export interface Attention {
   client_requests: number;
   /** Unread inbox entries. */
   notifications: number;
+  /**
+   * Status reports this person owes: the one due today, plus any reporting day since
+   * they arrived that passed without one.
+   *
+   * Qualifies for a badge on the same test as the rest of this list. It reaches zero -
+   * writing the report clears it - and nobody else can clear it for them.
+   */
+  status_reports: number;
 }
 
 export const NO_ATTENTION: Attention = {
@@ -32,6 +40,7 @@ export const NO_ATTENTION: Attention = {
   onboarding: 0,
   client_requests: 0,
   notifications: 0,
+  status_reports: 0,
 };
 
 /**

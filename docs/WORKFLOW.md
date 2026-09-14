@@ -189,6 +189,61 @@ It is defined once, in [`worker/routes/task-sql.ts`](../worker/routes/task-sql.t
 
 ---
 
+## Status reports
+
+Everybody carrying client work writes one short report per reporting day -
+**Wednesdays and Fridays** by default, changed in Portal settings → Contract
+terms and reporting, or switched off entirely.
+
+**One report per person, not one per deliverable.** Somebody carrying nine open
+jobs would otherwise write nine reports twice a week, which is how a reporting
+requirement becomes a ritual everybody satisfies and nobody reads. A report is a
+narrative, an optional list of what is in the person's way, and any number of
+their own deliverables named as references, each with an optional line of its
+own.
+
+**A report belongs to a reporting day, not to the day it was written.** A
+Wednesday report handed in on Thursday is still Wednesday's report; recording it
+against Thursday would destroy the only evidence that it was late. The reporting
+day is derived from the calendar on the server rather than sent by the client,
+which is also why a report cannot be filed against a deadline that has not
+arrived yet.
+
+**A period is bounded by the previous reporting day, not by a fixed number of
+hours.** With Wednesday and Friday: Friday's report covers Thursday and Friday;
+Wednesday's covers Saturday through Wednesday. The obvious implementation of
+"every 48 hours" would leave Saturday, Sunday and Monday in no report at all.
+A test walks a full calendar year and asserts that every day falls in exactly one
+report.
+
+**A second submission amends the first**, until the next reporting day comes
+round. Two reports covering the same days, disagreeing, with nothing saying
+which was meant, is worse than one that was corrected. After that it is fixed:
+an account of a week that can be rewritten a month later is not an account of
+anything.
+
+Referenced deliverables must be assigned to the writer, checked on the server as
+well as filtered in the picker - a report naming somebody else's job reads as a
+claim about work the writer did not do. A deliverable already named in a report
+stays listed even after it is approved or closed, so amending a report cannot
+silently drop something the person said.
+
+**Who reads them.** The writer, their line manager, anybody reviewing their work,
+and HR administrators. A peer at the same grade is deliberately excluded: a
+report written knowing the whole office reads it stops being an account of the
+week. Supervisors also get the other half of the answer - who owes a report and
+has not filed one - which cannot be got by reading what arrived.
+
+Nobody is asked for a report covering time before they arrived, and the
+outstanding count looks back 28 days: "two" or "several" is what a manager acts
+on, and counting back through a whole employment to report 143 would be true,
+useless, and a table scan on every sidebar draw.
+
+Defined in [`shared/status-reports.ts`](../shared/status-reports.ts), shared by
+the Worker and the browser.
+
+---
+
 ## Reports
 
 - **Work in progress by stage** - where the portfolio sits right now.
