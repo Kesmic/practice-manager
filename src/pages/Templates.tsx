@@ -43,6 +43,8 @@ export function Templates() {
   const [expanded, setExpanded] = useState<string | null>(null);
   // `null` means the editor is closed; "new" means create; otherwise edit that one.
   const [editing, setEditing] = useState<TaskTemplate | "new" | null>(null);
+  /** The template being deleted. Its cost is re-read fresh by the dialog. */
+  const [deleting, setDeleting] = useState<TaskTemplate | null>(null);
   const [includeInactive, setIncludeInactive] = useState(false);
 
   const reload = (inactive = includeInactive) =>
@@ -195,6 +197,15 @@ export function Templates() {
                       </button>
                     </>
                   )}
+                  {can("partner") && (
+                    <button
+                      type="button"
+                      className="btn-ghost btn-sm text-rose-700"
+                      onClick={() => setDeleting(template)}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -225,6 +236,16 @@ export function Templates() {
         onClose={() => setEditing(null)}
         onSaved={async (message) => {
           setEditing(null);
+          setNotice(message);
+          await reload();
+        }}
+      />
+
+      <DeleteTemplateDialog
+        template={deleting}
+        onClose={() => setDeleting(null)}
+        onDeleted={async (message) => {
+          setDeleting(null);
           setNotice(message);
           await reload();
         }}
@@ -868,6 +889,157 @@ function TemplateModal({
               on untouched. Nothing is deleted.
             </span>
           </label>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Deleting a template outright.
+ *
+ * Safe in a way that deleting a person is not, and the dialog says so rather than
+ * making somebody guess: `tasks.template_id` is `ON DELETE SET NULL`, so every
+ * deliverable generated from this template survives intact and simply stops pointing at
+ * it. Nothing about the work changes, because the checklist, the deadline rule and the
+ * budget were all copied onto each deliverable when it was generated rather than read
+ * back through the link.
+ *
+ * The count is still shown. "This produced 340 deliverables" is not a reason to stop,
+ * but it is the difference between a template that was tried once and one the firm runs
+ * every quarter - and where there are open deliverables, deactivating is usually the
+ * better move, so the dialog offers it beside the delete instead of only warning.
+ */
+function DeleteTemplateDialog({
+  template,
+  onClose,
+  onDeleted,
+}: {
+  template: TaskTemplate | null;
+  onClose: () => void;
+  onDeleted: (message: string) => Promise<void>;
+}) {
+  const [preview, setPreview] = useState<{
+    deliverables: number;
+    open_deliverables: number;
+    confirmation: string;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!template) return;
+    setPreview(null);
+    setError(null);
+    void (async () => {
+      try {
+        const result = await api.templateRemovalPreview(template.id);
+        setPreview(result);
+      } catch (err) {
+        setError(
+          err instanceof ApiRequestError ? err.message : "Could not load that template.",
+        );
+      }
+    })();
+  }, [template]);
+
+  if (!template) return null;
+
+  const remove = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.deleteTemplate(template.id);
+      await onDeleted(
+        result.deliverables_kept
+          ? `“${result.deleted}” has been deleted. The ${result.deliverables_kept} deliverable${result.deliverables_kept === 1 ? "" : "s"} generated from it ${result.deliverables_kept === 1 ? "is" : "are"} untouched.`
+          : `“${result.deleted}” has been deleted.`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError ? err.message : "Could not delete that template.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deactivate = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.updateTemplate(template.id, { active: false });
+      await onDeleted(
+        `“${template.name}” has been retired. It stays on its deliverables and out of the pickers.`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError ? err.message : "Could not retire that template.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      title={`Delete “${template.name}”`}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          {template.active === 1 && preview && preview.open_deliverables > 0 ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy}
+              onClick={() => void deactivate()}
+            >
+              Retire it instead
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="btn-danger"
+            disabled={busy || !preview}
+            onClick={() => void remove()}
+          >
+            {busy ? "Deleting…" : "Delete the template"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <ErrorBanner error={error} onDismiss={() => setError(null)} />
+
+        {!preview ? (
+          <Spinner label="Checking what this template is used by" />
+        ) : (
+          <>
+            <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              {preview.deliverables === 0
+                ? "Nothing has been generated from this template, so deleting it leaves no trace."
+                : `The ${preview.deliverables} deliverable${preview.deliverables === 1 ? "" : "s"} generated from this template ${preview.deliverables === 1 ? "keeps its" : "keep their"} checklist, deadline and history. ${preview.deliverables === 1 ? "It" : "They"} simply stop pointing at the template.`}
+            </p>
+
+            {preview.open_deliverables > 0 ? (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <strong>
+                  {preview.open_deliverables} of them{" "}
+                  {preview.open_deliverables === 1 ? "is" : "are"} still open.
+                </strong>{" "}
+                Deleting the template will not disturb the work, but it does remove the
+                firm&rsquo;s statement of how this job is done while people are in the
+                middle of doing it. Retiring it keeps that, and still takes it out of the
+                pickers.
+              </p>
+            ) : null}
+
+            <p className="text-sm text-slate-600">This cannot be undone.</p>
+          </>
         )}
       </div>
     </Modal>

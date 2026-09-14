@@ -8,6 +8,7 @@ import {
 } from "@shared/hr";
 import { isEngagedNotEmployed } from "@shared/onboarding";
 import { ContractDetailsCard } from "../components/ContractDetailsCard";
+import { RemovePersonDialog } from "../components/RemovePersonDialog";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import {
@@ -59,6 +60,10 @@ export function Team() {
    * somebody works through twenty fields.
    */
   const [detailing, setDetailing] = useState<CreatedAccount | null>(null);
+  /** The person whose name, address or title is being edited. */
+  const [editing, setEditing] = useState<User | null>(null);
+  /** The account being removed, by id - the row is re-read fresh by the dialog. */
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const closeCredential = () => {
     const invited = credential?.invited;
@@ -229,18 +234,34 @@ export function Team() {
                       >
                         Reset password
                       </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        onClick={() => setEditing(user)}
+                      >
+                        Edit
+                      </button>
                       {user.id !== me?.id && (
-                        <button
-                          type="button"
-                          className="btn-ghost btn-sm"
-                          onClick={() =>
-                            void update(user.id, {
-                              status: user.status === "active" ? "suspended" : "active",
-                            })
-                          }
-                        >
-                          {user.status === "active" ? "Suspend" : "Reactivate"}
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className="btn-ghost btn-sm"
+                            onClick={() =>
+                              void update(user.id, {
+                                status: user.status === "active" ? "suspended" : "active",
+                              })
+                            }
+                          >
+                            {user.status === "active" ? "Suspend" : "Reactivate"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost btn-sm text-rose-700"
+                            onClick={() => setRemoving(user.id)}
+                          >
+                            Remove
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -250,6 +271,26 @@ export function Team() {
           </div>
         )}
       </div>
+
+      <EditPersonModal
+        user={editing}
+        onClose={() => setEditing(null)}
+        onSaved={async (message) => {
+          setEditing(null);
+          await load();
+          setNotice(message);
+        }}
+      />
+
+      <RemovePersonDialog
+        userId={removing}
+        onClose={() => setRemoving(null)}
+        onRemoved={async (message) => {
+          setRemoving(null);
+          await load();
+          setNotice(message);
+        }}
+      />
 
       <InviteModal
         open={inviting}
@@ -569,6 +610,133 @@ function InviteModal({
             </span>
           </span>
         </label>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Editing somebody's name, sign-in address or title.
+ *
+ * The address is the part that needed care. It is the sign-in identifier, so changing it
+ * is not the same kind of edit as changing a job title: it has to stay unique, the
+ * person has to be able to get back in, and a change nobody sees at the old address is
+ * also how an account is quietly taken over. The server emails both addresses; the
+ * dialog says so before the change is made rather than after, because somebody about to
+ * type a colleague's new address should know the old one will hear about it.
+ *
+ * Grade and status are not here. They are edited in the table, one click, where they can
+ * be seen next to everybody else's.
+ */
+function EditPersonModal({
+  user,
+  onClose,
+  onSaved,
+}: {
+  user: User | null;
+  onClose: () => void;
+  onSaved: (message: string) => Promise<void>;
+}) {
+  const [form, setForm] = useState({ full_name: "", email: "", title: "" });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setForm({
+        full_name: user.full_name,
+        email: user.email,
+        title: user.title ?? "",
+      });
+      setError(null);
+    }
+  }, [user]);
+
+  if (!user) return null;
+
+  const emailChanging = form.email.trim().toLowerCase() !== user.email.toLowerCase();
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.updateUser(user.id, {
+        full_name: form.full_name,
+        email: form.email,
+        title: form.title || null,
+      });
+      await onSaved(
+        result.email_changed
+          ? `Saved. ${form.full_name} now signs in as ${result.email_changed.to}, and both addresses have been told.`
+          : `Saved ${form.full_name}'s details.`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError ? err.message : "Could not save those details.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      title={`Edit ${user.full_name}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" form="edit-person" className="btn-primary" disabled={busy}>
+            {busy ? "Saving…" : "Save changes"}
+          </button>
+        </>
+      }
+    >
+      <form id="edit-person" className="space-y-4" onSubmit={submit}>
+        <ErrorBanner error={error} onDismiss={() => setError(null)} />
+
+        <Field label="Full name" required hint="Their contract is signed against this name.">
+          {(id) => (
+            <TextInput
+              id={id}
+              value={form.full_name}
+              onChange={(event) => setForm({ ...form, full_name: event.target.value })}
+            />
+          )}
+        </Field>
+
+        <Field label="Email address" required hint="This is what they sign in with.">
+          {(id) => (
+            <TextInput
+              id={id}
+              type="email"
+              value={form.email}
+              onChange={(event) => setForm({ ...form, email: event.target.value })}
+            />
+          )}
+        </Field>
+
+        {emailChanging ? (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            They will sign in with the new address from now on. Both the old and the new
+            address are told, so a change they did not expect reaches them somewhere they
+            can still read.
+          </p>
+        ) : null}
+
+        <Field label="Job title" hint="Shown on their profile - optional.">
+          {(id) => (
+            <TextInput
+              id={id}
+              value={form.title}
+              onChange={(event) => setForm({ ...form, title: event.target.value })}
+            />
+          )}
+        </Field>
       </form>
     </Modal>
   );

@@ -23,6 +23,7 @@ import type {
   DeclineGround,
 } from "./allocations";
 import type { ContractField, ContractTemplate } from "./contract-fields";
+import type { RemovalAdvice, RemovalFootprint } from "./removal";
 import type { ReportSchedule, ReportState } from "./status-reports";
 import type { Stage, StageProgress } from "./onboarding";
 import type {
@@ -837,4 +838,30 @@ export interface ClientAllocation {
   ended_at: string | null;
   ended_note: string | null;
   available_actions: AllocationAction[];
+}
+
+// ---------------------------------------------------------------------------
+// Removing somebody
+// ---------------------------------------------------------------------------
+
+/**
+ * What removing one person would cost, read before the decision rather than after.
+ *
+ * `blocked` is non-null where the removal cannot happen at all - your own account, an
+ * account senior to you, the last administrator - so the screen says why before anybody
+ * types a confirmation rather than at the point of failure.
+ */
+export interface RemovalPreview {
+  user: {
+    id: string;
+    full_name: string;
+    email: string;
+    role: Role;
+    status: string;
+  };
+  footprint: RemovalFootprint;
+  advice: RemovalAdvice;
+  blocked: string | null;
+  /** The exact words that have to be typed: the person's own name. */
+  confirmation: string;
 }

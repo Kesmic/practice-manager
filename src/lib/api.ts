@@ -20,6 +20,7 @@ import type {
   DeclineGround,
 } from "@shared/allocations";
 import type { ContractField } from "@shared/contract-fields";
+import type { Removal, RemovalFootprint } from "@shared/removal";
 import type { ReportSchedule } from "@shared/status-reports";
 import type {
   ChecklistItem,
@@ -32,6 +33,7 @@ import type {
   OnboardingItem,
   ClientAllocation,
   ContractDetails,
+  RemovalPreview,
   ContractMergeResult,
   PortalDocument,
   StatusReport,
@@ -452,7 +454,11 @@ export const api = {
     }>("/api/users", { method: "POST", body: input }),
 
   updateUser: (id: string, input: Record<string, unknown>) =>
-    request<{ user: User }>(`/api/users/${id}`, { method: "PATCH", body: input }),
+    request<{
+      user: User;
+      /** Set only when the sign-in address actually changed, so the screen can say so. */
+      email_changed: { from: string; to: string } | null;
+    }>(`/api/users/${id}`, { method: "PATCH", body: input }),
 
   resetPassword: (id: string) =>
     request<{ temporary_password: string }>(`/api/users/${id}/reset-password`, {
@@ -792,6 +798,34 @@ export const api = {
         body: { assigned_user_id: assignedUserId, title, ...options },
       },
     ),
+
+  // -------------------------------------------------------------- removals
+  /** What removing this person would cost. Changes nothing; safe to call freely. */
+  removalPreview: (userId: string) =>
+    request<RemovalPreview>(`/api/users/${userId}/removal`),
+
+  /**
+   * Removes somebody. `retire` keeps the anonymised row so the client work stays
+   * complete; `erase` really deletes it, cascades and all.
+   */
+  removeUser: (userId: string, removal: Removal, confirmation: string) =>
+    request<{ removed: Removal; footprint: RemovalFootprint }>(`/api/users/${userId}`, {
+      method: "DELETE",
+      body: { removal, confirmation },
+    }),
+
+  templateRemovalPreview: (id: string) =>
+    request<{
+      template: { id: string; name: string; active: boolean };
+      deliverables: number;
+      open_deliverables: number;
+      confirmation: string;
+    }>(`/api/templates/${id}/removal`),
+
+  deleteTemplate: (id: string) =>
+    request<{ deleted: string; deliverables_kept: number }>(`/api/templates/${id}`, {
+      method: "DELETE",
+    }),
 
   // ----------------------------------------------------- client allocations
   /** The person's own clients: what they hold, and what they have been offered. */
