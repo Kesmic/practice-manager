@@ -16,6 +16,8 @@ import {
 } from "../db";
 import { Router, badRequest, json, notFound, readJson } from "../http";
 import { requireArea } from "./settings";
+import { ownEngagementPredicate } from "./task-sql";
+import { seesWholePractice } from "../../shared/portfolio";
 import {
   ENGAGEMENT_STATUSES,
   MIN_SUPERVISOR_ROLE,
@@ -25,7 +27,7 @@ import {
 
 export function registerEngagementRoutes(router: Router<Env>): void {
   router.get("/api/engagements", async ({ request, env, url }) => {
-    await requireArea(env, request, "engagements");
+    const actor = await requireArea(env, request, "engagements");
 
     const filters: string[] = [];
     const binds: unknown[] = [];
@@ -56,6 +58,17 @@ export function registerEngagementRoutes(router: Router<Env>): void {
       filters.push(`(e.name LIKE ? OR e.code LIKE ? OR c.name LIKE ?)`);
       const like = `%${q}%`;
       binds.push(like, like, like);
+    }
+
+    /*
+     * Engagements carry scope and fees, which is what a client agreed to pay and for
+     * what. Scoped to the clients the reader actually reaches, on top of the firm's own
+     * decision about whether this grade may open the screen at all.
+     */
+    if (!seesWholePractice(actor.role)) {
+      const own = ownEngagementPredicate(actor.id);
+      filters.push(own.sql);
+      binds.push(...own.binds);
     }
 
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";

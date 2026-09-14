@@ -189,6 +189,54 @@ It is defined once, in [`worker/routes/task-sql.ts`](../worker/routes/task-sql.t
 
 ---
 
+## Who sees whose work
+
+Below **Manager** grade, a person sees the work that is theirs. At and above it,
+they see the practice. That threshold is deliberately the same grade that already
+decides who may assign a deliverable, allocate a client or close a job - two
+different answers to "who runs the practice" would be one too many.
+
+| | What they see |
+| --- | --- |
+| Deliverables | Ones they prepare or review |
+| Clients | Ones they hold an allocation on, are the named partner or manager for, or have a deliverable for |
+| Engagements | Those clients' engagements, and only if the firm has opened the area at all |
+
+"Working on it" is what makes the client rule usable: most staff meet a client by
+being handed a return for it, and without that arm they could open the deliverable
+but not the file it belongs to. A **declined or ended allocation is not a way in** -
+somebody who exercised clause 8.2 to refuse a client should not keep a window into
+it.
+
+**Engagements are closed to staff by default**, because an engagement says what a
+client agreed to pay and for what. The floor stays at Associate, so a firm that
+wants its staff to see the scope they are working to can open it under Portal
+settings → Who sees what; opened, it is still scoped to the clients they reach.
+
+This is not the same thing as [`shared/visibility.ts`](../shared/visibility.ts),
+and the two compose. Visibility answers "may this grade open the Clients screen at
+all", which is the firm's to set. Scoping answers "once they are on it, whose
+clients are those", which is not - showing an Associate a client they have nothing
+to do with is a confidentiality question, not a preference.
+
+The predicates live in
+[`worker/routes/task-sql.ts`](../worker/routes/task-sql.ts) beside
+`OVERDUE_PREDICATE`, for the same reason: the list, the detail, the counts, the
+dashboard and the search all have to agree. Each carries its own bind values
+rather than being a bare string - these predicates name the same id several times,
+and SQLite numbers a bare `?` one higher than the largest assigned so far in
+textual order, so a `?1` written inside a predicate appended after the caller's
+filters would silently read the caller's *first* filter value as the user id.
+
+**Detail endpoints are scoped too.** A list that filters beside a detail endpoint
+that does not is not a permission, it is a decoration: the id is in the URL of
+every link anybody was ever sent. "Does not exist, or is not one of yours" is one
+sentence on purpose - separating them would turn the endpoint into a way of asking
+whether a given id exists, which over enough guesses is a map of the firm's client
+work.
+
+---
+
 ## Allocating a client, and the right to decline
 
 The Associate Consultant Agreement is built around the **Assigned Client**: the

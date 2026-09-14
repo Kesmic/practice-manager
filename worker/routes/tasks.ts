@@ -1,5 +1,5 @@
 import type { Env } from "../env";
-import { requireRole, requireUser } from "../auth";
+import { requireRole, requireUser, type AuthenticatedUser } from "../auth";
 import {
   assertExists,
   buildUpdate,
@@ -36,7 +36,9 @@ import {
   OVERDUE_PREDICATE,
   TASK_ORDER,
   TASK_SELECT,
+  ownTaskPredicate,
 } from "./task-sql";
+import { NOT_YOURS, seesWholePractice } from "../../shared/portfolio";
 
 /** Grade required to create a deliverable at all. */
 const MIN_TASK_AUTHOR: Role = "senior_associate";
@@ -129,6 +131,24 @@ export function registerTaskRoutes(router: Router<Env>): void {
       500,
     );
 
+    /*
+     * The scope that is not a filter.
+     *
+     * Everything above narrows what the caller asked for. This narrows what they are
+     * allowed to ask for, so it goes on last and cannot be turned off by a query
+     * parameter. Before it existed, an Associate opening Deliverables saw every job in
+     * the practice - each one naming a client, a service line, a deadline and a
+     * colleague - and none of them theirs.
+     *
+     * Bound as ?1 rather than appended, because the predicate uses the id three times
+     * and positional binding is the only version of this that cannot drift.
+     */
+    if (!seesWholePractice(actor.role)) {
+      const own = ownTaskPredicate(actor.id);
+      filters.push(own.sql);
+      binds.push(...own.binds);
+    }
+
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
     const { results } = await env.DB.prepare(
       `${TASK_SELECT} ${where} ${TASK_ORDER} LIMIT ?`,
@@ -144,8 +164,15 @@ export function registerTaskRoutes(router: Router<Env>): void {
   // -------------------------------------------------------------------------
 
   router.get("/api/tasks/:id", async ({ request, env, params }) => {
-    await requireUser(env, request);
-    const task = await loadTaskSummary(env, params.id);
+    const actor = await requireUser(env, request);
+    /*
+     * Scoped here as well as in the list, and this is the half that mattered.
+     *
+     * Before this, the route called requireUser and threw the result away: any
+     * deliverable in the practice could be opened by anybody who had its id, and the id
+     * is in the URL of every link anybody was ever sent.
+     */
+    const task = await loadTaskSummary(env, params.id, actor);
 
     const [checklist, reviews, points, comments, attachments, time, events] =
       await env.DB.batch([
@@ -474,11 +501,31 @@ export function registerTaskRoutes(router: Router<Env>): void {
 // Helpers shared with the workflow and review routes
 // ---------------------------------------------------------------------------
 
-export async function loadTaskSummary(env: Env, id: string) {
-  const task = await env.DB.prepare(`${TASK_SELECT} WHERE t.id = ?`)
-    .bind(id)
+/**
+ * One deliverable, scoped to the reader where `actor` is given.
+ *
+ * The parameter is optional because this is also called straight after a write, where
+ * the caller has already been through the permission check that let them write - and
+ * where re-scoping would hide a deliverable from the person who just created it.
+ *
+ * "Does not exist, or is not one of yours" is deliberately one sentence. Separating the
+ * two would turn this into a way of asking whether a given id exists, which over enough
+ * guesses is a map of the firm's client work.
+ */
+export async function loadTaskSummary(
+  env: Env,
+  id: string,
+  actor?: AuthenticatedUser,
+) {
+  const scope =
+    actor && !seesWholePractice(actor.role) ? ownTaskPredicate(actor.id) : null;
+
+  const task = await env.DB.prepare(
+    `${TASK_SELECT} WHERE t.id = ?${scope ? ` AND ${scope.sql}` : ""}`,
+  )
+    .bind(id, ...(scope?.binds ?? []))
     .first();
-  if (!task) throw notFound("That deliverable does not exist.");
+  if (!task) throw notFound(scope ? NOT_YOURS.task : "That deliverable does not exist.");
   return task;
 }
 

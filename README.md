@@ -133,6 +133,14 @@ The portal stores no document content, grants no access, and never fetches a lin
 following one means signing in to Microsoft or Google as yourself. What the portal adds
 is the answer to "where is it", which is what was actually missing.
 
+**Staff see their own work, not the practice's** - below Manager grade a person
+sees the deliverables they prepare or review, the clients they hold or are doing
+work for, and nothing else. The detail endpoints are scoped as well as the lists,
+because a list that filters beside a detail endpoint that does not is a decoration
+rather than a permission. Engagements are closed to staff by default, since an
+engagement says what a client agreed to pay and for what, and a firm that wants
+its staff to see the scope they work to can open it.
+
 **Clients are offered, not assigned** - an allocation waits on the person's
 answer, because the Associate Consultant Agreement gives them a right to decline
 one that would prejudice a client they already hold, and a right that can only be
@@ -237,6 +245,8 @@ shared/status-reports.ts
 shared/allocations.ts
                      offering a client, the grounds for declining one, and which
                      of them the agreement protects
+shared/portfolio.ts  how much of the firm's client work one person can see
+shared/removal.ts    what removing somebody costs, and the two ways to do it
 shared/intake.ts     client intake: the two links, request states, the field
                      limits the public form and the server both enforce
 shared/files.ts      the client file: providers recognised from a link, what

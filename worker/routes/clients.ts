@@ -21,12 +21,13 @@ import {
   MIN_SUPERVISOR_ROLE,
   RISK_RATINGS,
 } from "../../shared/workflow";
-import { OVERDUE_PREDICATE, TASK_SELECT } from "./task-sql";
+import { OVERDUE_PREDICATE, TASK_SELECT, ownClientPredicate } from "./task-sql";
+import { NOT_YOURS, seesWholePractice } from "../../shared/portfolio";
 import { attachServiceLines } from "./engagements";
 
 export function registerClientRoutes(router: Router<Env>): void {
   router.get("/api/clients", async ({ request, env, url }) => {
-    await requireArea(env, request, "clients");
+    const actor = await requireArea(env, request, "clients");
 
     const filters: string[] = [];
     const binds: unknown[] = [];
@@ -46,6 +47,20 @@ export function registerClientRoutes(router: Router<Env>): void {
     if (partnerId) {
       filters.push(`c.partner_id = ?`);
       binds.push(partnerId);
+    }
+
+    /*
+     * Whose clients these are.
+     *
+     * Everything above narrows what the caller asked for; this narrows what they are
+     * entitled to ask for. Before it, an Associate opening Clients saw the firm's whole
+     * client list - which, in a practice that files other people's returns, tells you
+     * who banks with whom before you have opened a single file.
+     */
+    if (!seesWholePractice(actor.role)) {
+      const own = ownClientPredicate(actor.id);
+      filters.push(own.sql);
+      binds.push(...own.binds);
     }
 
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
@@ -72,18 +87,24 @@ export function registerClientRoutes(router: Router<Env>): void {
   });
 
   router.get("/api/clients/:id", async ({ request, env, params }) => {
-    await requireArea(env, request, "clients");
+    const actor = await requireArea(env, request, "clients");
+
+    // Scoped here too. A client id reached from a link, a search result somebody pasted
+    // or a guess must not open a file the reader has nothing to do with.
+    const scope = seesWholePractice(actor.role)
+      ? null
+      : ownClientPredicate(actor.id);
 
     const client = await env.DB.prepare(
       `SELECT c.*, up.full_name AS partner_name, um.full_name AS manager_name
          FROM clients c
          LEFT JOIN users up ON up.id = c.partner_id
          LEFT JOIN users um ON um.id = c.manager_id
-        WHERE c.id = ?`,
+        WHERE c.id = ?${scope ? ` AND ${scope.sql}` : ""}`,
     )
-      .bind(params.id)
+      .bind(params.id, ...(scope?.binds ?? []))
       .first();
-    if (!client) throw notFound("That client does not exist.");
+    if (!client) throw notFound(scope ? NOT_YOURS.client : "That client does not exist.");
 
     const engagements = await env.DB.prepare(
       `SELECT e.*,
