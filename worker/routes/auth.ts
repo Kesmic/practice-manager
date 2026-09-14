@@ -127,7 +127,7 @@ async function countAttention(
   user: AuthenticatedUser,
 ): Promise<Attention> {
   const schedule = await readReportSchedule(env);
-  const [documents, onboarding, requests, unread, filed, joined] = await env.DB.batch<
+  const [documents, onboarding, requests, unread, filed, joined, offers] = await env.DB.batch<
     Record<string, unknown>
   >([
     /*
@@ -178,6 +178,11 @@ async function countAttention(
          FROM users u LEFT JOIN employee_profiles p ON p.user_id = u.id
         WHERE u.id = ?`,
     ).bind(user.id),
+    // Clients offered to them and not yet answered. Only they can clear it.
+    env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM client_allocations
+        WHERE user_id = ? AND status = 'offered'`,
+    ).bind(user.id),
   ]);
 
   return {
@@ -193,6 +198,7 @@ async function countAttention(
       filed.results.map((row) => String(row.due_on)),
       (joined.results[0]?.joined as string | null | undefined) ?? null,
     ).length,
+    allocations: count(offers.results),
   };
 }
 

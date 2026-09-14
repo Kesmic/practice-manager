@@ -16,6 +16,12 @@ import type {
   ServiceLine,
   TaskStatus,
 } from "./workflow";
+import type {
+  AllocationAction,
+  AllocationStatus,
+  ClientTier,
+  DeclineGround,
+} from "./allocations";
 import type { ContractField, ContractTemplate } from "./contract-fields";
 import type { ReportSchedule, ReportState } from "./status-reports";
 import type { Stage, StageProgress } from "./onboarding";
@@ -799,4 +805,36 @@ export interface TeamStatusReports {
     report_id: string | null;
     report?: StatusReport;
   }>;
+}
+
+// ---------------------------------------------------------------------------
+// Client allocations
+// ---------------------------------------------------------------------------
+
+/**
+ * One client offered to, or held by, one person.
+ *
+ * `available_actions` is computed on the server from the same rules the screen would
+ * apply, so a button that appears is one the API will accept - and, more importantly,
+ * one that does not appear is one nobody can reach by guessing the URL.
+ */
+export interface ClientAllocation {
+  id: string;
+  client_id: string;
+  client_name: string;
+  client_code: string;
+  user_id: string;
+  user_name: string;
+  tier: ClientTier | null;
+  status: AllocationStatus;
+  offered_by: string | null;
+  offered_by_name: string | null;
+  offered_at: string;
+  note: string | null;
+  responded_at: string | null;
+  decline_ground: DeclineGround | null;
+  decline_reason: string | null;
+  ended_at: string | null;
+  ended_note: string | null;
+  available_actions: AllocationAction[];
 }

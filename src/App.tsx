@@ -11,6 +11,7 @@ import { DocumentView } from "./pages/DocumentView";
 import { EmployeeDetail } from "./pages/EmployeeDetail";
 import { ReviewDetailPage } from "./pages/ReviewDetail";
 import { Engagements } from "./pages/Engagements";
+import { MyClients } from "./pages/MyClients";
 import { StatusReports } from "./pages/StatusReports";
 import { Guide } from "./pages/Guide";
 import { Handbook } from "./pages/Handbook";
@@ -95,6 +96,7 @@ export function App() {
             </Protected>
           }
         />
+        <Route path="/my-clients" element={<MyClients />} />
         <Route path="/status-reports" element={<StatusReports />} />
         <Route path="/engagements" element={<Engagements />} />
         <Route path="/templates" element={<Templates />} />

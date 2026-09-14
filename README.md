@@ -133,6 +133,17 @@ The portal stores no document content, grants no access, and never fetches a lin
 following one means signing in to Microsoft or Google as yourself. What the portal adds
 is the answer to "where is it", which is what was actually missing.
 
+**Clients are offered, not assigned** - an allocation waits on the person's
+answer, because the Associate Consultant Agreement gives them a right to decline
+one that would prejudice a client they already hold, and a right that can only be
+exercised by email is a right in name. The grounds are named rather than typed,
+so nobody has to know their refusal is clause 8.2 and the firm does not have to
+read a paragraph and work out afterwards which right was used. Whether a refusal
+counts against them is said before they answer, and recorded with the decision.
+Accepting and declining belong to the person the client was offered to - no grade
+is a way round that, since a partner answering on an Associate's behalf would put
+the judgement the clause protects in the firm's hands.
+
 **Twice-weekly status reports** - one short written report per person per
 reporting day, Wednesdays and Fridays by default and changeable by the firm,
 covering everything assigned to them with the deliverables it concerns picked
@@ -223,6 +234,9 @@ shared/contract-fields.ts
 shared/status-reports.ts
                      when a status report is due, what period it answers for,
                      and who is behind
+shared/allocations.ts
+                     offering a client, the grounds for declining one, and which
+                     of them the agreement protects
 shared/intake.ts     client intake: the two links, request states, the field
                      limits the public form and the server both enforce
 shared/files.ts      the client file: providers recognised from a link, what
@@ -251,13 +265,15 @@ worker/              the API
   dates.ts           statutory deadline and recurrence arithmetic
   routes/            auth, users, clients, client-files, engagements, tasks,
                      workflow, reviews, task-items, templates, insights, intake,
-                     employees, documents, contracts, status-reports, settings
+                     employees, documents, contracts, status-reports,
+                     allocations, settings
 
 src/                 the React app (TypeScript, Vite, Tailwind)
   lib/               API client, session context, formatting
   components/        layout and shared UI
   pages/             dashboard, deliverables, task detail, clients, engagements,
-                     status reports, client requests, the two public intake forms,
+                     my clients, status reports, client requests,
+                     the two public intake forms,
                      templates, reports, team, inbox, account,
                      onboarding, handbook, document view, my details,
                      people, employee file, portal admin

@@ -14,6 +14,11 @@ import type { DeviceTrustPolicy, TrustedDevice } from "@shared/device-trust";
 import type { ReviewDetail, ReviewObjective, ReviewSummary } from "@shared/types";
 import type { IdlePolicy } from "@shared/session-policy";
 import type { Attention } from "@shared/attention";
+import type {
+  AllocationStatus,
+  ClientTier,
+  DeclineGround,
+} from "@shared/allocations";
 import type { ContractField } from "@shared/contract-fields";
 import type { ReportSchedule } from "@shared/status-reports";
 import type {
@@ -25,6 +30,7 @@ import type {
   FirmSettings,
   MyOnboarding,
   OnboardingItem,
+  ClientAllocation,
   ContractDetails,
   ContractMergeResult,
   PortalDocument,
@@ -786,6 +792,58 @@ export const api = {
         body: { assigned_user_id: assignedUserId, title, ...options },
       },
     ),
+
+  // ----------------------------------------------------- client allocations
+  /** The person's own clients: what they hold, and what they have been offered. */
+  myAllocations: () =>
+    request<{ allocations: ClientAllocation[]; on_associate_agreement: boolean }>(
+      "/api/me/allocations",
+    ),
+
+  clientAllocations: (clientId: string) =>
+    request<{ allocations: ClientAllocation[] }>(`/api/clients/${clientId}/allocations`),
+
+  allocations: (status?: AllocationStatus) =>
+    request<{ allocations: ClientAllocation[] }>(
+      `/api/allocations${status ? `?status=${status}` : ""}`,
+    ),
+
+  offerClient: (
+    clientId: string,
+    input: { user_id: string; tier?: ClientTier | null; note?: string | null },
+  ) =>
+    request<{ allocation: ClientAllocation }>(`/api/clients/${clientId}/allocations`, {
+      method: "POST",
+      body: input,
+    }),
+
+  acceptAllocation: (id: string) =>
+    request<{ allocation: ClientAllocation }>(`/api/allocations/${id}/accept`, {
+      method: "POST",
+      body: {},
+    }),
+
+  /**
+   * Declining, on a named ground. `outcome` says whether the record counts it against
+   * them - the operative half of clause 8.2, said back to the person who used it.
+   */
+  declineAllocation: (id: string, ground: DeclineGround, reason: string | null) =>
+    request<{ allocation: ClientAllocation; outcome: string }>(
+      `/api/allocations/${id}/decline`,
+      { method: "POST", body: { ground, reason } },
+    ),
+
+  withdrawAllocation: (id: string, note?: string | null) =>
+    request<{ allocation: ClientAllocation }>(`/api/allocations/${id}/withdraw`, {
+      method: "POST",
+      body: { note },
+    }),
+
+  endAllocation: (id: string, note?: string | null) =>
+    request<{ allocation: ClientAllocation }>(`/api/allocations/${id}/end`, {
+      method: "POST",
+      body: { note },
+    }),
 
   // -------------------------------------------------------- status reports
   /** The person's own report: which one is current, and what they may reference. */

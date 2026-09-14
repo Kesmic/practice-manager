@@ -189,6 +189,71 @@ It is defined once, in [`worker/routes/task-sql.ts`](../worker/routes/task-sql.t
 
 ---
 
+## Allocating a client, and the right to decline
+
+The Associate Consultant Agreement is built around the **Assigned Client**: the
+fee is per assigned client per month, the onboarding obligations are per assigned
+client, and Schedule 3 lists the clients assigned at the commencement date. The
+system had no such concept - a client had a partner and a manager, and that was
+all - so the central unit of the agreement existed only on paper.
+
+It also had no way to satisfy clause 8.2:
+
+> The Associate may decline the allocation of a further client where acceptance
+> would, in the Associate's reasonable professional judgement, prejudice the
+> proper performance of the Services in respect of an existing Assigned Client. A
+> refusal on that ground shall not constitute a breach of this Agreement.
+
+A contractual right that can only be exercised by email is a right in name. Three
+things had to be true of it in the system for it to be worth anything.
+
+**An allocation is an offer, not a fact.** Setting a column outright would leave
+nothing to decline. An allocation starts as `offered` and becomes real only when
+the person accepts it. Until then the client is not theirs and no fee runs.
+
+**Accepting and declining belong to the person it was offered to.** Not to their
+manager, not to a partner, not to an administrator. Grade is not a way round
+this: a partner accepting a client on an Associate's behalf would put the
+judgement the clause protects in the firm's hands. The firm may withdraw an offer
+before it is answered, and may reallocate a held client away - which starts the
+handover period the agreement requires - but it cannot answer for anybody.
+
+**The grounds are named, not typed.** Somebody exercising clause 8.2 should not
+have to know it is clause 8.2, and the firm should not have to read a paragraph
+of prose and decide afterwards which right was being used. Three grounds:
+
+| Ground | Counts against them |
+| --- | --- |
+| It would prejudice a client I already hold | **No** - clause 8.2 |
+| A conflict of interest or independence problem | **No** |
+| Another reason | Yes - and a reason is required |
+
+The consequence is stated **before** the person answers, not after: whether a
+refusal counts against them is the whole reason the right is usable, and somebody
+deciding whether to use it needs to read it at that moment. A reason is optional
+on the protected grounds and required on the third - demanding a justification
+for exercising a right the agreement gives unconditionally would put a condition
+on it the agreement does not.
+
+Both answers carry the same visual weight. A screen that makes Accept the obvious
+button and leaves Decline to be found tells the reader which answer is expected,
+which is what the clause exists to prevent.
+
+Declines are kept and shown with their ground rather than tidied away. The ground
+is the point: a refusal listed as a bare "declined", in a system that cannot tell
+the grounds apart, turns a right into a mark on a record. History survives a
+re-offer, so somebody who declined a client in March and was offered it again in
+September has two rows - the first is evidence a right was exercised, the second
+that it was not held against them. Only one may be live at a time.
+
+The tier recorded against an allocation is what prices it under Schedule 2 of the
+agreement, and a test checks each tier's fee is a placeholder the contract
+actually contains.
+
+Defined in [`shared/allocations.ts`](../shared/allocations.ts).
+
+---
+
 ## Status reports
 
 Everybody carrying client work writes one short report per reporting day -

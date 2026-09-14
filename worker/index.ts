@@ -12,6 +12,7 @@
 
 import type { Env } from "./env";
 import { Router, errorResponse, json } from "./http";
+import { registerAllocationRoutes } from "./routes/allocations";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerClientFileRoutes } from "./routes/client-files";
 import { registerClientRoutes } from "./routes/clients";
@@ -60,6 +61,7 @@ registerDocumentRoutes(router);
 registerSettingsRoutes(router);
 registerContractRoutes(router);
 registerStatusReportRoutes(router);
+registerAllocationRoutes(router);
 registerEraseRoutes(router);
 registerTwoFactorRoutes(router);
 
