@@ -47,6 +47,7 @@ import {
 } from "../../shared/hr";
 import { OUTSTANDING_DOCUMENTS_SQL } from "./documents";
 import { readSettings, requireArea } from "./settings";
+import { seesEmploymentDetail } from "../../shared/directory";
 
 /** Employment columns - safe for anyone with directory access. */
 const EMPLOYMENT_COLUMNS = `p.user_id, p.staff_no, p.job_title, p.department,
@@ -273,6 +274,95 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
   // -------------------------------------------------------------------------
   // Directory and personnel files
   // -------------------------------------------------------------------------
+
+  /**
+   * The firm-wide staff directory.
+   *
+   * Open to everybody, unlike `/api/employees` below, which is the personnel directory
+   * and is gated. A practice needs a phone list: somebody preparing a return has to be
+   * able to find out who reviews for the tax team and which address to use, and asking
+   * around for that is how a new joiner spends their first fortnight.
+   *
+   * What differs by grade is not who appears - everybody does - but what is said about
+   * them. `shared/directory.ts` sets out the line and why it falls where it does. The
+   * short version: working identity for everybody, employment facts for Manager grade
+   * and above, and nothing personal for anybody here at all.
+   */
+  router.get("/api/directory", async ({ request, env, url }) => {
+    const actor = await requireUser(env, request);
+    const detail = seesEmploymentDetail(actor.role);
+
+    /*
+     * Retired accounts are left out. They are kept so that the client work still shows
+     * who prepared and who reviewed each job, but a person who has left the firm is not
+     * somebody a colleague should be trying to email - and "Former colleague" with a
+     * placeholder address is a directory entry nobody can act on.
+     *
+     * Suspended accounts do stay: somebody on leave is still a colleague.
+     */
+    const filters: string[] = [];
+    const binds: unknown[] = [actor.id];
+
+    const q = url.searchParams.get("q")?.trim();
+    if (q) {
+      filters.push(
+        `(u.full_name LIKE ? OR u.email LIKE ? OR p.job_title LIKE ? OR p.department LIKE ?)`,
+      );
+      const like = `%${q}%`;
+      binds.push(like, like, like, like);
+    }
+    const where = filters.length ? `AND ${filters.join(" AND ")}` : "";
+
+    /*
+     * The columns a reader below Manager grade must never receive are left out of the
+     * SELECT rather than deleted from the rows afterwards. Filtering after the fact
+     * works until somebody adds a column and forgets the filter; not asking for it
+     * cannot fail that way.
+     */
+    const { results } = await env.DB.prepare(
+      `SELECT u.id, u.full_name, u.email, u.role,
+              u.status AS account_status,
+              p.job_title, p.department, p.work_location,
+              ${detail ? "p.employment_status, p.staff_no, p.start_date," : ""}
+              m.full_name AS line_manager_name,
+              (SELECT COUNT(*) FROM tasks t
+                WHERE t.status NOT IN ('closed','cancelled')
+                  AND (t.assignee_id = u.id OR t.reviewer_id = u.id)
+                  AND (t.assignee_id = ?1 OR t.reviewer_id = ?1)
+                  AND u.id != ?1) AS shared_deliverables
+         FROM users u
+         LEFT JOIN employee_profiles p ON p.user_id = u.id
+         LEFT JOIN users m ON m.id = p.line_manager_id
+        WHERE u.email NOT LIKE '%@removed.invalid' ${where}
+        ORDER BY u.full_name`,
+    )
+      .bind(...binds)
+      .all<Record<string, unknown>>();
+
+    return json({
+      people: results.map((row) => ({
+        id: row.id,
+        full_name: row.full_name,
+        role: row.role,
+        title: row.job_title ?? null,
+        department: row.department ?? null,
+        email: row.email,
+        work_location: row.work_location ?? null,
+        line_manager_name: row.line_manager_name ?? null,
+        active: row.account_status === "active",
+        shared_deliverables: Number(row.shared_deliverables ?? 0),
+        ...(detail
+          ? {
+              employment_status: row.employment_status ?? null,
+              staff_no: row.staff_no ?? null,
+              start_date: row.start_date ?? null,
+            }
+          : {}),
+      })),
+      // So the screen knows whether to offer a link through to the personnel file.
+      can_open_records: canSeeDirectoryOrHr(actor),
+    });
+  });
 
   router.get("/api/employees", async ({ request, env, url }) => {
     // Both gates apply. The area setting lets the firm tighten this further than the

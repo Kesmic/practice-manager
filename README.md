@@ -133,6 +133,14 @@ The portal stores no document content, grants no access, and never fetches a lin
 following one means signing in to Microsoft or Google as yourself. What the portal adds
 is the answer to "where is it", which is what was actually missing.
 
+**A staff directory everyone can open** - name, grade, job title, department, work
+email and who reports to whom, for the whole firm, because asking around for a
+colleague's job title is how a new joiner spends a fortnight. What differs by
+grade is what is said about each person, not who appears: employment status, staff
+number and start date stop at Manager, and nothing personal is there for anybody.
+It also marks the colleagues you share live deliverables with, which is the half of
+"who do I talk to" that a grade cannot answer.
+
 **Staff see their own work, not the practice's** - below Manager grade a person
 sees the deliverables they prepare or review, the clients they hold or are doing
 work for, and nothing else. The detail endpoints are scoped as well as the lists,
@@ -246,6 +254,7 @@ shared/allocations.ts
                      offering a client, the grounds for declining one, and which
                      of them the agreement protects
 shared/portfolio.ts  how much of the firm's client work one person can see
+shared/directory.ts  the staff directory, and what each grade is told
 shared/removal.ts    what removing somebody costs, and the two ways to do it
 shared/intake.ts     client intake: the two links, request states, the field
                      limits the public form and the server both enforce
@@ -282,7 +291,7 @@ src/                 the React app (TypeScript, Vite, Tailwind)
   lib/               API client, session context, formatting
   components/        layout and shared UI
   pages/             dashboard, deliverables, task detail, clients, engagements,
-                     my clients, status reports, client requests,
+                     my clients, staff directory, status reports, client requests,
                      the two public intake forms,
                      templates, reports, team, inbox, account,
                      onboarding, handbook, document view, my details,

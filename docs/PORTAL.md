@@ -273,6 +273,44 @@ date input needs.
 
 ---
 
+## The staff directory
+
+A practice needs a phone list. Somebody preparing a return has to be able to find
+out who reviews for the tax team, what a colleague's job title is and which
+address to use, and asking around for that is how a new joiner spends their first
+fortnight. So `/directory` is open to everybody.
+
+**What differs by grade is not who appears but what is said about them.**
+
+| | Shown |
+| --- | --- |
+| Everybody | Name, grade, job title, department, work email, location, who they report to |
+| Manager and above | The same, plus employment status, staff number and start date - and a link through to the personnel file |
+| Nobody, here | Personal phone or address, date of birth, next of kin, pay, bank details, identification, qualifications |
+
+Employment status is the one that is easy to miss: `probation` on a directory
+card tells the whole firm something that is between a colleague and their manager.
+The fields a reader below Manager grade must not receive are left out of the
+`SELECT` rather than deleted from the rows afterwards - filtering after the fact
+works until somebody adds a column and forgets the filter.
+
+Alongside the grade rule there is a work rule, which adds rather than subtracts:
+the directory marks the colleagues you share live deliverables with, and how many.
+That is the half of "who do I talk to" a grade cannot answer. Closed and cancelled
+deliverables do not count - a figure that sends somebody to talk about a job that
+finished is worse than no figure.
+
+Retired accounts are left out. They are kept so the client work still shows who
+prepared and who reviewed each job, but "Former colleague" at an unroutable
+address is an entry nobody can act on. A **suspended** colleague does stay:
+somebody on leave is still a colleague.
+
+This is separate from `/people`, which is the personnel directory and stays at
+Manager grade under the `people` area setting. The staff directory does not
+loosen it.
+
+---
+
 ## Where things are
 
 | Screen | Path | Who |
@@ -281,6 +319,7 @@ date input needs.
 | Employee handbook | `/handbook` | Everyone |
 | A document, with signing | `/documents/:id` | Whoever it is addressed to |
 | My details | `/my-profile` | Everyone |
+| Staff directory | `/directory` | Everyone |
 | People directory and onboarding progress | `/people` | Manager and above |
 | Personnel file | `/people/:id` | Self, manager, HR - by section |
 | Portal settings: handbook, welcome, logo, email | `/portal-admin` | Partner and above |

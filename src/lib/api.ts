@@ -20,6 +20,7 @@ import type {
   DeclineGround,
 } from "@shared/allocations";
 import type { ContractField } from "@shared/contract-fields";
+import type { DirectoryEntry } from "@shared/directory";
 import type { Removal, RemovalFootprint } from "@shared/removal";
 import type { ReportSchedule } from "@shared/status-reports";
 import type {
@@ -797,6 +798,16 @@ export const api = {
         method: "POST",
         body: { assigned_user_id: assignedUserId, title, ...options },
       },
+    ),
+
+  // ------------------------------------------------------------- directory
+  /**
+   * The firm-wide staff directory. Everybody appears; what is said about them depends
+   * on the reader's grade.
+   */
+  directory: (q?: string) =>
+    request<{ people: DirectoryEntry[]; can_open_records: boolean }>(
+      `/api/directory${q ? `?q=${encodeURIComponent(q)}` : ""}`,
     ),
 
   // -------------------------------------------------------------- removals
