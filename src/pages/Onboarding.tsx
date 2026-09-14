@@ -4,7 +4,7 @@ import type { MyOnboarding } from "@shared/types";
 import { PROFILE_FIELD_LABELS, requiredAction } from "@shared/hr";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
-import { Markdown } from "../components/Markdown";
+import { WelcomeCard } from "../components/WelcomeCard";
 import { FirstRunForm } from "../components/FirstRunForm";
 import { OnboardingStages } from "../components/OnboardingStages";
 import {
@@ -128,18 +128,18 @@ export function Onboarding() {
         </div>
       </div>
 
-      {/* Welcome message */}
-      {data.welcome_message.trim() && (
-        <section className="card p-5">
-          <Markdown>{data.welcome_message}</Markdown>
-          {data.md_name && (
-            <p className="mt-4 border-t border-slate-200 pt-3 text-sm">
-              <span className="font-semibold text-slate-800">{data.md_name}</span>
-              <span className="text-slate-500"> · {data.md_title}</span>
-            </p>
-          )}
-        </section>
-      )}
+      {/*
+        The Managing Director's welcome. `variant` chooses the presentation - see
+        WelcomeCard for the four the firm can pick from; changing this one word changes
+        the card.
+      */}
+      <WelcomeCard
+        variant="letter"
+        body={data.welcome_message}
+        firmName={data.firm_name}
+        mdName={data.md_name}
+        mdTitle={data.md_title}
+      />
 
       {/* Documents awaiting signature */}
       <section className="card">
