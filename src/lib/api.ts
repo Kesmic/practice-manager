@@ -809,6 +809,19 @@ export const api = {
       },
     ),
 
+  /**
+   * Where to download somebody's signed copy of a document.
+   *
+   * A plain URL rather than a fetch: the response carries Content-Disposition, so
+   * letting the browser follow it gives a real download with the right filename.
+   * Fetching it into a blob would work too, and would throw away the filename the
+   * server chose.
+   */
+  signedCopyUrl: (documentId: string, userId?: string) =>
+    `/api/documents/${documentId}/signed-copy${
+      userId ? `?user_id=${encodeURIComponent(userId)}` : ""
+    }`,
+
   // ------------------------------------------------------------- directory
   /**
    * The firm-wide staff directory. Everybody appears; what is said about them depends

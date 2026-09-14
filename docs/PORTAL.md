@@ -235,6 +235,47 @@ delay that is often the firm's.
 
 ---
 
+## Downloading a signed copy
+
+Everything a typed-name signature needs to stand up was already recorded - who
+signed, the name they typed, when, from what address, on which version, and a
+SHA-256 of the exact text agreed to. All of it lived in a row the signatory could
+not obtain, so somebody asked for their contract by a bank or a landlord had a
+screenshot to offer.
+
+`GET /api/documents/:id/signed-copy` returns the whole thing as one self-contained
+file: the document as they read it, then an **electronic signature certificate**
+setting out the evidence, styled to print to a clean PDF from any browser. A
+person may download their own; an HR administrator may download anybody's, because
+the personnel file is theirs to keep; nobody else, at any grade.
+
+**The file re-checks itself.** The hash recorded at signature is compared with the
+hash of the text actually in the file, and the certificate says which it found. If
+the document has been amended since - which raises its version and asks the person
+to sign again - the certificate says so in terms, and tells the reader to treat the
+text as the current wording rather than the signed one. A signed copy that has
+drifted from what was signed is worse than no copy, because it looks convincing.
+
+**One grammar, two renderers.** The markdown parser lives in
+[`shared/markdown.ts`](../shared/markdown.ts) and produces a small tree;
+`src/components/Markdown.tsx` turns it into React elements for the screen and
+`renderMarkdownHtml` turns the same tree into HTML for the download. Written
+separately, the two could disagree about a numbered list or a bold run - and the
+person would have signed one thing and be holding another.
+
+It is HTML rather than PDF because a PDF writer that lays out a fifteen-page
+agreement well is a large thing to carry in a Worker, and every browser already
+prints to PDF. Every value is escaped on the way in, including the firm's own
+settings: a signed copy is a file the firm hands to an employee and the employee
+hands to a bank, and nothing in the portal should be able to put script into it.
+
+The certificate states what the firm recorded and how to check it. It does not
+claim to be a qualified electronic signature or to satisfy any jurisdiction,
+because whether a typed name is a signature where the firm operates is a legal
+question and not one a file settles by asserting it.
+
+---
+
 ## Completing a contract
 
 Both contract templates are written with bracketed placeholders - `[JOB TITLE]`,

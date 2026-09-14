@@ -72,6 +72,14 @@ from the same column either way. Anything still without a value is left as its
 bracket rather than printed empty, and the screen says which, because a contract
 reading "notice of  days" is grammatical enough to sign by mistake.
 
+**A downloadable signed copy** - the document as it was read, plus an electronic
+signature certificate carrying the typed name, the account it was signed from, the
+date and time, the IP address, the device, the version, and the SHA-256 of the
+exact text agreed to. The file re-checks itself: if the document has been amended
+since, the certificate says so rather than looking convincing. Self-contained HTML
+that prints to a clean PDF from any browser, so somebody asked for their contract
+by a bank or a landlord has something to send.
+
 **Contracts signed on the portal** - the employee reads the document, ticks an
 explicit attestation and types their full name. The system requires the typed
 name to match their account, waits until they have scrolled to the end, and
@@ -258,6 +266,10 @@ shared/allocations.ts
 shared/portfolio.ts  how much of the firm's client work one person can see
 shared/directory.ts  the staff directory, and what each grade is told
 shared/first-run.ts  the three things a new joiner finishes, and in which order
+shared/markdown.ts   the document grammar, parsed once and rendered to both React
+                     and HTML so a signed copy matches what was on screen
+shared/signed-copy.ts
+                     the downloadable signed document and its signature certificate
 shared/removal.ts    what removing somebody costs, and the two ways to do it
 shared/intake.ts     client intake: the two links, request states, the field
                      limits the public form and the server both enforce

@@ -31,6 +31,11 @@ import {
   requiredAction,
 } from "../../shared/hr";
 import { fieldFor, fillContract } from "../../shared/contract-fields";
+import {
+  renderSignedCopy,
+  signedCopyFilename,
+  type SignedCopy,
+} from "../../shared/signed-copy";
 import { resolveContract, withFirmName } from "../contract-fields";
 import { readSettings } from "./settings";
 
@@ -377,6 +382,86 @@ export function registerDocumentRoutes(router: Router<Env>): void {
    * each employee's contract is its own record with its own signature and its own
    * version history.
    */
+  /**
+   * A downloadable copy of a document somebody has signed, with the evidence attached.
+   *
+   * The portal already recorded everything a typed-name signature needs to stand up -
+   * who signed, the name they typed, when, from what address, on which version, and a
+   * SHA-256 of the text agreed to. All of it lived in a row the signatory could not
+   * obtain, so somebody asked for their contract by a bank or a landlord had a
+   * screenshot to offer.
+   *
+   * Returned as a file rather than a page. It is the document plus a signature
+   * certificate, styled to print to a clean PDF from any browser.
+   */
+  router.get("/api/documents/:id/signed-copy", async ({ request, env, params }) => {
+    const actor = await requireUser(env, request);
+
+    /*
+     * Whose copy this is. A person may download their own; an HR administrator may
+     * download anybody's, because the personnel file is theirs to keep. Nobody else,
+     * whatever their grade - a signed contract is the terms of somebody's employment.
+     */
+    const forUserId =
+      new URL(request.url).searchParams.get("user_id")?.trim() || actor.id;
+    if (forUserId !== actor.id && !isHrAdmin(actor.role)) {
+      throw forbidden("You can only download your own signed documents.");
+    }
+
+    const row = await env.DB.prepare(
+      `SELECT d.title, d.body, d.kind, s.version, s.action, s.typed_name,
+              s.content_hash, s.signed_at, s.ip_address, s.user_agent,
+              u.full_name AS signatory_name, u.email AS signatory_email
+         FROM document_signatures s
+         JOIN documents d ON d.id = s.document_id
+         JOIN users u ON u.id = s.user_id
+        WHERE s.document_id = ? AND s.user_id = ?
+        ORDER BY s.version DESC
+        LIMIT 1`,
+    )
+      .bind(params.id, forUserId)
+      .first<Record<string, unknown>>();
+
+    /*
+     * One sentence whether the document does not exist or was never signed. Splitting
+     * them would let anybody probe which documents exist and who has signed what.
+     */
+    if (!row) {
+      throw notFound("There is no signed copy of that document for this person.");
+    }
+
+    const settings = await readSettings(env);
+    const body = String(row.body);
+
+    const copy: SignedCopy = {
+      title: String(row.title),
+      body,
+      kind: String(row.kind),
+      version: Number(row.version),
+      signatory_name: String(row.signatory_name),
+      signatory_email: String(row.signatory_email),
+      typed_name: String(row.typed_name),
+      action: row.action === "acknowledged" ? "acknowledged" : "signed",
+      signed_at: String(row.signed_at),
+      ip_address: (row.ip_address as string | null) ?? null,
+      user_agent: (row.user_agent as string | null) ?? null,
+      content_hash: String(row.content_hash),
+      // Worked out here rather than trusted, which is what lets the certificate say
+      // whether the text in the file is the text that was signed.
+      current_hash: await sha256Hex(body),
+      firm_name: settings.firm_name,
+    };
+
+    return new Response(renderSignedCopy(copy), {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${signedCopyFilename(copy)}"`,
+        // A signed copy is somebody's employment terms; nothing should cache it.
+        "Cache-Control": "no-store",
+      },
+    });
+  });
+
   router.post("/api/documents/:id/copy-for", async ({ request, env, params }) => {
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const body = await readJson<{

@@ -277,9 +277,14 @@ export function Onboarding() {
                 <Link to={`/documents/${doc.id}`} className="link text-sm">
                   {doc.title}
                 </Link>
-                <span className="text-xs text-slate-500">
-                  {doc.action === "signed" ? "Signed" : "Acknowledged"}{" "}
-                  {formatDate(doc.signed_at)}
+                <span className="flex items-center gap-3 text-xs text-slate-500">
+                  <span>
+                    {doc.action === "signed" ? "Signed" : "Acknowledged"}{" "}
+                    {formatDate(doc.signed_at)}
+                  </span>
+                  <a className="link" href={api.signedCopyUrl(doc.id)}>
+                    Download
+                  </a>
                 </span>
               </li>
             ))}

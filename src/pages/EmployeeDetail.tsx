@@ -562,9 +562,18 @@ function DocumentsTab({
                 <Link to={`/documents/${signature.document_id}`} className="link text-sm">
                   {signature.document_title}
                 </Link>
-                <span className="text-xs text-slate-500">
-                  {signature.action === "signed" ? "Signed" : "Acknowledged"} v
-                  {signature.version} · {formatDateTime(signature.signed_at)}
+                <span className="flex items-center gap-3 text-xs text-slate-500">
+                  <span>
+                    {signature.action === "signed" ? "Signed" : "Acknowledged"} v
+                    {signature.version} · {formatDateTime(signature.signed_at)}
+                  </span>
+                  {/* HR keeps the personnel file, so they can take the copy for it. */}
+                  <a
+                    className="link"
+                    href={api.signedCopyUrl(signature.document_id, file.user.id)}
+                  >
+                    Download
+                  </a>
                 </span>
               </li>
             ))}
