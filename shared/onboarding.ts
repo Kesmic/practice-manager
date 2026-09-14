@@ -137,30 +137,13 @@ const COMMON: OnboardingStep[] = [
   },
 
   // ---------------------------------------------------------- first sign-in
-  {
-    label: "Choose your own password",
-    detail:
-      "The one you were given is temporary and reaches nothing else until you replace it.",
-    owner: "employee",
-    category: "Access",
-    stage: "first_signin",
-  },
-  {
-    label: "Set up two-step sign-in, if your grade requires it",
-    detail: "An authenticator app, plus recovery codes to keep somewhere safe.",
-    owner: "employee",
-    category: "Access",
-    stage: "first_signin",
-  },
+  //
+  // In the order the portal actually asks for them: the details the firm cannot proceed
+  // without, then a password of their own, then two-step sign-in. shared/first-run.ts
+  // holds that order and argues for it; this list has to match it, or the checklist
+  // tells a new joiner to do something the portal is not asking for yet.
   {
     label: "Give your personal and emergency contact details",
-    owner: "employee",
-    category: "Your details",
-    stage: "first_signin",
-  },
-  {
-    label: "Give your bank details",
-    detail: "So you can be paid. Visible to Partners only.",
     owner: "employee",
     category: "Your details",
     stage: "first_signin",
@@ -175,6 +158,28 @@ const COMMON: OnboardingStep[] = [
     label: "Give your qualifications and professional membership",
     owner: "employee",
     category: "Your details",
+    stage: "first_signin",
+  },
+  {
+    label: "Give your bank details",
+    detail: "So you can be paid. Visible to Partners only.",
+    owner: "employee",
+    category: "Your details",
+    stage: "first_signin",
+  },
+  {
+    label: "Choose your own password",
+    detail:
+      "The one you were given is temporary and reaches nothing else until you replace it.",
+    owner: "employee",
+    category: "Access",
+    stage: "first_signin",
+  },
+  {
+    label: "Set up two-step sign-in, if your grade requires it",
+    detail: "An authenticator app, plus recovery codes to keep somewhere safe.",
+    owner: "employee",
+    category: "Access",
     stage: "first_signin",
   },
 

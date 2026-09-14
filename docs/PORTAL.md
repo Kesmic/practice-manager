@@ -194,12 +194,33 @@ disagree.
 
 ### The first sign-in is a gate
 
-The six first-sign-in steps are the one part of the programme that is enforced
-rather than surfaced. Until they are done the API answers `403 first_run_pending`
-to everything except the person's own account screen, their onboarding page, and
-the endpoints they need to get through it. Fifteen fields are required, and all of
-them are required: contact and emergency contact, identification and right to
-work, qualifications, and bank details.
+Three steps, in this order, defined in
+[`shared/first-run.ts`](../shared/first-run.ts):
+
+1. **Their onboarding** - fifteen fields, all required: contact and emergency
+   contact, identification and right to work, qualifications, and bank details.
+2. **A password of their own**, replacing the temporary one they were emailed.
+3. **Two-step sign-in**, where their grade requires it.
+
+Onboarding first, at the firm's request. Being dropped straight onto a password
+form, before anything has explained what the portal is or what is coming, tells
+somebody nothing about the firm they have joined. The onboarding page does: the
+welcome, the five stages, the dates, and what is theirs to do.
+
+That leaves the temporary password usable for a little longer, and it is worth
+being plain that this costs less than it looks. A temporary password that reaches
+the portal at all is already an account takeover waiting to happen in either
+order: whoever holds it can sign in and set a password of their own, which is the
+first thing they would do. What protects the firm is the confinement, not the
+sequence - on any of the three steps the person reaches their own account screen
+and their own onboarding and nothing else, and the API answers `403
+first_run_pending` to everything else.
+
+The Worker and the browser read the same module: the server decides what a request
+may reach, the browser decides where to send somebody, and a browser routing to
+the password screen while the server still demands onboarding is a loop with no
+way out. The onboarding checklist is ordered to match, so it never tells somebody
+to do something the portal is not asking for yet.
 
 The reason for the gate is that this information is what the firm cannot proceed
 without and cannot get any other way. A contract cannot be completed without a

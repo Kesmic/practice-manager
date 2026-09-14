@@ -27,11 +27,13 @@ agreement rather than a contract of employment. That single step is the whole
 difference - an Associate still signs a contract, is still paid, still
 acknowledges the conduct standards, and is still reviewed.
 
-**A first sign-in that asks once for everything** - the fifteen things the firm
-cannot proceed without and cannot get any other way: contact and emergency
-contact, identification and right to work, qualifications, and bank details. All
-of it is required, and until it is given the API confines the person to their
-account and their onboarding. Everything after that stage is surfaced, not
+**A first sign-in in three steps** - their onboarding, then a password of their
+own, then two-step sign-in where the grade requires it. Onboarding first, so a new
+joiner's first morning starts on the page that explains what is coming rather than
+on a bare password form. Fifteen things are asked once and all are required:
+contact and emergency contact, identification and right to work, qualifications,
+and bank details. Until each step is done the API confines the person to the
+screen that lets them finish it. Everything after that stage is surfaced, not
 enforced.
 
 **Probation and annual reviews** - each person rated against what their grade
@@ -255,6 +257,7 @@ shared/allocations.ts
                      of them the agreement protects
 shared/portfolio.ts  how much of the firm's client work one person can see
 shared/directory.ts  the staff directory, and what each grade is told
+shared/first-run.ts  the three things a new joiner finishes, and in which order
 shared/removal.ts    what removing somebody costs, and the two ways to do it
 shared/intake.ts     client intake: the two links, request states, the field
                      limits the public form and the server both enforce

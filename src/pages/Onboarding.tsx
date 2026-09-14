@@ -4,6 +4,7 @@ import type { MyOnboarding } from "@shared/types";
 import { PROFILE_FIELD_LABELS, requiredAction } from "@shared/hr";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
+import { FirstRunPrompt } from "../components/FirstRunPrompt";
 import { WelcomeCard } from "../components/WelcomeCard";
 import { FirstRunForm } from "../components/FirstRunForm";
 import { OnboardingStages } from "../components/OnboardingStages";
@@ -20,7 +21,7 @@ import { formatDate, percent } from "../lib/format";
  * acknowledge, their own onboarding steps, and what the firm still owes them.
  */
 export function Onboarding() {
-  const { user, refresh } = useSession();
+  const { user, refresh, firstRunStep } = useSession();
   const [data, setData] = useState<MyOnboarding | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -59,6 +60,7 @@ export function Onboarding() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      <FirstRunPrompt step={firstRunStep} />
       <div>
         <h1 className="section-title">Welcome to {data.firm_name}</h1>
         <p className="muted mt-0.5">
@@ -129,9 +131,9 @@ export function Onboarding() {
       </div>
 
       {/*
-        The Managing Director's welcome. `variant` chooses the presentation - see
-        WelcomeCard for the four the firm can pick from; changing this one word changes
-        the card.
+        The Managing Director's welcome, in the Letter presentation the firm chose: a
+        narrower measure than the rest of the page, and the signature set the way a
+        letter signs off. WelcomeCard holds the alternatives if that is ever revisited.
       */}
       <WelcomeCard
         variant="letter"

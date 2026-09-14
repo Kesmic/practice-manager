@@ -20,6 +20,7 @@ import type {
   DeclineGround,
 } from "@shared/allocations";
 import type { ContractField } from "@shared/contract-fields";
+import type { FirstRunState, FirstRunStep } from "@shared/first-run";
 import type { DirectoryEntry } from "@shared/directory";
 import type { Removal, RemovalFootprint } from "@shared/removal";
 import type { ReportSchedule } from "@shared/status-reports";
@@ -133,6 +134,14 @@ const qs = (params: Record<string, string | number | undefined | null>): string 
 
 export interface SessionResponse {
   user: User | null;
+  /** What this person still owes before the portal opens up. */
+  first_run?: FirstRunState;
+  /**
+   * The next of those, or null when there is nothing outstanding. Computed by the
+   * server from the same module its own gates use, so the browser cannot route somebody
+   * to a screen the server was not going to let them past.
+   */
+  next_first_run_step?: FirstRunStep | null;
   unread_notifications?: number;
   /** Per-destination counts for the sidebar badges. */
   attention?: Attention;
