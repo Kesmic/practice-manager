@@ -64,7 +64,16 @@ const PERSONAL_COLUMNS = `p.date_of_birth, p.gender, p.marital_status,
   p.id_type, p.id_number, p.tin, p.id_document_url, p.right_to_work_note,
   p.qualification_document_url`;
 
-const PERSONAL_FIELDS = [
+/**
+ * The columns `PATCH /api/me/profile` will write.
+ *
+ * Exported so the first-run invariant can be tested: every field the first sign-in
+ * requires must be one this endpoint actually writes. A required field missing from
+ * this list is not a validation error - the write silently drops it, the person fills
+ * the form, presses save, and is held on it for ever with nothing on screen to explain
+ * why. `tests/first-run.test.ts` pins it.
+ */
+export const PERSONAL_FIELDS = [
   "date_of_birth",
   "gender",
   "marital_status",

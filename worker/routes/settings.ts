@@ -203,7 +203,21 @@ export function registerSettingsRoutes(router: Router<Env>): void {
    * decide what to draw, and it describes their own access rather than anyone else's.
    */
   router.get("/api/visibility", async ({ request, env }) => {
-    await requireUser(env, request);
+    /*
+     * Reachable part-way through a first sign-in, because the session provider reads it
+     * on every refresh and somebody confined to their onboarding is still a signed-in
+     * user drawing a sidebar. Refused, the browser fell back to the built-in defaults
+     * and left a 403 in the console on every load for the one person least able to
+     * make sense of it.
+     *
+     * It describes the reader's own access rather than anybody else's, so there is
+     * nothing here to withhold from them.
+     */
+    await requireUser(env, request, {
+      allowPasswordPending: true,
+      allowTwoFactorPending: true,
+      allowProfilePending: true,
+    });
     return json({ visibility: await readVisibilitySetting(env) });
   });
 

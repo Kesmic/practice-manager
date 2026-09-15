@@ -25,6 +25,12 @@ import {
   type FirstRunState,
 } from "../shared/first-run";
 import { programmeFor } from "../shared/onboarding";
+import {
+  FIRST_RUN_GROUPS,
+  REQUIRED_BANK_FIELDS,
+  REQUIRED_PROFILE_FIELDS,
+} from "../shared/hr";
+import { PERSONAL_FIELDS } from "../worker/routes/employees";
 import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
@@ -294,4 +300,65 @@ test("an administrator who has been onboarded is still not held", () => {
   );
   assert.equal(through(db, "boss", "admin"), true);
   db.close();
+});
+
+// ---------------------------------------------------------------------------
+// Nothing may be required that cannot be given
+// ---------------------------------------------------------------------------
+
+/**
+ * The permanent-lockout class of bug, pinned.
+ *
+ * Three lists have to agree, and none of them sits next to the others:
+ * what the first sign-in *requires*, what the form *asks*, and what the endpoint the
+ * form posts to will actually *write*. A field in the first list and missing from
+ * either of the others is not a validation error - the person fills the form, presses
+ * save, and is held on it for ever with nothing on screen to explain why.
+ *
+ * Checked rather than read, because reading is what let the last trap through.
+ */
+test("every field the first sign-in requires is one the form asks for", () => {
+  const asked = new Set(FIRST_RUN_GROUPS.flatMap((g) => g.fields));
+  for (const field of [...REQUIRED_PROFILE_FIELDS, ...REQUIRED_BANK_FIELDS]) {
+    assert.ok(asked.has(field), `${field} is required but the form never asks for it`);
+  }
+});
+
+test("the form asks for nothing that is not required", () => {
+  // Not a lockout, but an optional field presented as mandatory is somebody being made
+  // to invent an answer.
+  const required = new Set([...REQUIRED_PROFILE_FIELDS, ...REQUIRED_BANK_FIELDS]);
+  for (const field of FIRST_RUN_GROUPS.flatMap((g) => g.fields)) {
+    assert.ok(required.has(field), `the form asks for ${field}, which is not required`);
+  }
+});
+
+test("every required personal field is one the profile endpoint will write", () => {
+  // PATCH /api/me/profile copies only the columns in PERSONAL_FIELDS. A required field
+  // missing from that list is dropped by the write without an error.
+  const writable = new Set(PERSONAL_FIELDS);
+  for (const field of REQUIRED_PROFILE_FIELDS) {
+    assert.ok(writable.has(field), `${field} is required but /api/me/profile drops it`);
+  }
+});
+
+test("every required bank field is one the bank endpoint will write", () => {
+  // PATCH /api/me/bank names its four columns explicitly.
+  const writable = new Set(["bank_name", "bank_branch", "account_name", "account_number"]);
+  for (const field of REQUIRED_BANK_FIELDS) {
+    assert.ok(writable.has(field), `${field} is required but /api/me/bank drops it`);
+  }
+});
+
+test("the two halves of the form go to the two endpoints that can store them", () => {
+  // The form splits its payload on BANK_FIELDS. A bank column routed to the profile
+  // endpoint, or the reverse, is dropped in the same silent way.
+  const bank = new Set(REQUIRED_BANK_FIELDS);
+  const personal = new Set(PERSONAL_FIELDS);
+  for (const field of REQUIRED_PROFILE_FIELDS) {
+    assert.ok(!bank.has(field), `${field} is on both sides of the split`);
+  }
+  for (const field of REQUIRED_BANK_FIELDS) {
+    assert.ok(!personal.has(field), `${field} is on both sides of the split`);
+  }
 });
