@@ -45,8 +45,8 @@ export function registerInsightRoutes(router: Router<Env>): void {
            (SELECT COUNT(*) FROM notifications n
              WHERE n.user_id = ?1 AND n.read_at IS NULL) AS unread_notifications,
            (SELECT COUNT(*) FROM tasks t
-             WHERE ${AWAITING_A_REVIEWER}) AS awaiting_a_reviewer`,
-      ).bind(actor.id),
+             WHERE ${AWAITING_A_REVIEWER} AND ?2 = 1) AS awaiting_a_reviewer`,
+      ).bind(actor.id, supervises ? 1 : 0),
 
       env.DB.prepare(
         `${TASK_SELECT}

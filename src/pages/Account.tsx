@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ROLE_LABELS } from "@shared/workflow";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
+import { FirstRunPrompt } from "../components/FirstRunPrompt";
 import {
   DetailRow,
   ErrorBanner,
@@ -15,7 +16,7 @@ import { SecurityQuestionsCard } from "../components/SecurityQuestionsCard";
 import { TrustedDevicesCard } from "../components/TrustedDevicesCard";
 
 export function Account() {
-  const { user, refresh } = useSession();
+  const { user, refresh, firstRunStep } = useSession();
   const [form, setForm] = useState({ current: "", next: "", confirm: "" });
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -57,11 +58,84 @@ export function Account() {
 
   if (!user) return null;
 
+  /*
+   * Held as an element so it can sit in two places. During the password step it goes
+   * straight under the banner, because that is the one thing the person has been sent
+   * here to do; the rest of the time it keeps its usual place at the foot of the page.
+   */
+  const passwordForm = (
+      <form onSubmit={submit} className="card space-y-4 p-5">
+        <h2 className="card-title">Change password</h2>
+        <ErrorBanner error={error} onDismiss={() => setError(null)} />
+        <SuccessBanner message={done} onDismiss={() => setDone(null)} />
+
+        <Field label="Current password" required>
+          {(id) => (
+            <TextInput
+              id={id}
+              type="password"
+              required
+              autoComplete="current-password"
+              value={form.current}
+              onChange={set("current")}
+            />
+          )}
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="New password"
+            required
+            hint="At least 12 characters, mixing three character types."
+          >
+            {(id) => (
+              <TextInput
+                id={id}
+                type="password"
+                required
+                autoComplete="new-password"
+                value={form.next}
+                onChange={set("next")}
+              />
+            )}
+          </Field>
+          <Field label="Confirm new password" required>
+            {(id) => (
+              <TextInput
+                id={id}
+                type="password"
+                required
+                autoComplete="new-password"
+                value={form.confirm}
+                onChange={set("confirm")}
+              />
+            )}
+          </Field>
+        </div>
+
+        <div className="flex justify-end">
+          <button type="submit" className="btn-primary" disabled={busy}>
+            {busy ? "Saving…" : "Change password"}
+          </button>
+        </div>
+      </form>
+  );
+
   return (
     <div className="mx-auto max-w-2xl space-y-5">
+      {/*
+        Shown above the heading rather than below it. Somebody who has just filled in
+        twenty onboarding fields and been moved here needs to know why they are on a
+        different screen before they read anything else on it.
+      */}
+      <FirstRunPrompt step={firstRunStep} />
+
+      {firstRunStep === "password" ? passwordForm : null}
+
       <h1 className="section-title">Your account</h1>
 
-      {user.must_change_password === 1 && (
+      {/* The banner above already says this while they are being walked through it. */}
+      {user.must_change_password === 1 && !firstRunStep && (
         <div className="rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-inset ring-amber-200">
           You are signed in with a temporary password. Set a new one before continuing.
         </div>
@@ -133,61 +207,7 @@ export function Account() {
         </p>
       </div>
 
-      <form onSubmit={submit} className="card space-y-4 p-5">
-        <h2 className="card-title">Change password</h2>
-        <ErrorBanner error={error} onDismiss={() => setError(null)} />
-        <SuccessBanner message={done} onDismiss={() => setDone(null)} />
-
-        <Field label="Current password" required>
-          {(id) => (
-            <TextInput
-              id={id}
-              type="password"
-              required
-              autoComplete="current-password"
-              value={form.current}
-              onChange={set("current")}
-            />
-          )}
-        </Field>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="New password"
-            required
-            hint="At least 12 characters, mixing three character types."
-          >
-            {(id) => (
-              <TextInput
-                id={id}
-                type="password"
-                required
-                autoComplete="new-password"
-                value={form.next}
-                onChange={set("next")}
-              />
-            )}
-          </Field>
-          <Field label="Confirm new password" required>
-            {(id) => (
-              <TextInput
-                id={id}
-                type="password"
-                required
-                autoComplete="new-password"
-                value={form.confirm}
-                onChange={set("confirm")}
-              />
-            )}
-          </Field>
-        </div>
-
-        <div className="flex justify-end">
-          <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? "Saving…" : "Change password"}
-          </button>
-        </div>
-      </form>
+      {firstRunStep === "password" ? null : passwordForm}
     </div>
   );
 }

@@ -20,7 +20,20 @@ export function Guide() {
   if (!user) return <Spinner label="Loading" />;
 
   const sections = guideFor(user.role, canSee);
-  const current = sections.find((section) => section.id === open) ?? null;
+  /*
+   * The first section is open on arrival rather than nothing being selected.
+   *
+   * With no selection the panel showed every section end to end, which reads as a wall
+   * of text and leaves the contents list beside it looking inert - nothing is
+   * highlighted, so the list does not announce itself as a list of choices. Opening on
+   * the first section shows the guide working, and every other section is one click away
+   * exactly as before.
+   *
+   * Derived rather than held in state, so it needs no effect and cannot flash: `open` is
+   * only ever the section somebody actually picked.
+   */
+  const current =
+    sections.find((section) => section.id === open) ?? sections[0] ?? null;
 
   return (
     <div className="space-y-5">
@@ -57,23 +70,8 @@ export function Guide() {
         </nav>
 
         <div className="card p-5">
-          {current ? (
-            <>
-              <h2 className="card-title mb-3">{current.title}</h2>
-              <Markdown>{current.body}</Markdown>
-            </>
-          ) : (
-            /* No section chosen: show the whole thing rather than an empty panel, so
-               the guide is readable straight through as well as by section. */
-            <div className="space-y-8">
-              {sections.map((section) => (
-                <section key={section.id} id={section.id}>
-                  <h2 className="card-title mb-3">{section.title}</h2>
-                  <Markdown>{section.body}</Markdown>
-                </section>
-              ))}
-            </div>
-          )}
+          <h2 className="card-title mb-3">{current?.title}</h2>
+          {current ? <Markdown>{current.body}</Markdown> : null}
         </div>
       </div>
     </div>

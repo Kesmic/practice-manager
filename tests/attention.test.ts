@@ -86,5 +86,10 @@ test("the badge reads as a sentence to a screen reader, not a stray digit", () =
 test("a fresh session starts with nothing waiting", () => {
   // The provider falls back to this when the session read fails, so a dropped request
   // must never invent a badge.
-  assert.deepEqual(Object.values(NO_ATTENTION), [0, 0, 0, 0]);
+  // Written as "every count is zero" rather than as a fixed-length list, so adding a
+  // destination cannot make this pass while leaving its default unset.
+  assert.ok(Object.values(NO_ATTENTION).length > 0);
+  for (const [key, value] of Object.entries(NO_ATTENTION)) {
+    assert.equal(value, 0, `${key} does not start at zero`);
+  }
 });

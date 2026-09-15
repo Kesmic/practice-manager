@@ -12,6 +12,7 @@ import {
 import type { User } from "@shared/types";
 import type { IdlePolicy } from "@shared/session-policy";
 import { NO_ATTENTION, type Attention } from "@shared/attention";
+import type { FirstRunStep } from "@shared/first-run";
 import { atLeast, type Role } from "@shared/workflow";
 import {
   DEFAULT_VISIBILITY,
@@ -27,6 +28,11 @@ interface SessionState {
   unread: number;
   /** Counts for the sidebar badges. */
   attention: Attention;
+  /**
+   * What this person must finish before the portal opens up, or null. The route guard
+   * sends them to the matching screen; the server confines them to the same one.
+   */
+  firstRunStep: FirstRunStep | null;
   /**
    * The password step. Resolves to a challenge when the account has a second factor, in
    * which case nothing is signed in yet and `completeSignIn` has to follow.
@@ -65,6 +71,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [unread, setUnread] = useState(0);
   /** What is waiting for this person, per sidebar destination. */
   const [attention, setAttention] = useState<Attention>(NO_ATTENTION);
+  /**
+   * The next thing standing between this person and the rest of the portal, as the
+   * server works it out. Null once they are through, which is nearly everybody.
+   */
+  const [firstRunStep, setFirstRunStep] = useState<FirstRunStep | null>(null);
   const [loading, setLoading] = useState(true);
   // Until it has loaded, the defaults apply. They are the stricter of the two in every
   // case a firm is likely to configure, so the sidebar cannot flash a link the person
@@ -81,10 +92,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         attention: waiting,
         idle_policy,
         idled: wasIdle,
+        next_first_run_step: step,
       } = await api.session();
       setUser(current);
       setUnread(unread_notifications ?? 0);
       setAttention(waiting ?? NO_ATTENTION);
+      setFirstRunStep(step ?? null);
       if (idle_policy) setIdlePolicy(idle_policy);
       if (wasIdle) setIdled(true);
       if (current) {
@@ -100,6 +113,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // A failed session probe means "not signed in" as far as the UI cares.
       setUser(null);
       setAttention(NO_ATTENTION);
+      setFirstRunStep(null);
     } finally {
       setLoading(false);
     }
@@ -123,9 +137,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const session = await api.session();
       setUnread(session.unread_notifications ?? 0);
       setAttention(session.attention ?? NO_ATTENTION);
+      setFirstRunStep(session.next_first_run_step ?? null);
     } catch {
       setUnread(0);
       setAttention(NO_ATTENTION);
+      setFirstRunStep(null);
     }
   }, []);
 
@@ -167,6 +183,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       loading,
       unread,
       attention,
+      firstRunStep,
       signIn,
       completeSignIn,
       signOut,
@@ -182,6 +199,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       loading,
       unread,
       attention,
+      firstRunStep,
       signIn,
       completeSignIn,
       signOut,

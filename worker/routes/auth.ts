@@ -7,7 +7,9 @@ import {
   decoyHash,
   idlePolicy,
   destroySession,
+  hasFinishedFirstRun,
   hashPassword,
+  mustEnrolTwoFactor,
   pruneSessions,
   publicUser,
   requireUser,
@@ -60,6 +62,12 @@ import {
 } from "../http";
 import { MIN_SUPERVISOR_ROLE, atLeast, type Role } from "../../shared/workflow";
 import type { Attention } from "../../shared/attention";
+import {
+  nextFirstRunStep,
+  type FirstRunState,
+} from "../../shared/first-run";
+import { MISSED_LOOKBACK_DAYS, missedDays } from "../../shared/status-reports";
+import { readReportSchedule } from "./status-reports";
 
 /**
  * Creates the session and returns the signed-in user.
@@ -124,7 +132,10 @@ async function countAttention(
   env: Env,
   user: AuthenticatedUser,
 ): Promise<Attention> {
-  const [documents, onboarding, requests, unread] = await env.DB.batch<{ n: number }>([
+  const schedule = await readReportSchedule(env);
+  const [documents, onboarding, requests, unread, filed, joined, offers] = await env.DB.batch<
+    Record<string, unknown>
+  >([
     /*
      * The same rule the handbook and onboarding screens use: published, applies to this
      * person, wants a response, and no signature at the CURRENT version - so an amended
@@ -157,16 +168,49 @@ async function countAttention(
     env.DB.prepare(
       `SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL`,
     ).bind(user.id),
+    /*
+     * The reporting days this person has already answered for, over the window the
+     * missed-report count looks back across. The dates rather than a count: which
+     * reporting days fall in the window is a calendar question, answered in
+     * shared/status-reports.ts, and asking SQL to work out when Wednesdays fall would
+     * put the schedule in two places.
+     */
+    env.DB.prepare(
+      `SELECT due_on FROM status_reports
+        WHERE user_id = ? AND due_on >= date('now', ?)`,
+    ).bind(user.id, `-${MISSED_LOOKBACK_DAYS} days`),
+    env.DB.prepare(
+      `SELECT COALESCE(p.start_date, date(u.created_at)) AS joined
+         FROM users u LEFT JOIN employee_profiles p ON p.user_id = u.id
+        WHERE u.id = ?`,
+    ).bind(user.id),
+    // Clients offered to them and not yet answered. Only they can clear it.
+    env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM client_allocations
+        WHERE user_id = ? AND status = 'offered'`,
+    ).bind(user.id),
   ]);
 
   return {
-    documents: documents.results[0]?.n ?? 0,
-    onboarding: onboarding.results[0]?.n ?? 0,
+    documents: count(documents.results),
+    onboarding: count(onboarding.results),
     client_requests: atLeast(user.role, MIN_SUPERVISOR_ROLE)
-      ? (requests.results[0]?.n ?? 0)
+      ? count(requests.results)
       : 0,
-    notifications: unread.results[0]?.n ?? 0,
+    notifications: count(unread.results),
+    status_reports: missedDays(
+      new Date().toISOString().slice(0, 10),
+      schedule,
+      filed.results.map((row) => String(row.due_on)),
+      (joined.results[0]?.joined as string | null | undefined) ?? null,
+    ).length,
+    allocations: count(offers.results),
   };
+}
+
+/** Reads the single number out of a `SELECT COUNT(*) AS n` result. */
+function count(results: Array<Record<string, unknown>>): number {
+  return Number(results[0]?.n ?? 0);
 }
 
 /**
@@ -636,8 +680,22 @@ export function registerAuthRoutes(router: Router<Env>): void {
 
     const attention = await countAttention(env, user);
 
+    /*
+     * What is still standing between this person and the rest of the portal, computed
+     * from the same module the Worker's own gates use. The browser routes on it, so if
+     * the two came from different definitions somebody could be sent to a screen the
+     * server was not going to let them past - a loop with no way out.
+     *
+     * Only worked out for people who might owe something. Everybody else has had their
+     * `must_change_password` set to 0 since their first week, and skipping the two
+     * lookups for them keeps this off the hot path.
+     */
+    const firstRun = await firstRunState(env, user);
+
     return json({
       user: publicUser(user),
+      first_run: firstRun,
+      next_first_run_step: nextFirstRunStep(firstRun),
       /*
        * Kept alongside `attention.notifications`, which holds the same number. The
        * header's inbox badge has read this field since before the sidebar had badges,
@@ -672,7 +730,7 @@ export function registerAuthRoutes(router: Router<Env>): void {
   router.post("/api/auth/password", async ({ request, env }) => {
     // Reachable while a forced password change is outstanding - that is the
     // whole point of this endpoint.
-    const user = await requireUser(env, request, { allowPasswordPending: true });
+    const user = await requireUser(env, request, { allowPasswordPending: true, allowProfilePending: true });
     const body = await readJson<{
       current_password?: string;
       new_password?: string;
@@ -734,3 +792,42 @@ export const ASSIGNABLE_ROLES: Role[] = [
   "partner",
   "admin",
 ];
+
+/**
+ * What this person still owes before the portal opens up.
+ *
+ * Read on every session poll, so the cheap answer comes first: somebody whose password
+ * is their own and whose onboarding is stamped is finished, and that is nearly everybody
+ * nearly all of the time.
+ */
+async function firstRunState(
+  env: Env,
+  user: AuthenticatedUser,
+): Promise<FirstRunState> {
+  const passwordSet = user.must_change_password === 0;
+
+  /*
+   * The same function the Worker's own gate calls, rather than a second query that
+   * agrees with it today. It has a rule worth not re-deriving: an absent profile row
+   * means nothing has ever been asked of this person - a bootstrap administrator, or an
+   * account made before the programme existed - and they are through rather than
+   * confined to a form nobody set up for them. Re-derived here as "no row means not
+   * done", the browser would send such a person to /onboarding while the server let
+   * them past, which is a redirect loop with nothing on screen to explain it.
+   */
+  const onboardingDone = await hasFinishedFirstRun(env, user.id);
+
+  /*
+   * Only asked where the first two are already done, because it is the only one of the
+   * three that costs a second lookup and it is the last in the order anyway. Somebody
+   * still owing their onboarding does not need to be told about two-step sign-in yet.
+   */
+  const twoFactorReady =
+    onboardingDone && passwordSet ? !(await mustEnrolTwoFactor(env, user)) : true;
+
+  return {
+    onboarding_done: onboardingDone,
+    password_set: passwordSet,
+    two_factor_ready: twoFactorReady,
+  };
+}

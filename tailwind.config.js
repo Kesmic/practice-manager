@@ -54,6 +54,14 @@ export default {
           "Arial",
           "sans-serif",
         ],
+        /** Used only by the Managing Director's welcome, where a letter wants one. */
+        serif: [
+          "Georgia",
+          "Cambria",
+          "Times New Roman",
+          "ui-serif",
+          "serif",
+        ],
       },
     },
   },

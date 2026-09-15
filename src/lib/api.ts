@@ -15,6 +15,16 @@ import type { ReviewDetail, ReviewObjective, ReviewSummary } from "@shared/types
 import type { IdlePolicy } from "@shared/session-policy";
 import type { Attention } from "@shared/attention";
 import type {
+  AllocationStatus,
+  ClientTier,
+  DeclineGround,
+} from "@shared/allocations";
+import type { ContractField } from "@shared/contract-fields";
+import type { FirstRunState, FirstRunStep } from "@shared/first-run";
+import type { DirectoryEntry } from "@shared/directory";
+import type { Removal, RemovalFootprint } from "@shared/removal";
+import type { ReportSchedule } from "@shared/status-reports";
+import type {
   ChecklistItem,
   DocumentSignature,
   EmployeeCompensation,
@@ -23,7 +33,14 @@ import type {
   FirmSettings,
   MyOnboarding,
   OnboardingItem,
+  ClientAllocation,
+  ContractDetails,
+  RemovalPreview,
+  ContractMergeResult,
   PortalDocument,
+  StatusReport,
+  StatusReportView,
+  TeamStatusReports,
   PortalDocumentDetail,
   Client,
   ClientRequestSummary,
@@ -117,6 +134,14 @@ const qs = (params: Record<string, string | number | undefined | null>): string 
 
 export interface SessionResponse {
   user: User | null;
+  /** What this person still owes before the portal opens up. */
+  first_run?: FirstRunState;
+  /**
+   * The next of those, or null when there is nothing outstanding. Computed by the
+   * server from the same module its own gates use, so the browser cannot route somebody
+   * to a screen the server was not going to let them past.
+   */
+  next_first_run_step?: FirstRunStep | null;
   unread_notifications?: number;
   /** Per-destination counts for the sidebar badges. */
   attention?: Attention;
@@ -295,6 +320,12 @@ export const api = {
       body: input,
     }),
 
+  updateOwnBank: (input: Record<string, unknown>) =>
+    request<{ bank: Record<string, string | null> }>("/api/me/bank", {
+      method: "PATCH",
+      body: input,
+    }),
+
   // --------------------------------------------------- performance reviews
   personReviews: (userId: string) =>
     request<{
@@ -433,7 +464,11 @@ export const api = {
     }>("/api/users", { method: "POST", body: input }),
 
   updateUser: (id: string, input: Record<string, unknown>) =>
-    request<{ user: User }>(`/api/users/${id}`, { method: "PATCH", body: input }),
+    request<{
+      user: User;
+      /** Set only when the sign-in address actually changed, so the screen can say so. */
+      email_changed: { from: string; to: string } | null;
+    }>(`/api/users/${id}`, { method: "PATCH", body: input }),
 
   resetPassword: (id: string) =>
     request<{ temporary_password: string }>(`/api/users/${id}/reset-password`, {
@@ -766,9 +801,172 @@ export const api = {
     title?: string,
     options: { kind?: string; requires_signature?: boolean } = {},
   ) =>
-    request<{ document: PortalDocument }>(`/api/documents/${id}/copy-for`, {
+    request<{ document: PortalDocument; merge: ContractMergeResult }>(
+      `/api/documents/${id}/copy-for`,
+      {
+        method: "POST",
+        body: { assigned_user_id: assignedUserId, title, ...options },
+      },
+    ),
+
+  /**
+   * Where to download somebody's signed copy of a document.
+   *
+   * A plain URL rather than a fetch: the response carries Content-Disposition, so
+   * letting the browser follow it gives a real download with the right filename.
+   * Fetching it into a blob would work too, and would throw away the filename the
+   * server chose.
+   */
+  signedCopyUrl: (documentId: string, userId?: string) =>
+    `/api/documents/${documentId}/signed-copy${
+      userId ? `?user_id=${encodeURIComponent(userId)}` : ""
+    }`,
+
+  // ------------------------------------------------------------- directory
+  /**
+   * The firm-wide staff directory. Everybody appears; what is said about them depends
+   * on the reader's grade.
+   */
+  directory: (q?: string) =>
+    request<{ people: DirectoryEntry[]; can_open_records: boolean }>(
+      `/api/directory${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+    ),
+
+  // -------------------------------------------------------------- removals
+  /** What removing this person would cost. Changes nothing; safe to call freely. */
+  removalPreview: (userId: string) =>
+    request<RemovalPreview>(`/api/users/${userId}/removal`),
+
+  /**
+   * Removes somebody. `retire` keeps the anonymised row so the client work stays
+   * complete; `erase` really deletes it, cascades and all.
+   */
+  removeUser: (userId: string, removal: Removal, confirmation: string) =>
+    request<{ removed: Removal; footprint: RemovalFootprint }>(`/api/users/${userId}`, {
+      method: "DELETE",
+      body: { removal, confirmation },
+    }),
+
+  templateRemovalPreview: (id: string) =>
+    request<{
+      template: { id: string; name: string; active: boolean };
+      deliverables: number;
+      open_deliverables: number;
+      confirmation: string;
+    }>(`/api/templates/${id}/removal`),
+
+  deleteTemplate: (id: string) =>
+    request<{ deleted: string; deliverables_kept: number }>(`/api/templates/${id}`, {
+      method: "DELETE",
+    }),
+
+  // ----------------------------------------------------- client allocations
+  /** The person's own clients: what they hold, and what they have been offered. */
+  myAllocations: () =>
+    request<{ allocations: ClientAllocation[]; on_associate_agreement: boolean }>(
+      "/api/me/allocations",
+    ),
+
+  clientAllocations: (clientId: string) =>
+    request<{ allocations: ClientAllocation[] }>(`/api/clients/${clientId}/allocations`),
+
+  allocations: (status?: AllocationStatus) =>
+    request<{ allocations: ClientAllocation[] }>(
+      `/api/allocations${status ? `?status=${status}` : ""}`,
+    ),
+
+  offerClient: (
+    clientId: string,
+    input: { user_id: string; tier?: ClientTier | null; note?: string | null },
+  ) =>
+    request<{ allocation: ClientAllocation }>(`/api/clients/${clientId}/allocations`, {
       method: "POST",
-      body: { assigned_user_id: assignedUserId, title, ...options },
+      body: input,
+    }),
+
+  acceptAllocation: (id: string) =>
+    request<{ allocation: ClientAllocation }>(`/api/allocations/${id}/accept`, {
+      method: "POST",
+      body: {},
+    }),
+
+  /**
+   * Declining, on a named ground. `outcome` says whether the record counts it against
+   * them - the operative half of clause 8.2, said back to the person who used it.
+   */
+  declineAllocation: (id: string, ground: DeclineGround, reason: string | null) =>
+    request<{ allocation: ClientAllocation; outcome: string }>(
+      `/api/allocations/${id}/decline`,
+      { method: "POST", body: { ground, reason } },
+    ),
+
+  withdrawAllocation: (id: string, note?: string | null) =>
+    request<{ allocation: ClientAllocation }>(`/api/allocations/${id}/withdraw`, {
+      method: "POST",
+      body: { note },
+    }),
+
+  endAllocation: (id: string, note?: string | null) =>
+    request<{ allocation: ClientAllocation }>(`/api/allocations/${id}/end`, {
+      method: "POST",
+      body: { note },
+    }),
+
+  // -------------------------------------------------------- status reports
+  /** The person's own report: which one is current, and what they may reference. */
+  myStatusReport: () => request<StatusReportView>("/api/me/status-report"),
+
+  /** Writes the current report, or amends it if one is already in. */
+  submitStatusReport: (input: {
+    body: string;
+    blockers: string | null;
+    tasks: Array<{ task_id: string; note: string | null }>;
+  }) =>
+    request<{ report: StatusReport }>("/api/me/status-report", {
+      method: "POST",
+      body: input,
+    }),
+
+  /** Who has reported and who has not, for the reporting day just passed. */
+  teamStatusReports: (dueOn?: string) =>
+    request<TeamStatusReports>(
+      `/api/status-reports${dueOn ? `?due_on=${encodeURIComponent(dueOn)}` : ""}`,
+    ),
+
+  /** One person's reports, for them and whoever supervises them. */
+  statusReportsFor: (userId: string) =>
+    request<{ reports: StatusReport[] }>(`/api/employees/${userId}/status-reports`),
+
+  statusReportPolicy: () =>
+    request<{ schedule: ReportSchedule }>("/api/status-report-policy"),
+
+  saveStatusReportPolicy: (schedule: ReportSchedule) =>
+    request<{ schedule: ReportSchedule }>("/api/status-report-policy", {
+      method: "PUT",
+      body: schedule,
+    }),
+
+  // ------------------------------------------------------ contract details
+  /** The firm's standard terms, the same in every contract it issues. */
+  contractDefaults: () =>
+    request<{ values: Record<string, string>; fields: ContractField[] }>(
+      "/api/contract-defaults",
+    ),
+
+  saveContractDefaults: (values: Record<string, string>) =>
+    request<{ values: Record<string, string> }>("/api/contract-defaults", {
+      method: "PUT",
+      body: { values },
+    }),
+
+  /** What one person's contract would say today, placeholder by placeholder. */
+  contractDetails: (userId: string) =>
+    request<ContractDetails>(`/api/employees/${userId}/contract-details`),
+
+  saveContractDetails: (userId: string, values: Record<string, string>) =>
+    request<{ ok: true }>(`/api/employees/${userId}/contract-details`, {
+      method: "PUT",
+      body: { values },
     }),
 
   rotateIntakeLink: (kind: string) =>

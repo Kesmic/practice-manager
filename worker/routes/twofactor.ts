@@ -80,6 +80,7 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
     const actor = await requireUser(env, request, {
       allowPasswordPending: true,
       allowTwoFactorPending: true,
+      allowProfilePending: true,
     });
     return json({ two_factor: await statusFor(env, actor.id, actor.role) });
   });
@@ -95,6 +96,7 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
     const actor = await requireUser(env, request, {
       allowPasswordPending: true,
       allowTwoFactorPending: true,
+      allowProfilePending: true,
     });
 
     const existing = await loadTotp(env, actor.id);
@@ -135,6 +137,7 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
     const actor = await requireUser(env, request, {
       allowPasswordPending: true,
       allowTwoFactorPending: true,
+      allowProfilePending: true,
     });
     const body = await readJson<{ code?: unknown }>(request);
 
@@ -359,6 +362,7 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
     const actor = await requireUser(env, request, {
       allowPasswordPending: true,
       allowTwoFactorPending: true,
+      allowProfilePending: true,
     });
     const [policy, questions] = await Promise.all([
       questionsPolicy(env),
@@ -383,7 +387,7 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
    * rather than adding one.
    */
   router.put("/api/2fa/questions", async ({ request, env }) => {
-    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    const actor = await requireUser(env, request, { allowPasswordPending: true, allowProfilePending: true });
     const body = await readJson<{ entries?: unknown; code?: unknown }>(request);
 
     if (!questionsEnabled(await questionsPolicy(env))) {
@@ -428,7 +432,7 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
 
   /** Removes them. No code needed: this only ever takes a way in away. */
   router.delete("/api/2fa/questions", async ({ request, env }) => {
-    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    const actor = await requireUser(env, request, { allowPasswordPending: true, allowProfilePending: true });
     await clearQuestions(env, actor.id);
     return json({ ok: true, two_factor: await statusFor(env, actor.id, actor.role) });
   });
@@ -437,7 +441,7 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
 
   /** The browsers this person has told the portal to remember. */
   router.get("/api/2fa/devices", async ({ request, env }) => {
-    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    const actor = await requireUser(env, request, { allowPasswordPending: true, allowProfilePending: true });
     const [policy, devices] = await Promise.all([
       deviceTrustPolicy(env),
       listDevices(env, request, actor.id),
@@ -452,7 +456,7 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
    * somebody else's screen finds nothing rather than forgetting their machine.
    */
   router.delete("/api/2fa/devices/:id", async ({ request, env, params }) => {
-    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    const actor = await requireUser(env, request, { allowPasswordPending: true, allowProfilePending: true });
     const forgotten = await forgetDevice(env, actor.id, params.id);
     if (!forgotten) throw notFound("That device is not on your list.");
     return json({ ok: true, devices: await listDevices(env, request, actor.id) });
@@ -460,7 +464,7 @@ export function registerTwoFactorRoutes(router: Router<Env>): void {
 
   /** Forgets all of them, including the browser this was asked from. */
   router.post("/api/2fa/devices/forget-all", async ({ request, env }) => {
-    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    const actor = await requireUser(env, request, { allowPasswordPending: true, allowProfilePending: true });
     await forgetAllDevices(env, actor.id);
     return json({ ok: true, devices: [] }, 200, { "Set-Cookie": clearedDeviceCookie });
   });

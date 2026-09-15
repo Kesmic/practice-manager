@@ -25,20 +25,29 @@ import {
 } from "../db";
 import { Router, badRequest, forbidden, json, notFound, readJson } from "../http";
 import {
+  contractTemplateFor,
+  programmeFor,
+  stageDueDate,
+  stageProgress,
+} from "../../shared/onboarding";
+import {
   EMPLOYMENT_STATUSES,
   EMPLOYMENT_TYPES,
   MIN_DIRECTORY_ROLE,
   MIN_HR_ADMIN_ROLE,
-  ONBOARDING_PROGRAMME,
+  EMPLOYMENT_TYPE_LABELS,
+  type EmploymentType,
   PAY_FREQUENCIES,
   canSeeCompensation,
   canSeePersonalDetails,
   computeProgress,
   isHrAdmin,
+  missingBankFields,
   missingProfileFields,
 } from "../../shared/hr";
 import { OUTSTANDING_DOCUMENTS_SQL } from "./documents";
 import { readSettings, requireArea } from "./settings";
+import { seesEmploymentDetail } from "../../shared/directory";
 
 /** Employment columns - safe for anyone with directory access. */
 const EMPLOYMENT_COLUMNS = `p.user_id, p.staff_no, p.job_title, p.department,
@@ -51,7 +60,9 @@ const PERSONAL_COLUMNS = `p.date_of_birth, p.gender, p.marital_status,
   p.personal_email, p.phone, p.residential_address, p.emergency_contact_name,
   p.emergency_contact_phone, p.emergency_contact_relationship,
   p.next_of_kin_name, p.next_of_kin_phone, p.highest_qualification,
-  p.professional_body, p.membership_number`;
+  p.professional_body, p.membership_number,
+  p.id_type, p.id_number, p.tin, p.id_document_url, p.right_to_work_note,
+  p.qualification_document_url`;
 
 const PERSONAL_FIELDS = [
   "date_of_birth",
@@ -68,6 +79,12 @@ const PERSONAL_FIELDS = [
   "highest_qualification",
   "professional_body",
   "membership_number",
+  "id_type",
+  "id_number",
+  "tin",
+  "id_document_url",
+  "right_to_work_note",
+  "qualification_document_url",
 ] as const;
 
 export function registerEmployeeRoutes(router: Router<Env>): void {
@@ -78,7 +95,7 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
   /** The signed-in employee's own record. Always available to them. */
   router.get("/api/me/profile", async ({ request, env }) => {
     // Reachable on a temporary password so a new joiner can get started.
-    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    const actor = await requireUser(env, request, { allowPasswordPending: true, allowProfilePending: true });
     return json(await ownProfilePayload(env, actor));
   });
 
@@ -88,7 +105,10 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
    * start date or pay - those are HR-controlled.
    */
   router.patch("/api/me/profile", async ({ request, env }) => {
-    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    const actor = await requireUser(env, request, {
+      allowPasswordPending: true,
+      allowProfilePending: true,
+    });
     await ensureProfile(env, actor.id);
 
     const body = await readJson<Record<string, unknown>>(request);
@@ -104,38 +124,18 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
       .bind(...update.binds)
       .run();
 
-    // Record when the employee first completes everything we ask of them.
-    const profile = await env.DB.prepare(
-      `SELECT ${PERSONAL_COLUMNS}, p.profile_completed_at
-         FROM employee_profiles p WHERE p.user_id = ?`,
-    )
-      .bind(actor.id)
-      .first<Record<string, unknown>>();
-
-    if (
-      profile &&
-      !profile.profile_completed_at &&
-      missingProfileFields(profile).length === 0
-    ) {
-      await env.DB.batch([
-        env.DB.prepare(
-          `UPDATE employee_profiles SET profile_completed_at = ? WHERE user_id = ?`,
-        ).bind(nowIso(), actor.id),
-        hrEventStatement(env, {
-          subjectId: actor.id,
-          actorId: actor.id,
-          kind: "profile:completed",
-          detail: "Employee completed their personal details",
-        }),
-      ]);
-    }
+    // Stamps the record complete if this was the submission that finished it.
+    await settleFirstRun(env, actor.id);
 
     return json(await ownProfilePayload(env, actor));
   });
 
   /** The employee's own onboarding screen, in one round trip. */
   router.get("/api/me/onboarding", async ({ request, env }) => {
-    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    const actor = await requireUser(env, request, {
+      allowPasswordPending: true,
+      allowProfilePending: true,
+    });
     await ensureProfile(env, actor.id);
 
     const settings = await readSettings(env);
@@ -178,6 +178,20 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
       profile_complete: !!profile?.profile_completed_at,
     });
 
+    /*
+     * The whole programme is staged, not only the person's own steps: somebody wants to
+     * know what the firm is doing for them as well as what they owe, and a stage that
+     * looks unfinished because HR has not ticked something is more useful than one that
+     * silently omits it.
+     */
+    const stages = stageProgress(
+      employeeItems as Array<{ stage: string | null; is_done: 0 | 1; owner: string }>,
+      profile?.start_date as string | null,
+      profile?.probation_end_date as string | null,
+    );
+
+    const bank = await ownBank(env, actor.id);
+
     return json({
       welcome_message: settings.welcome_message,
       md_name: settings.md_name,
@@ -185,8 +199,18 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
       firm_name: settings.firm_name,
       profile,
       personal: profile,
+      bank,
       missing_profile_fields: missingProfileFields(profile),
+      missing_bank_fields: missingBankFields(bank),
+      /** Everything still outstanding from the first sign-in, both halves together. */
+      first_run_complete: Boolean(profile?.profile_completed_at),
+      employment_type: (profile?.employment_type as string) ?? null,
+      contract_template: contractTemplateFor(
+        (profile?.employment_type as EmploymentType) ?? "permanent",
+      ),
       items: employeeItems,
+      stages: stages.stages,
+      current_stage: stages.current,
       outstanding_documents: outstanding.results,
       completed_documents: completed.results,
       progress,
@@ -195,7 +219,12 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
 
   /** An employee ticks off their own onboarding steps; HR ticks off theirs. */
   router.patch("/api/onboarding-items/:id", async ({ request, env, params }) => {
-    const actor = await requireUser(env, request, { allowPasswordPending: true });
+    // Reachable during the first run: several of the steps being ticked are the first
+    // run's own, and a checklist you cannot tick until you have finished it is no use.
+    const actor = await requireUser(env, request, {
+      allowPasswordPending: true,
+      allowProfilePending: true,
+    });
     const item = await env.DB.prepare(
       `SELECT id, user_id, owner, label, is_done FROM onboarding_items WHERE id = ?`,
     )
@@ -245,6 +274,95 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
   // -------------------------------------------------------------------------
   // Directory and personnel files
   // -------------------------------------------------------------------------
+
+  /**
+   * The firm-wide staff directory.
+   *
+   * Open to everybody, unlike `/api/employees` below, which is the personnel directory
+   * and is gated. A practice needs a phone list: somebody preparing a return has to be
+   * able to find out who reviews for the tax team and which address to use, and asking
+   * around for that is how a new joiner spends their first fortnight.
+   *
+   * What differs by grade is not who appears - everybody does - but what is said about
+   * them. `shared/directory.ts` sets out the line and why it falls where it does. The
+   * short version: working identity for everybody, employment facts for Manager grade
+   * and above, and nothing personal for anybody here at all.
+   */
+  router.get("/api/directory", async ({ request, env, url }) => {
+    const actor = await requireUser(env, request);
+    const detail = seesEmploymentDetail(actor.role);
+
+    /*
+     * Retired accounts are left out. They are kept so that the client work still shows
+     * who prepared and who reviewed each job, but a person who has left the firm is not
+     * somebody a colleague should be trying to email - and "Former colleague" with a
+     * placeholder address is a directory entry nobody can act on.
+     *
+     * Suspended accounts do stay: somebody on leave is still a colleague.
+     */
+    const filters: string[] = [];
+    const binds: unknown[] = [actor.id];
+
+    const q = url.searchParams.get("q")?.trim();
+    if (q) {
+      filters.push(
+        `(u.full_name LIKE ? OR u.email LIKE ? OR p.job_title LIKE ? OR p.department LIKE ?)`,
+      );
+      const like = `%${q}%`;
+      binds.push(like, like, like, like);
+    }
+    const where = filters.length ? `AND ${filters.join(" AND ")}` : "";
+
+    /*
+     * The columns a reader below Manager grade must never receive are left out of the
+     * SELECT rather than deleted from the rows afterwards. Filtering after the fact
+     * works until somebody adds a column and forgets the filter; not asking for it
+     * cannot fail that way.
+     */
+    const { results } = await env.DB.prepare(
+      `SELECT u.id, u.full_name, u.email, u.role,
+              u.status AS account_status,
+              p.job_title, p.department, p.work_location,
+              ${detail ? "p.employment_status, p.staff_no, p.start_date," : ""}
+              m.full_name AS line_manager_name,
+              (SELECT COUNT(*) FROM tasks t
+                WHERE t.status NOT IN ('closed','cancelled')
+                  AND (t.assignee_id = u.id OR t.reviewer_id = u.id)
+                  AND (t.assignee_id = ?1 OR t.reviewer_id = ?1)
+                  AND u.id != ?1) AS shared_deliverables
+         FROM users u
+         LEFT JOIN employee_profiles p ON p.user_id = u.id
+         LEFT JOIN users m ON m.id = p.line_manager_id
+        WHERE u.email NOT LIKE '%@removed.invalid' ${where}
+        ORDER BY u.full_name`,
+    )
+      .bind(...binds)
+      .all<Record<string, unknown>>();
+
+    return json({
+      people: results.map((row) => ({
+        id: row.id,
+        full_name: row.full_name,
+        role: row.role,
+        title: row.job_title ?? null,
+        department: row.department ?? null,
+        email: row.email,
+        work_location: row.work_location ?? null,
+        line_manager_name: row.line_manager_name ?? null,
+        active: row.account_status === "active",
+        shared_deliverables: Number(row.shared_deliverables ?? 0),
+        ...(detail
+          ? {
+              employment_status: row.employment_status ?? null,
+              staff_no: row.staff_no ?? null,
+              start_date: row.start_date ?? null,
+            }
+          : {}),
+      })),
+      // So the screen knows whether to offer a link through to the personnel file.
+      can_open_records: canSeeDirectoryOrHr(actor),
+    });
+  });
 
   router.get("/api/employees", async ({ request, env, url }) => {
     // Both gates apply. The area setting lets the firm tighten this further than the
@@ -460,6 +578,58 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
     return json({ ok: true });
   });
 
+  /**
+   * The person's own bank details.
+   *
+   * Separate from the Partner-only compensation endpoint below, and deliberately narrow:
+   * it writes four bank columns on the caller's own row and touches nothing else. Salary
+   * is not among them - somebody editing their own pay is the one thing this table exists
+   * to prevent - and there is no `:id`, so there is no version of this call that reaches
+   * anybody else's record.
+   *
+   * Reachable on a temporary password and before the first run is finished, because
+   * giving these details is part of the first run.
+   */
+  router.patch("/api/me/bank", async ({ request, env }) => {
+    const actor = await requireUser(env, request, {
+      allowPasswordPending: true,
+      allowProfilePending: true,
+    });
+    const body = await readJson<Record<string, unknown>>(request);
+
+    const fields = {
+      bank_name: optionalString(body.bank_name, "bank_name", 120),
+      bank_branch: optionalString(body.bank_branch, "bank_branch", 120),
+      account_name: optionalString(body.account_name, "account_name", 160),
+      account_number: optionalString(body.account_number, "account_number", 60),
+    };
+
+    await env.DB.prepare(
+      `INSERT INTO employee_compensation
+         (user_id, bank_name, bank_branch, account_name, account_number, updated_at, updated_by)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?1)
+       ON CONFLICT (user_id) DO UPDATE SET
+         bank_name      = COALESCE(excluded.bank_name, employee_compensation.bank_name),
+         bank_branch    = COALESCE(excluded.bank_branch, employee_compensation.bank_branch),
+         account_name   = COALESCE(excluded.account_name, employee_compensation.account_name),
+         account_number = COALESCE(excluded.account_number, employee_compensation.account_number),
+         updated_at     = excluded.updated_at,
+         updated_by     = excluded.updated_by`,
+    )
+      .bind(
+        actor.id,
+        fields.bank_name,
+        fields.bank_branch,
+        fields.account_name,
+        fields.account_number,
+        nowIso(),
+      )
+      .run();
+
+    await settleFirstRun(env, actor.id);
+    return json({ bank: await ownBank(env, actor.id) });
+  });
+
   /** Pay and bank details. Partner grade only, on read and on write. */
   router.patch("/api/employees/:id/compensation", async ({ request, env, params }) => {
     const actor = await requireUser(env, request);
@@ -552,12 +722,35 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
     await ensureProfile(env, params.id);
     const timestamp = nowIso();
 
+    /*
+     * Which programme, and dated from what.
+     *
+     * The employment type is read from the record the administrator has already set
+     * rather than passed in here, so the checklist somebody gets always matches the
+     * engagement the firm recorded for them. Change the type before starting the
+     * programme, not after.
+     */
+    const record = await env.DB.prepare(
+      `SELECT employment_type, start_date, probation_end_date
+         FROM employee_profiles WHERE user_id = ?`,
+    )
+      .bind(params.id)
+      .first<{
+        employment_type: EmploymentType;
+        start_date: string | null;
+        probation_end_date: string | null;
+      }>();
+
+    const employmentType = record?.employment_type ?? "permanent";
+    const programme = programmeFor(employmentType);
+
     await env.DB.batch([
-      ...ONBOARDING_PROGRAMME.map((item, index) =>
+      ...programme.map((item, index) =>
         env.DB.prepare(
           `INSERT INTO onboarding_items
-             (id, user_id, position, label, detail, owner, category, is_done, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+             (id, user_id, position, label, detail, owner, category, stage, due_date,
+              is_done, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
         ).bind(
           newId(),
           params.id,
@@ -566,6 +759,13 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
           item.detail ?? null,
           item.owner,
           item.category,
+          item.stage,
+          /*
+           * Dated once, when the programme is created, rather than derived on every read.
+           * A step's due date should not move because somebody later corrected the start
+           * date by a day - if the dates need redoing, the programme is rebuilt.
+           */
+          stageDueDate(item.stage, record?.start_date, record?.probation_end_date),
           timestamp,
         ),
       ),
@@ -573,18 +773,26 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
         subjectId: params.id,
         actorId: actor.id,
         kind: "onboarding:started",
-        detail: `${ONBOARDING_PROGRAMME.length} steps created`,
+        detail: `${programme.length} steps created for a ${EMPLOYMENT_TYPE_LABELS[employmentType].toLowerCase()} engagement`,
       }),
       notificationStatement(env, {
         userId: params.id,
         taskId: null,
         kind: "hr:onboarding_started",
         title: "Your onboarding is ready",
-        body: "Work through your onboarding steps, read your contract and acknowledge the handbook.",
+        body: "Your checklist shows what happens when, and how far through you are.",
       }),
     ]);
 
-    return json({ ok: true, created: ONBOARDING_PROGRAMME.length }, 201);
+    return json(
+      {
+        ok: true,
+        created: programme.length,
+        employment_type: employmentType,
+        contract_template: contractTemplateFor(employmentType),
+      },
+      201,
+    );
   });
 
   /** Adds a one-off onboarding step for an individual. */
@@ -763,12 +971,86 @@ function readPersonalFields(body: Record<string, unknown>): Record<string, unkno
   const out: Record<string, unknown> = {};
   for (const field of PERSONAL_FIELDS) {
     if (body[field] === undefined) continue;
-    out[field] =
-      field === "date_of_birth"
-        ? optionalDate(body[field], field)
-        : optionalString(body[field], field, field === "residential_address" ? 500 : 160);
+    if (field === "date_of_birth") {
+      out[field] = optionalDate(body[field], field);
+      continue;
+    }
+    const value = optionalString(
+      body[field],
+      field,
+      field === "residential_address" || field === "right_to_work_note" ? 500 : 300,
+    );
+    /*
+     * Document links are restricted to http and https, exactly as the client file is:
+     * a stored `javascript:` address would run in a colleague's session the moment
+     * somebody with HR access clicked it.
+     */
+    if (value && field.endsWith("_url") && !/^https?:\/\//i.test(value)) {
+      throw badRequest(
+        `"${field}" must be a link beginning http:// or https://. Paste the address of the document in SharePoint, OneDrive or Google Drive.`,
+      );
+    }
+    out[field] = value;
   }
   return out;
+}
+
+/** The caller's own bank fields. Never salary, which is a different question. */
+export async function ownBank(env: Env, userId: string) {
+  return env.DB.prepare(
+    `SELECT bank_name, bank_branch, account_name, account_number
+       FROM employee_compensation WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<Record<string, unknown>>();
+}
+
+/**
+ * What is still outstanding before somebody has finished their first sign-in.
+ *
+ * Both halves, from the two tables they live in. Exported because `worker/auth.ts` asks
+ * the same question on every request in order to decide whether to confine somebody to
+ * the form.
+ */
+export async function missingFirstRun(env: Env, userId: string): Promise<string[]> {
+  const [profile, bank] = await Promise.all([
+    env.DB.prepare(
+      `SELECT ${PERSONAL_COLUMNS} FROM employee_profiles p WHERE p.user_id = ?`,
+    )
+      .bind(userId)
+      .first<Record<string, unknown>>(),
+    ownBank(env, userId),
+  ]);
+  return [...missingProfileFields(profile), ...missingBankFields(bank)];
+}
+
+/**
+ * Stamps the profile as complete once nothing is outstanding.
+ *
+ * Called from both halves of the form, since either can be the one that finishes it.
+ */
+export async function settleFirstRun(env: Env, userId: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT profile_completed_at FROM employee_profiles WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ profile_completed_at: string | null }>();
+  if (row?.profile_completed_at) return true;
+
+  if ((await missingFirstRun(env, userId)).length > 0) return false;
+
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE employee_profiles SET profile_completed_at = ? WHERE user_id = ?`,
+    ).bind(nowIso(), userId),
+    hrEventStatement(env, {
+      subjectId: userId,
+      actorId: userId,
+      kind: "profile:completed",
+      detail: "Employee completed everything asked at first sign-in",
+    }),
+  ]);
+  return true;
 }
 
 async function ownProfilePayload(env: Env, actor: AuthenticatedUser) {

@@ -150,28 +150,263 @@ are recorded as *having happened* without writing the values into the trail.
 
 ## The onboarding programme
 
-Sixteen standard steps, created per employee, split between the new joiner and
-HR. It is defined in [`shared/hr.ts`](../shared/hr.ts) as
-`ONBOARDING_PROGRAMME`, so editing it there changes the programme for future
-joiners; individual one-off steps can be added per person from the employee
-record.
+Nineteen standard steps, created per person when their account is made, split
+between the new joiner and HR, **ordered into five stages** and dated from the
+person's start date. It is defined in
+[`shared/onboarding.ts`](../shared/onboarding.ts) and shared by the Worker and the
+browser, so the programme, the stage a person is at, and the dates on screen are
+computed from one definition rather than three.
 
-Employee-owned steps cover reading the welcome, completing their details,
-supplying identification and certificates, signing the contract, acknowledging
-the handbook and completing the independence declaration. HR-owned steps cover
-issuing the contract, verifying identity and right to work, references, system
-accounts, payroll registration, a buddy, induction, and setting probation
-objectives.
+| Stage | Due | What it is for |
+| --- | --- | --- |
+| Before you start | Day -1 | The firm's own preparation. Nothing here is the joiner's. |
+| Your first sign-in | Day 0 | Everything the firm needs from the joiner, asked once. |
+| Your first week | Day +5 | Reading and signing what they are agreeing to, and induction. |
+| Your first month | Day +30 | The compliance obligations that come with the work. |
+| Your first review | Probation end | Objectives set, then judged. |
+
+Where no start date has been recorded the stages carry no dates at all, rather
+than dates counted from today - which would put every step in the past the moment
+an incomplete record is opened. The first review is pinned to the probation end
+date, not to an offset, because that is the date the review is actually held on.
+
+**Which programme somebody gets follows their employment type.** An employee is
+registered for PAYE and SSNIT; an Associate Consultant settles their own tax and
+pension, so their programme confirms their GRA registration and invoicing
+arrangements instead. That single step is the whole difference, deliberately: an
+Associate still signs a contract, still gives bank details because they are still
+paid, still acknowledges the conduct standards, still completes the independence
+declaration, and still gets objectives and a first review. The contract template
+named on the first step follows the same distinction - Contract of Employment, or
+Associate Consultant Agreement.
+
+**"Where you have got to" is measured by the person's own steps**, not by
+everything on the list. Measured across the firm's steps as well, a new joiner on
+their first morning would be told they were at "Before you start" - a stage made
+entirely of things the firm does - and would go looking for something to act on
+that was never theirs. Where they have nothing outstanding anywhere, the stage
+shown is the first one the firm has not finished, which is the honest "waiting on
+us".
 
 Document signing is tracked through `documents` rather than duplicated as
 checklist items, so ticking "sign your contract" and actually signing it cannot
 disagree.
 
-**Onboarding is surfaced, not enforced.** An employee with an unsigned contract
-still gets to their work queue; the outstanding items sit prominently on their
-portal and on the HR overview. Blocking work would punish the employee for a
-delay that is often the firm's. If you want a hard block, the place to add it is
-`requireUser` in `worker/auth.ts`, next to the temporary-password gate.
+### The first sign-in is a gate
+
+Three steps, in this order, defined in
+[`shared/first-run.ts`](../shared/first-run.ts):
+
+1. **Their onboarding** - fifteen fields, all required: contact and emergency
+   contact, identification and right to work, qualifications, and bank details.
+2. **A password of their own**, replacing the temporary one they were emailed.
+3. **Two-step sign-in**, where their grade requires it.
+
+Onboarding first, at the firm's request. Being dropped straight onto a password
+form, before anything has explained what the portal is or what is coming, tells
+somebody nothing about the firm they have joined. The onboarding page does: the
+welcome, the five stages, the dates, and what is theirs to do.
+
+That leaves the temporary password usable for a little longer, and it is worth
+being plain that this costs less than it looks. A temporary password that reaches
+the portal at all is already an account takeover waiting to happen in either
+order: whoever holds it can sign in and set a password of their own, which is the
+first thing they would do. What protects the firm is the confinement, not the
+sequence - on any of the three steps the person reaches their own account screen
+and their own onboarding and nothing else, and the API answers `403
+first_run_pending` to everything else.
+
+The Worker and the browser read the same module: the server decides what a request
+may reach, the browser decides where to send somebody, and a browser routing to
+the password screen while the server still demands onboarding is a loop with no
+way out. The onboarding checklist is ordered to match, so it never tells somebody
+to do something the portal is not asking for yet.
+
+The reason for the gate is that this information is what the firm cannot proceed
+without and cannot get any other way. A contract cannot be completed without a
+legal name, address and TIN; the person cannot be paid without bank details; and
+right-to-work evidence is a statutory obligation with a deadline attached. Asked
+optionally, it arrives weeks late or not at all.
+
+**Everything else remains surfaced, not enforced.** An employee with an unsigned
+contract still gets to their work queue; the outstanding items sit prominently on
+their portal and on the HR overview. Blocking work would punish the employee for a
+delay that is often the firm's.
+
+---
+
+## Downloading a signed copy
+
+Everything a typed-name signature needs to stand up was already recorded - who
+signed, the name they typed, when, from what address, on which version, and a
+SHA-256 of the exact text agreed to. All of it lived in a row the signatory could
+not obtain, so somebody asked for their contract by a bank or a landlord had a
+screenshot to offer.
+
+`GET /api/documents/:id/signed-copy` returns the whole thing as one self-contained
+file: the document as they read it, then an **electronic signature certificate**
+setting out the evidence, styled to print to a clean PDF from any browser. A
+person may download their own; an HR administrator may download anybody's, because
+the personnel file is theirs to keep; nobody else, at any grade.
+
+**The file re-checks itself.** The hash recorded at signature is compared with the
+hash of the text actually in the file, and the certificate says which it found. If
+the document has been amended since - which raises its version and asks the person
+to sign again - the certificate says so in terms, and tells the reader to treat the
+text as the current wording rather than the signed one. A signed copy that has
+drifted from what was signed is worse than no copy, because it looks convincing.
+
+**One grammar, two renderers.** The markdown parser lives in
+[`shared/markdown.ts`](../shared/markdown.ts) and produces a small tree;
+`src/components/Markdown.tsx` turns it into React elements for the screen and
+`renderMarkdownHtml` turns the same tree into HTML for the download. Written
+separately, the two could disagree about a numbered list or a bold run - and the
+person would have signed one thing and be holding another.
+
+It is HTML rather than PDF because a PDF writer that lays out a fifteen-page
+agreement well is a large thing to carry in a Worker, and every browser already
+prints to PDF. Every value is escaped on the way in, including the firm's own
+settings: a signed copy is a file the firm hands to an employee and the employee
+hands to a bank, and nothing in the portal should be able to put script into it.
+
+The certificate states what the firm recorded and how to check it. It does not
+claim to be a qualified electronic signature or to satisfy any jurisdiction,
+because whether a typed name is a signature where the firm operates is a legal
+question and not one a file settles by asserting it.
+
+---
+
+## Completing a contract
+
+Both contract templates are written with bracketed placeholders - `[JOB TITLE]`,
+`[ASSOCIATE TIN]`, `[NOTICE DAYS]`. Thirty-eight of them in the Associate
+agreement. Replacing them by hand, per person, in a fifteen-page instrument, is
+how a contract comes to be signed saying the notice period is `[NOTICE DAYS]`
+days.
+
+[`shared/contract-fields.ts`](../shared/contract-fields.ts) says, for every
+placeholder in both templates, where its value is supposed to come from. Three
+answers, and the distinction is the whole design:
+
+| | Where it lives | Who supplies it |
+| --- | --- | --- |
+| **From the record** | `users`, `employee_profiles`, `employee_compensation`, settings | Nobody types it again |
+| **A firm-wide term** | `settings.contract_defaults` | Set once, in Portal settings → Contract terms |
+| **This person only** | `contract_details` | The administrator, when the account is created |
+
+**Nothing already in the record is copied.** Their name, job title, start date,
+salary and address are read from where they already are. A second copy of a job
+title is how a contract comes to disagree with a personnel file.
+
+**The standard terms are set once.** The registered company name, the notice
+period, the payment days, the fee for each tier - the same in every contract the
+firm issues. Asking an administrator to retype twenty-five of those per person
+guarantees the twenty-sixth Associate is engaged on different ones. Terms with a
+conventional value start from it, and the screen says so, because the failure to
+guard against is not a blank field: it is a firm issuing thirty contracts on a
+notice period nobody ever chose. A per-person value overrides a firm-wide one,
+for the case where terms were negotiated.
+
+### What the administrator does not have
+
+Three of the placeholders describe the person rather than the engagement: their
+residential address, their TIN and their Ghana Card number. An administrator who
+has them types them in when the account is created. One who does not leaves them
+blank - they are among the fifteen things asked at first sign-in, so the gap
+fills itself, and the contract reads from the same column either way. The screen
+says which of the outstanding fields those are, because "six fields outstanding"
+sends somebody chasing three things that were going to answer themselves.
+
+### Issuing
+
+`POST /api/documents/:id/copy-for` substitutes everything it can as it makes the
+copy, and reports what is left in three groups: `filled`, `outstanding` (a merge
+field was meant to fill it and could not), and `manual` (nothing was ever going
+to - the assigned-client schedule, and the date beside each signature).
+
+**A blank value is not substituted.** Replacing `[ASSOCIATE TIN]` with an empty
+string produces "holding Taxpayer Identification Number and Ghana Card number
+...", which is grammatical, reads as finished, and is wrong. The bracket stays,
+which is ugly, and ugly is the only version somebody notices before it is issued.
+
+Dates are written out - a contract commences on 1 October 2026, not on
+2026-10-01 - while the form that collects them still holds the ISO string its
+date input needs.
+
+---
+
+## The staff directory
+
+A practice needs a phone list. Somebody preparing a return has to be able to find
+out who reviews for the tax team, what a colleague's job title is and which
+address to use, and asking around for that is how a new joiner spends their first
+fortnight. So `/directory` is open to everybody.
+
+**What differs by grade is not who appears but what is said about them.**
+
+| | Shown |
+| --- | --- |
+| Everybody | Name, grade, job title, department, work email, location, who they report to |
+| Manager and above | The same, plus employment status, staff number and start date - and a link through to the personnel file |
+| Nobody, here | Personal phone or address, date of birth, next of kin, pay, bank details, identification, qualifications |
+
+Employment status is the one that is easy to miss: `probation` on a directory
+card tells the whole firm something that is between a colleague and their manager.
+The fields a reader below Manager grade must not receive are left out of the
+`SELECT` rather than deleted from the rows afterwards - filtering after the fact
+works until somebody adds a column and forgets the filter.
+
+Alongside the grade rule there is a work rule, which adds rather than subtracts:
+the directory marks the colleagues you share live deliverables with, and how many.
+That is the half of "who do I talk to" a grade cannot answer. Closed and cancelled
+deliverables do not count - a figure that sends somebody to talk about a job that
+finished is worse than no figure.
+
+Retired accounts are left out. They are kept so the client work still shows who
+prepared and who reviewed each job, but "Former colleague" at an unroutable
+address is an entry nobody can act on. A **suspended** colleague does stay:
+somebody on leave is still a colleague.
+
+This is separate from `/people`, which is the personnel directory and stays at
+Manager grade under the `people` area setting. The staff directory does not
+loosen it.
+
+---
+
+## Removing somebody
+
+**Accounts and grades → Remove.** Two removals, and deleting outright is the
+default, because that is what an administrator who opened the screen came to do.
+
+| | What happens |
+| --- | --- |
+| **Delete everything** | The user row goes, cascades and all |
+| **Keep their client work, remove the person** | The personal record goes; the row stays, anonymised, so the client work keeps the shape of who did what |
+
+What the dialog owes an administrator is the truth about what goes with them,
+because "delete the account" sounds like one action on one row and it is not. A
+user row is referenced by forty-odd columns and about a third of them cascade.
+Measured against the real schema with foreign keys on, as D1 enforces them:
+deleting a reviewer removes the review round, the review point and the comment
+from **somebody else's** deliverable, and leaves that deliverable in
+`under_review` with no reviewer and no record of what was asked for. Deleting a
+preparer takes the hours logged against the client. That measurement is a test, so
+if the schema is ever fixed the wording can be softened deliberately rather than
+drifting.
+
+So the counts are shown, plainly, and then the button does what it says. An
+earlier version recommended retiring instead once somebody had touched any client
+work; that was the wrong call. A screen that answers "would you not rather do
+something else" to a decision its owner has already made is arguing rather than
+informing.
+
+The confirmation is the person's own name rather than a fixed word. "DELETE" can
+be typed without reading; the point is not friction but making somebody look at
+which account they have selected.
+
+Three removals are refused outright, whichever option is chosen: your own account,
+an account senior to you, and the last active administrator. The reason is shown
+before anybody types a confirmation rather than at the point of failure.
 
 ---
 
@@ -183,9 +418,12 @@ delay that is often the firm's. If you want a hard block, the place to add it is
 | Employee handbook | `/handbook` | Everyone |
 | A document, with signing | `/documents/:id` | Whoever it is addressed to |
 | My details | `/my-profile` | Everyone |
+| Staff directory | `/directory` | Everyone |
 | People directory and onboarding progress | `/people` | Manager and above |
 | Personnel file | `/people/:id` | Self, manager, HR - by section |
 | Portal settings: handbook, welcome, logo, email | `/portal-admin` | Partner and above |
+| Contract terms (firm-wide) | `/portal-admin?tab=contract` | HR reads, Partner writes |
+| One person's contract details | `/people/:id` → Contract details | HR administrator |
 | Accounts and grades | `/team` | Partner and above |
 
 ---
@@ -196,18 +434,19 @@ delay that is often the firm's. If you want a hard block, the place to add it is
   points, not finished legal instruments. Review each against the employment law
   and professional standards that apply to the firm, then publish. They ship as
   drafts so this cannot be skipped by accident.
-- **Complete the right contract template** per person and issue it as an
-  individually addressed document. Do not publish either template itself to staff.
-  Use the contract of employment for employees, and the Associate Consultant
-  Agreement for independent contractors.
-- **An Associate is not an employee, and the onboarding programme assumes one.**
-  The standard checklist asks a new joiner to sign a contract of employment,
-  acknowledge the Employee Handbook policy by policy, register for payroll and
-  statutory deductions, and have probation objectives set. Every one of those,
-  applied to a contractor, is evidence against the arrangement their contract
-  describes. Edit those steps off an Associate's checklist, set their employment
-  type to Consultant, and leave the salary fields empty - they invoice against
-  the agreement rather than being paid through payroll.
+- **Set the firm's standard contract terms** before issuing anything. Portal
+  settings → Contract terms. The registered company name, the company number and
+  the registered office have no sensible default and will print as brackets until
+  they are set; the rest start from a conventional value, which is a starting
+  point rather than the firm's decision. Do not publish either template itself to
+  staff - a template is copied per person, and the copy is what gets signed.
+- **An Associate is not an employee**, and the programme now says so: set their
+  employment type to Consultant or Contractor when the account is created and they
+  get the Associate programme and the Associate agreement, with no payroll
+  registration. Leave the salary fields empty - they invoice against the agreement
+  rather than being paid through payroll. Check the finished checklist before
+  issuing it: every step that treats a contractor as an employee is evidence
+  against the arrangement their contract describes.
 - **Check whether typed-name signatures satisfy your jurisdiction** for
   employment contracts. The record captured here - attestation, matched name,
   timestamp, IP, and a hash of the exact text - is strong evidence of agreement,

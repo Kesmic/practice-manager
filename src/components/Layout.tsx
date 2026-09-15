@@ -51,10 +51,24 @@ const NAV: NavItem[] = [
     badge: "client_requests",
     badgeNoun: "client request",
   },
+  {
+    to: "/status-reports",
+    label: "Status reports",
+    section: "Work",
+    badge: "status_reports",
+    badgeNoun: "status report",
+  },
   { to: "/engagements", label: "Engagements", area: "engagements", section: "Work" },
   { to: "/templates", label: "Job templates", area: "templates", section: "Work" },
   { to: "/reports", label: "Reports", area: "reports", section: "Work" },
 
+  {
+    to: "/my-clients",
+    label: "My clients",
+    section: "My portal",
+    badge: "allocations",
+    badgeNoun: "client offer",
+  },
   {
     to: "/onboarding",
     label: "My onboarding",
@@ -70,6 +84,7 @@ const NAV: NavItem[] = [
     badgeNoun: "document",
   },
   { to: "/my-profile", label: "My details", section: "My portal" },
+  { to: "/directory", label: "Staff directory", section: "My portal" },
   { to: "/guide", label: "How to use the portal", section: "My portal" },
 
   { to: "/people", label: "People", area: "people", section: "Administration" },

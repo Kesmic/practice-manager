@@ -136,25 +136,19 @@ export function SecurityQuestionsCard({
       <h2 className="text-base font-semibold text-slate-900">
         Security questions <span className="font-normal text-slate-500">(recovery only)</span>
       </h2>
-      <p className="muted mt-1">
-        A way back in for the day you cannot reach your phone, alongside your recovery
-        codes. It is not a second way to sign in: your app stays the way in, and you are
-        asked <strong>all</strong> of your questions at once when you use this.
-      </p>
-
-      <p className="mt-3 rounded-md bg-amber-50 p-3 text-xs text-amber-800 ring-1 ring-amber-200">
-        These are weaker than the app. Answers can often be researched, and a colleague
-        may already know some of them, so choose questions whose answers are not on your
-        HR record, your CV or anywhere public. Getting in this way tells every Partner,
-        and it will not remember your device - only a code from your app does that.
-        {!state.answers_keyed && (
-          <span className="mt-1 block">
-            On this deployment answers are stored without the PASSWORD_PEPPER secret, so a
-            leaked database copy could be attacked offline. Setting that secret is worth
-            doing before relying on this.
-          </span>
-        )}
-      </p>
+      {/*
+        The explanatory paragraphs are gone at the firm's request. The deployment warning
+        below is not part of that: it is not advice about the feature but a statement
+        that this particular deployment is missing a secret, which changes how safe the
+        answers actually are. Nobody can act on that without being told it.
+      */}
+      {!state.answers_keyed && (
+        <p className="mt-3 rounded-md bg-amber-50 p-3 text-xs text-amber-800 ring-1 ring-amber-200">
+          On this deployment answers are stored without the PASSWORD_PEPPER secret, so a
+          leaked database copy could be attacked offline. Setting that secret is worth
+          doing before relying on this.
+        </p>
+      )}
 
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
 

@@ -17,6 +17,16 @@ import type {
   TaskStatus,
 } from "./workflow";
 import type {
+  AllocationAction,
+  AllocationStatus,
+  ClientTier,
+  DeclineGround,
+} from "./allocations";
+import type { ContractField, ContractTemplate } from "./contract-fields";
+import type { RemovalAdvice, RemovalFootprint } from "./removal";
+import type { ReportSchedule, ReportState } from "./status-reports";
+import type { Stage, StageProgress } from "./onboarding";
+import type {
   Criterion,
   ObjectiveStatus,
   OverallOutcome,
@@ -546,6 +556,11 @@ export interface OnboardingItem {
   detail: string | null;
   owner: "employee" | "hr";
   category: string | null;
+  /** Which stage of the programme this belongs to. Null on programmes created before
+   *  stages existed, which then render as one undated list. */
+  stage: Stage | null;
+  /** When it falls due, computed from the start date when the programme was created. */
+  due_date: string | null;
   is_done: 0 | 1;
   done_at: string | null;
   done_by_name: string | null;
@@ -587,6 +602,17 @@ export interface MyOnboarding {
   outstanding_documents: PortalDocument[];
   completed_documents: Array<PortalDocument & { signed_at: string; action: SignatureAction }>;
   progress: OnboardingProgress;
+  /** Every stage of the programme, with its dates and counts. */
+  stages: StageProgress[];
+  /** Which stage this person has actually got to. */
+  current_stage: Stage | null;
+  /** True once nothing the first sign-in asks for is outstanding. */
+  first_run_complete: boolean;
+  missing_bank_fields: string[];
+  bank: Record<string, string | null> | null;
+  employment_type: string | null;
+  /** Which contract template applies to this engagement. */
+  contract_template: string;
 }
 
 /** The full personnel file, assembled for the HR employee screen. */
@@ -676,4 +702,166 @@ export interface ReviewDetail extends ReviewSummary {
   criteria: Criterion[];
   ratings: ReviewRating[];
   objectives: ReviewObjective[];
+}
+
+// ---------------------------------------------------------------------------
+// Contract details
+// ---------------------------------------------------------------------------
+
+/**
+ * One placeholder in a contract template, as the details screen reads it: the
+ * registry's description of the field, plus what it currently resolves to for this
+ * person and where that value came from.
+ */
+export interface ResolvedContractField extends ContractField {
+  value: string | null;
+  origin: "person" | "record" | "firm" | "fallback" | null;
+  /**
+   * The value exists but is above the reader's grade. Only pay is ever restricted, and
+   * only from HR administrators below Partner - who need to know the salary field is
+   * filled, not what it says.
+   */
+  restricted: boolean;
+  /**
+   * Nobody has to chase this one. It is among the things asked at first sign-in, so it
+   * answers itself the first time the person signs in.
+   */
+  awaiting_employee: boolean;
+}
+
+export interface ContractDetails {
+  template: ContractTemplate;
+  employment_type: EmploymentType;
+  fields: ResolvedContractField[];
+  /** How many placeholders would still be brackets if the contract were issued today. */
+  outstanding: number;
+  /** How many of those the person themselves will answer at first sign-in. */
+  awaiting_employee: number;
+}
+
+/** What a freshly issued copy of a template still needs, reported when it is created. */
+export interface ContractMergeResult {
+  filled: string[];
+  outstanding: string[];
+  awaiting_employee: string[];
+  /** Placeholders no merge field was ever going to fill: the schedules, and the dates. */
+  manual: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Status reports
+// ---------------------------------------------------------------------------
+
+/** A deliverable named in a status report, with whatever was said about it. */
+export interface StatusReportTask {
+  id: string;
+  ref: string;
+  title: string;
+  status: TaskStatus;
+  client_name: string;
+  note: string | null;
+}
+
+export interface StatusReport {
+  id: string;
+  user_id?: string;
+  /** The reporting day this answers for, not the day it was written. */
+  due_on: string;
+  /** The first day it covers. Stored, so a later change of schedule cannot re-date it. */
+  period_from: string;
+  body: string;
+  blockers: string | null;
+  submitted_at: string;
+  updated_at: string;
+  tasks: StatusReportTask[];
+}
+
+/** Everything the person's own status-report screen needs, in one round trip. */
+export interface StatusReportView {
+  schedule: ReportSchedule;
+  state: ReportState;
+  /** The reporting day currently being answered for. */
+  due_on: string | null;
+  period_from: string | null;
+  next_due_on: string | null;
+  /** Reporting days that passed without a report, since this person arrived. */
+  missed: string[];
+  /** The current report, where it has already been written. */
+  current: StatusReport | null;
+  /** Their own live work, for the reference picker. */
+  tasks: StatusReportTask[];
+  recent: StatusReport[];
+}
+
+export interface TeamStatusReports {
+  schedule: ReportSchedule;
+  due_on: string | null;
+  period_from: string | null;
+  outstanding: number;
+  people: Array<{
+    id: string;
+    full_name: string;
+    role: Role;
+    open_tasks: number;
+    report_id: string | null;
+    report?: StatusReport;
+  }>;
+}
+
+// ---------------------------------------------------------------------------
+// Client allocations
+// ---------------------------------------------------------------------------
+
+/**
+ * One client offered to, or held by, one person.
+ *
+ * `available_actions` is computed on the server from the same rules the screen would
+ * apply, so a button that appears is one the API will accept - and, more importantly,
+ * one that does not appear is one nobody can reach by guessing the URL.
+ */
+export interface ClientAllocation {
+  id: string;
+  client_id: string;
+  client_name: string;
+  client_code: string;
+  user_id: string;
+  user_name: string;
+  tier: ClientTier | null;
+  status: AllocationStatus;
+  offered_by: string | null;
+  offered_by_name: string | null;
+  offered_at: string;
+  note: string | null;
+  responded_at: string | null;
+  decline_ground: DeclineGround | null;
+  decline_reason: string | null;
+  ended_at: string | null;
+  ended_note: string | null;
+  available_actions: AllocationAction[];
+}
+
+// ---------------------------------------------------------------------------
+// Removing somebody
+// ---------------------------------------------------------------------------
+
+/**
+ * What removing one person would cost, read before the decision rather than after.
+ *
+ * `blocked` is non-null where the removal cannot happen at all - your own account, an
+ * account senior to you, the last administrator - so the screen says why before anybody
+ * types a confirmation rather than at the point of failure.
+ */
+export interface RemovalPreview {
+  user: {
+    id: string;
+    full_name: string;
+    email: string;
+    role: Role;
+    status: string;
+  };
+  footprint: RemovalFootprint;
+  advice: RemovalAdvice;
+  blocked: string | null;
+  /** The exact words that have to be typed: the person's own name. */
+  confirmation: string;
 }

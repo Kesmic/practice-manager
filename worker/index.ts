@@ -12,9 +12,11 @@
 
 import type { Env } from "./env";
 import { Router, errorResponse, json } from "./http";
+import { registerAllocationRoutes } from "./routes/allocations";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerClientFileRoutes } from "./routes/client-files";
 import { registerClientRoutes } from "./routes/clients";
+import { registerContractRoutes } from "./routes/contracts";
 import { registerDocumentRoutes } from "./routes/documents";
 import { registerEmployeeRoutes } from "./routes/employees";
 import { registerEraseRoutes } from "./routes/erase";
@@ -24,6 +26,7 @@ import { registerIntakeRoutes } from "./routes/intake";
 import { registerPerformanceRoutes } from "./routes/performance";
 import { registerReviewRoutes } from "./routes/reviews";
 import { registerSettingsRoutes } from "./routes/settings";
+import { registerStatusReportRoutes } from "./routes/status-reports";
 import { registerTaskItemRoutes } from "./routes/task-items";
 import { registerTaskRoutes } from "./routes/tasks";
 import { registerTwoFactorRoutes } from "./routes/twofactor";
@@ -56,6 +59,9 @@ registerIntakeRoutes(router);
 registerEmployeeRoutes(router);
 registerDocumentRoutes(router);
 registerSettingsRoutes(router);
+registerContractRoutes(router);
+registerStatusReportRoutes(router);
+registerAllocationRoutes(router);
 registerEraseRoutes(router);
 registerTwoFactorRoutes(router);
 

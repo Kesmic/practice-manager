@@ -4,21 +4,24 @@ import type { MyOnboarding } from "@shared/types";
 import { PROFILE_FIELD_LABELS, requiredAction } from "@shared/hr";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
-import { Markdown } from "../components/Markdown";
+import { FirstRunPrompt } from "../components/FirstRunPrompt";
+import { WelcomeCard } from "../components/WelcomeCard";
+import { FirstRunForm } from "../components/FirstRunForm";
+import { OnboardingStages } from "../components/OnboardingStages";
 import {
   EmptyState,
   ErrorBanner,
   Spinner,
   SuccessBanner,
 } from "../components/ui";
-import { formatDate, percent, relativeTime } from "../lib/format";
+import { formatDate, percent } from "../lib/format";
 
 /**
  * The new joiner's home: the welcome message, the documents they must sign or
  * acknowledge, their own onboarding steps, and what the firm still owes them.
  */
 export function Onboarding() {
-  const { user } = useSession();
+  const { user, refresh, firstRunStep } = useSession();
   const [data, setData] = useState<MyOnboarding | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -53,11 +56,11 @@ export function Onboarding() {
   };
 
   const myItems = data.items.filter((item) => item.owner === "employee");
-  const hrItems = data.items.filter((item) => item.owner === "hr");
   const { progress } = data;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      <FirstRunPrompt step={firstRunStep} />
       <div>
         <h1 className="section-title">Welcome to {data.firm_name}</h1>
         <p className="muted mt-0.5">
@@ -69,6 +72,23 @@ export function Onboarding() {
 
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <SuccessBanner message={notice} onDismiss={() => setNotice(null)} />
+
+      {/*
+        Until this is finished the person can reach almost nothing else, so it goes first
+        - above the welcome message and the progress bar, because neither is any use to
+        somebody who cannot get past this.
+      */}
+      {data.first_run_complete === false && (
+        <FirstRunForm
+          values={{ ...(data.personal ?? {}), ...(data.bank ?? {}) }}
+          missing={[...data.missing_profile_fields, ...(data.missing_bank_fields ?? [])]}
+          onSaved={async () => {
+            await load();
+            await refresh();
+            setNotice("Thank you. That is everything we needed from you.");
+          }}
+        />
+      )}
 
       {/* Progress */}
       <div className="card p-4">
@@ -110,18 +130,18 @@ export function Onboarding() {
         </div>
       </div>
 
-      {/* Welcome message */}
-      {data.welcome_message.trim() && (
-        <section className="card p-5">
-          <Markdown>{data.welcome_message}</Markdown>
-          {data.md_name && (
-            <p className="mt-4 border-t border-slate-200 pt-3 text-sm">
-              <span className="font-semibold text-slate-800">{data.md_name}</span>
-              <span className="text-slate-500"> · {data.md_title}</span>
-            </p>
-          )}
-        </section>
-      )}
+      {/*
+        The Managing Director's welcome, in the Letter presentation the firm chose: a
+        narrower measure than the rest of the page, and the signature set the way a
+        letter signs off. WelcomeCard holds the alternatives if that is ever revisited.
+      */}
+      <WelcomeCard
+        variant="letter"
+        body={data.welcome_message}
+        firmName={data.firm_name}
+        mdName={data.md_name}
+        mdTitle={data.md_title}
+      />
 
       {/* Documents awaiting signature */}
       <section className="card">
@@ -193,30 +213,38 @@ export function Onboarding() {
       </section>
 
       {/* Employee steps */}
-      <section className="card">
-        <div className="card-header">
-          <h2 className="card-title">Your steps</h2>
-          <span className="muted">
-            {myItems.filter((item) => item.is_done).length}/{myItems.length} done
-          </span>
-        </div>
-        {!myItems.length ? (
-          <EmptyState
-            title="No onboarding steps yet"
-            description="Your onboarding programme has not been started. A partner will set it up."
-          />
-        ) : (
+      {/*
+        The programme as a timeline instead of two flat lists. The old shape said what
+        but never when, and never how far through somebody was - see
+        components/OnboardingStages.tsx. Programmes created before stages existed have
+        no stage on any item, so they fall back to the two lists they have always been.
+      */}
+      {data.stages?.some((s) => s.total > 0) ? (
+        <OnboardingStages
+          stages={data.stages}
+          current={data.current_stage}
+          items={data.items}
+          onToggle={toggle}
+        />
+      ) : (
+        <section className="card">
+          <div className="card-header">
+            <h2 className="card-title">Your steps</h2>
+            <span className="muted">
+              {myItems.filter((i) => i.is_done).length}/{myItems.length} done
+            </span>
+          </div>
           <ul className="divide-y divide-slate-100">
             {myItems.map((item) => (
-              <li key={item.id} className="flex items-start gap-3 px-4 py-3">
+              <li key={item.id} className="flex items-start gap-3 px-4 py-2.5">
                 <input
                   type="checkbox"
+                  className="mt-0.5 shrink-0"
                   checked={item.is_done === 1}
-                  onChange={(event) => void toggle(item.id, event.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-link"
+                  onChange={(e) => toggle(item.id, e.target.checked)}
                   aria-label={item.label}
                 />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0">
                   <p
                     className={`text-sm ${
                       item.is_done ? "text-slate-400 line-through" : "text-slate-800"
@@ -227,48 +255,7 @@ export function Onboarding() {
                   {item.detail && (
                     <p className="mt-0.5 text-xs text-slate-500">{item.detail}</p>
                   )}
-                  {item.is_done === 1 && item.done_at && (
-                    <p className="mt-0.5 text-xs text-slate-400">
-                      Completed {relativeTime(item.done_at)}
-                    </p>
-                  )}
                 </div>
-                {item.category && (
-                  <span className="pill shrink-0 bg-slate-100 text-slate-600 ring-slate-200">
-                    {item.category}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* What the firm owes the new joiner */}
-      {hrItems.length > 0 && (
-        <section className="card">
-          <div className="card-header">
-            <h2 className="card-title">What we are doing for you</h2>
-            <span className="muted">
-              {hrItems.filter((item) => item.is_done).length}/{hrItems.length} done
-            </span>
-          </div>
-          <ul className="divide-y divide-slate-100">
-            {hrItems.map((item) => (
-              <li key={item.id} className="flex items-start gap-3 px-4 py-2.5">
-                <span
-                  className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
-                    item.is_done ? "bg-emerald-500" : "bg-slate-300"
-                  }`}
-                  aria-hidden="true"
-                />
-                <p
-                  className={`text-sm ${
-                    item.is_done ? "text-slate-400" : "text-slate-700"
-                  }`}
-                >
-                  {item.label}
-                </p>
               </li>
             ))}
           </ul>
@@ -290,9 +277,14 @@ export function Onboarding() {
                 <Link to={`/documents/${doc.id}`} className="link text-sm">
                   {doc.title}
                 </Link>
-                <span className="text-xs text-slate-500">
-                  {doc.action === "signed" ? "Signed" : "Acknowledged"}{" "}
-                  {formatDate(doc.signed_at)}
+                <span className="flex items-center gap-3 text-xs text-slate-500">
+                  <span>
+                    {doc.action === "signed" ? "Signed" : "Acknowledged"}{" "}
+                    {formatDate(doc.signed_at)}
+                  </span>
+                  <a className="link" href={api.signedCopyUrl(doc.id)}>
+                    Download
+                  </a>
                 </span>
               </li>
             ))}

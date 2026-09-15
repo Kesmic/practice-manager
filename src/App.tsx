@@ -11,6 +11,9 @@ import { DocumentView } from "./pages/DocumentView";
 import { EmployeeDetail } from "./pages/EmployeeDetail";
 import { ReviewDetailPage } from "./pages/ReviewDetail";
 import { Engagements } from "./pages/Engagements";
+import { Directory } from "./pages/Directory";
+import { MyClients } from "./pages/MyClients";
+import { StatusReports } from "./pages/StatusReports";
 import { Guide } from "./pages/Guide";
 import { Handbook } from "./pages/Handbook";
 import { Intake } from "./pages/Intake";
@@ -27,6 +30,7 @@ import { Tasks } from "./pages/Tasks";
 import { Team } from "./pages/Team";
 import { Templates } from "./pages/Templates";
 import type { Role } from "@shared/workflow";
+import { firstRunDestination } from "@shared/first-run";
 
 /** Blocks a route until the session is known, then requires a minimum grade. */
 function Protected({
@@ -36,15 +40,25 @@ function Protected({
   minimum?: Role;
   children: React.ReactNode;
 }) {
-  const { user, loading, can } = useSession();
+  const { user, loading, can, firstRunStep } = useSession();
   const location = useLocation();
 
   if (loading) return <Spinner label="Checking your session" />;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 
-  // A forced password change blocks everything except the account screen.
-  if (user.must_change_password && location.pathname !== "/account") {
-    return <Navigate to="/account" replace />;
+  /*
+   * Somebody part-way through their first sign-in is sent to the screen that lets them
+   * finish, and the server confines them to the same place. The step and the
+   * destination both come from shared/first-run.ts, so the two cannot disagree and
+   * leave somebody bouncing between screens.
+   *
+   * Onboarding first, then the password, then two-step sign-in.
+   */
+  if (firstRunStep) {
+    const destination = firstRunDestination(firstRunStep);
+    if (location.pathname !== destination) {
+      return <Navigate to={destination} replace />;
+    }
   }
 
   if (minimum && !can(minimum)) {
@@ -94,6 +108,9 @@ export function App() {
             </Protected>
           }
         />
+        <Route path="/directory" element={<Directory />} />
+        <Route path="/my-clients" element={<MyClients />} />
+        <Route path="/status-reports" element={<StatusReports />} />
         <Route path="/engagements" element={<Engagements />} />
         <Route path="/templates" element={<Templates />} />
         <Route path="/notifications" element={<Notifications />} />

@@ -153,6 +153,17 @@ export function DocumentView() {
           <p className="mt-0.5 text-xs">
             Recorded against version {mine.version}, signed as “{mine.typed_name}”.
           </p>
+          {/*
+            A plain link rather than a button that fetches. The response carries
+            Content-Disposition, so following it downloads the file under the name the
+            server chose; pulling it into a blob would throw that name away.
+          */}
+          <a
+            className="mt-2 inline-block text-xs font-medium underline"
+            href={api.signedCopyUrl(doc.id)}
+          >
+            Download your signed copy
+          </a>
         </div>
       )}
 

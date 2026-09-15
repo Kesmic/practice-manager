@@ -10,6 +10,7 @@
 import type { Env } from "./env";
 import { HttpError, forbidden, unauthorized } from "./http";
 import { atLeast, type Role } from "../shared/workflow";
+import { FIRST_RUN_MESSAGES } from "../shared/first-run";
 import {
   isRequiredFor as twoFactorRequiredFor,
   readPolicy as readTwoFactorPolicy,
@@ -55,6 +56,15 @@ export function passwordIterations(env: Env): number {
   if (!Number.isFinite(parsed)) return DEFAULT_ITERATIONS;
   return Math.min(MAX_ITERATIONS, Math.max(MIN_ITERATIONS, parsed));
 }
+
+/**
+ * Marker on the 403 that says why somebody is being held back.
+ *
+ * Without it the browser cannot tell "you have not finished your details" from any other
+ * refusal, and would show a person a permission error for something they are entitled to
+ * do and simply have not got to yet.
+ */
+export const FIRST_RUN_PENDING_CODE = "first_run_pending";
 
 export const SESSION_COOKIE = "kpm_session";
 const DEFAULT_TTL_DAYS = 7;
@@ -266,6 +276,8 @@ export interface AuthenticatedUser {
   must_change_password: 0 | 1;
   /** Whether this person wants email as well as the in-app inbox. */
   email_notifications: 0 | 1;
+  /** When the account was made. The account screen shows it. */
+  created_at: string;
   /** Digest of the caller's own session token, so it can be exempted from
    *  bulk session revocation. Never sent to the client. */
   session_id: string;
@@ -347,7 +359,8 @@ export async function currentSession(
   const id = await digest(token);
   const row = await env.DB.prepare(
     `SELECT u.id, u.email, u.full_name, u.role, u.title, u.must_change_password,
-            u.email_notifications, u.status, s.expires_at, s.last_seen_at
+            u.email_notifications, u.status, u.created_at,
+            s.expires_at, s.last_seen_at
        FROM sessions s
        JOIN users u ON u.id = s.user_id
       WHERE s.id = ?`,
@@ -362,6 +375,7 @@ export async function currentSession(
       must_change_password: 0 | 1;
       email_notifications: 0 | 1;
       status: string;
+      created_at: string;
       expires_at: string;
       last_seen_at: string;
     }>();
@@ -408,6 +422,7 @@ export async function currentSession(
       title: row.title,
       must_change_password: row.must_change_password,
       email_notifications: row.email_notifications,
+      created_at: row.created_at,
       session_id: id,
     },
     idled: false,
@@ -431,10 +446,10 @@ export function publicUser(user: AuthenticatedUser) {
 /**
  * Resolves the caller or rejects the request.
  *
- * A user signed in on a temporary password is deliberately confined to the
- * account screen: set `allowPasswordPending` only on the endpoints that let them
- * choose a new one. Enforcing this here rather than in the UI means an issued
- * temporary password cannot be used to drive the API indefinitely.
+ * Somebody part-way through their first sign-in is confined to the screens that let
+ * them finish: set the `allow*Pending` flags only on those endpoints. Enforcing it here
+ * rather than in the UI means an issued temporary password cannot be used to drive the
+ * API indefinitely.
  */
 export async function requireUser(
   env: Env,
@@ -442,7 +457,12 @@ export async function requireUser(
   {
     allowPasswordPending = false,
     allowTwoFactorPending = false,
-  }: { allowPasswordPending?: boolean; allowTwoFactorPending?: boolean } = {},
+    allowProfilePending = false,
+  }: {
+    allowPasswordPending?: boolean;
+    allowTwoFactorPending?: boolean;
+    allowProfilePending?: boolean;
+  } = {},
 ): Promise<AuthenticatedUser> {
   const { user, idled } = await currentSession(env, request);
   if (!user) {
@@ -450,29 +470,63 @@ export async function requireUser(
       ? new HttpError(401, IDLE_SIGNED_OUT_MESSAGE, IDLE_SIGNED_OUT_CODE)
       : unauthorized();
   }
+  /*
+   * Three gates, in the order shared/first-run.ts sets out: their onboarding, then a
+   * password of their own, then two-step sign-in. The browser routes people using the
+   * same module, so the two cannot disagree and leave somebody in a loop.
+   *
+   * Confinement rather than lockout in every case. The person can still sign in, and can
+   * reach exactly the screen that lets them finish - their own account and their own
+   * onboarding, and nothing else. Locking them out instead would mean the way to
+   * complete onboarding is to have already completed it, and the day a partner turns
+   * two-step sign-in on is the day nobody can work, including whoever would turn it off.
+   */
+
+  /*
+   * Onboarding first, at the firm's request. A new joiner meets the page that explains
+   * what is coming rather than a bare password form.
+   *
+   * One indexed lookup, and only for people who have not finished - which after the
+   * first week is everybody, so it costs nothing in the steady state.
+   */
+  if (!allowProfilePending && !(await hasFinishedFirstRun(env, user.id))) {
+    throw new HttpError(403, FIRST_RUN_MESSAGES.onboarding, FIRST_RUN_PENDING_CODE);
+  }
+
   if (user.must_change_password === 1 && !allowPasswordPending) {
-    throw forbidden(
-      "You are signed in with a temporary password. Set a new password before continuing.",
-    );
+    throw forbidden(FIRST_RUN_MESSAGES.password);
   }
 
   /*
-   * Someone whose grade obliges them to use a second factor, and who has not set one up,
-   * is confined to doing so, exactly as a temporary password confines them to choosing a
-   * new one. Confinement rather than refusal at sign-in: locking them out instead would
-   * mean the day a partner turns this on is the day nobody can work, including whoever
-   * would have to turn it back off.
-   *
    * The check is one indexed lookup and only runs for grades the policy covers, so it
    * costs nothing for the associates who are the bulk of the requests.
    */
   if (!allowTwoFactorPending && (await mustEnrolTwoFactor(env, user))) {
-    throw forbidden(
-      "Two-step sign-in is required at your grade. Set it up under My account before continuing.",
-    );
+    throw forbidden(FIRST_RUN_MESSAGES.two_factor);
   }
 
   return user;
+}
+
+/**
+ * Whether this person has finished what their first sign-in asked for.
+ *
+ * Reads the single stamped column rather than re-deriving completeness from a dozen
+ * fields on every request. `settleFirstRun` in routes/employees.ts is what sets it, and
+ * only ever sets it when nothing is outstanding.
+ *
+ * Absent profile row means nothing has been asked of them yet - a bootstrap
+ * administrator, or an account created before the programme existed - and those are let
+ * through rather than confined to a form nobody ever set up for them.
+ */
+export async function hasFinishedFirstRun(env: Env, userId: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT profile_completed_at FROM employee_profiles WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ profile_completed_at: string | null }>();
+  if (!row) return true;
+  return Boolean(row.profile_completed_at);
 }
 
 /**
@@ -481,7 +535,7 @@ export async function requireUser(
  * Kept here rather than in twofactor.ts to avoid a cycle: the auth module is imported by
  * everything, including the two-factor routes.
  */
-async function mustEnrolTwoFactor(
+export async function mustEnrolTwoFactor(
   env: Env,
   user: AuthenticatedUser,
 ): Promise<boolean> {

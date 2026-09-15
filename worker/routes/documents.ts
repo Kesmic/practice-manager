@@ -30,6 +30,14 @@ import {
   isHrAdmin,
   requiredAction,
 } from "../../shared/hr";
+import { fieldFor, fillContract } from "../../shared/contract-fields";
+import {
+  renderSignedCopy,
+  signedCopyFilename,
+  type SignedCopy,
+} from "../../shared/signed-copy";
+import { resolveContract, withFirmName } from "../contract-fields";
+import { readSettings } from "./settings";
 
 interface DocumentRow {
   id: string;
@@ -374,6 +382,86 @@ export function registerDocumentRoutes(router: Router<Env>): void {
    * each employee's contract is its own record with its own signature and its own
    * version history.
    */
+  /**
+   * A downloadable copy of a document somebody has signed, with the evidence attached.
+   *
+   * The portal already recorded everything a typed-name signature needs to stand up -
+   * who signed, the name they typed, when, from what address, on which version, and a
+   * SHA-256 of the text agreed to. All of it lived in a row the signatory could not
+   * obtain, so somebody asked for their contract by a bank or a landlord had a
+   * screenshot to offer.
+   *
+   * Returned as a file rather than a page. It is the document plus a signature
+   * certificate, styled to print to a clean PDF from any browser.
+   */
+  router.get("/api/documents/:id/signed-copy", async ({ request, env, params }) => {
+    const actor = await requireUser(env, request);
+
+    /*
+     * Whose copy this is. A person may download their own; an HR administrator may
+     * download anybody's, because the personnel file is theirs to keep. Nobody else,
+     * whatever their grade - a signed contract is the terms of somebody's employment.
+     */
+    const forUserId =
+      new URL(request.url).searchParams.get("user_id")?.trim() || actor.id;
+    if (forUserId !== actor.id && !isHrAdmin(actor.role)) {
+      throw forbidden("You can only download your own signed documents.");
+    }
+
+    const row = await env.DB.prepare(
+      `SELECT d.title, d.body, d.kind, s.version, s.action, s.typed_name,
+              s.content_hash, s.signed_at, s.ip_address, s.user_agent,
+              u.full_name AS signatory_name, u.email AS signatory_email
+         FROM document_signatures s
+         JOIN documents d ON d.id = s.document_id
+         JOIN users u ON u.id = s.user_id
+        WHERE s.document_id = ? AND s.user_id = ?
+        ORDER BY s.version DESC
+        LIMIT 1`,
+    )
+      .bind(params.id, forUserId)
+      .first<Record<string, unknown>>();
+
+    /*
+     * One sentence whether the document does not exist or was never signed. Splitting
+     * them would let anybody probe which documents exist and who has signed what.
+     */
+    if (!row) {
+      throw notFound("There is no signed copy of that document for this person.");
+    }
+
+    const settings = await readSettings(env);
+    const body = String(row.body);
+
+    const copy: SignedCopy = {
+      title: String(row.title),
+      body,
+      kind: String(row.kind),
+      version: Number(row.version),
+      signatory_name: String(row.signatory_name),
+      signatory_email: String(row.signatory_email),
+      typed_name: String(row.typed_name),
+      action: row.action === "acknowledged" ? "acknowledged" : "signed",
+      signed_at: String(row.signed_at),
+      ip_address: (row.ip_address as string | null) ?? null,
+      user_agent: (row.user_agent as string | null) ?? null,
+      content_hash: String(row.content_hash),
+      // Worked out here rather than trusted, which is what lets the certificate say
+      // whether the text in the file is the text that was signed.
+      current_hash: await sha256Hex(body),
+      firm_name: settings.firm_name,
+    };
+
+    return new Response(renderSignedCopy(copy), {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${signedCopyFilename(copy)}"`,
+        // A signed copy is somebody's employment terms; nothing should cache it.
+        "Cache-Control": "no-store",
+      },
+    });
+  });
+
   router.post("/api/documents/:id/copy-for", async ({ request, env, params }) => {
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const body = await readJson<{
@@ -422,6 +510,28 @@ export function registerDocumentRoutes(router: Router<Env>): void {
       .first<{ full_name: string }>();
     if (!person) throw badRequest("The selected employee does not exist.");
 
+    /*
+     * Complete the placeholders from what the firm already knows.
+     *
+     * Both templates are written with bracketed fields - the person's name, their job
+     * title, the notice period, the fee for each tier. Substituting them here rather
+     * than leaving them to be found by hand is the difference between issuing a
+     * contract and issuing a form. Thirty-eight of them in the Associate agreement:
+     * the ones that get missed by hand are the ones deep in the schedules, which is
+     * also where the money is.
+     *
+     * Anything without a value is left as its bracket rather than blanked. A contract
+     * reading "notice of  days" is grammatical enough to skim past; one reading
+     * "notice of [NOTICE DAYS] days" is not, and the response says which are left so
+     * the screen can put them in front of whoever is issuing it.
+     */
+    const resolution = await resolveContract(env, assignedUserId);
+    const settings = await readSettings(env);
+    const merged = fillContract(
+      String(source.body),
+      resolution ? withFirmName(resolution, settings.firm_name).values : {},
+    );
+
     // Their name in the title by default, because a personnel file with four
     // documents all called "Contract of Employment (template)" is unusable.
     const title =
@@ -443,7 +553,7 @@ export function registerDocumentRoutes(router: Router<Env>): void {
         source.category,
         title,
         source.summary,
-        source.body,
+        merged.text,
         requiresSignature,
         source.requires_acknowledgement ?? 0,
         assignedUserId,
@@ -455,7 +565,31 @@ export function registerDocumentRoutes(router: Router<Env>): void {
       )
       .run();
 
-    return json({ document: await loadDocument(env, id) }, 201);
+    return json(
+      {
+        document: await loadDocument(env, id),
+        /*
+         * What the copy still needs, so the screen can say so rather than leaving it
+         * to be discovered by the employee reading their own contract.
+         *
+         * `outstanding` is what a merge field was meant to fill and could not.
+         * `awaiting_employee` is the subset of those that answer themselves when the
+         * person signs in for the first time - their address, TIN and Ghana Card
+         * number - which is a different instruction to whoever is issuing it.
+         * `manual` is what no merge field was ever going to fill: the assigned-client
+         * schedule, and the date beside each signature.
+         */
+        merge: {
+          filled: merged.filled,
+          outstanding: merged.outstanding,
+          awaiting_employee: merged.outstanding.filter(
+            (token) => fieldFor(token)?.from?.filledBy === "employee",
+          ),
+          manual: merged.manual,
+        },
+      },
+      201,
+    );
   });
 
   router.patch("/api/documents/:id", async ({ request, env, params }) => {

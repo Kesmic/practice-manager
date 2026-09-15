@@ -16,6 +16,7 @@ import {
 import type { ClientFile } from "@shared/files";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
+import { ClientAllocationsCard } from "../components/ClientAllocationsCard";
 import { ClientFileCard } from "../components/ClientFileCard";
 import { NewTaskModal } from "../components/NewTaskModal";
 import { TaskTable } from "../components/TaskTable";
@@ -25,6 +26,7 @@ import {
   ErrorBanner,
   Spinner,
   StatTile,
+  SuccessBanner,
 } from "../components/ui";
 import { formatDate, formatHours, formatMoney, humanise } from "../lib/format";
 
@@ -40,6 +42,7 @@ export function ClientDetail() {
   const [users, setUsers] = useState<User[]>([]);
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
@@ -117,6 +120,7 @@ export function ClientDetail() {
       </div>
 
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
+      <SuccessBanner message={notice} onDismiss={() => setNotice(null)} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="Open deliverables" value={openTasks.length} />
@@ -155,6 +159,15 @@ export function ClientDetail() {
               emptyDescription="Create one, or generate a filing calendar from a job template."
             />
           </section>
+
+          <ClientAllocationsCard
+            clientId={id}
+            clientName={client.name}
+            colleagues={users}
+            canAllocate={can("manager")}
+            setError={setError}
+            setNotice={setNotice}
+          />
 
           <ClientFileCard
             clientId={id}

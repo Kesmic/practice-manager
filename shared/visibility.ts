@@ -58,7 +58,17 @@ export const AREA_SPECS: Record<Area, AreaSpec> = {
   engagements: {
     label: "Engagements",
     detail: "The engagements under each client, and their scope and fees.",
-    defaultMin: "associate",
+    /*
+     * Closed to staff by default, at the firm's request, and the reason is the fees.
+     * An engagement says what a client agreed to pay and for what - which is commercial
+     * information about the practice as much as about the client, and not something a
+     * new joiner needs in order to prepare a return.
+     *
+     * The floor stays at Associate, so a firm that wants its staff to see the scope
+     * they are working to can open it. Opened, it is still scoped: a person sees the
+     * engagements of the clients they reach, never the whole book.
+     */
+    defaultMin: "manager",
     floor: "associate",
   },
   templates: {

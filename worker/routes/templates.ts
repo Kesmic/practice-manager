@@ -34,6 +34,7 @@ import {
   SERVICE_LINES,
   type Priority,
   type Recurrence,
+  type Role,
   type ServiceLine,
 } from "../../shared/workflow";
 import {
@@ -45,6 +46,15 @@ import {
   statutoryDueDate,
 } from "../dates";
 import { assertReviewerGrade, parseTemplateChecklist } from "./tasks";
+
+/**
+ * Who may delete a template outright.
+ *
+ * A grade above the one that may edit or deactivate them. Editing a template changes
+ * what the next deliverable looks like; deleting it removes the firm's statement of how
+ * a recurring job is done, which is a different kind of decision.
+ */
+const MIN_TEMPLATE_ADMIN: Role = "partner";
 
 interface TemplateRow {
   id: string;
@@ -145,6 +155,81 @@ export function registerTemplateRoutes(router: Router<Env>): void {
       .bind(params.id)
       .first<TemplateRow>();
     return json({ template: template && toWire(template) });
+  });
+
+  /**
+   * Deletes a template outright.
+   *
+   * Safe in a way that deleting a person is not, and worth saying why: `tasks.template_id`
+   * is `ON DELETE SET NULL`, so every deliverable ever generated from this template
+   * survives intact and simply stops pointing at it. Nothing about the work changes -
+   * not its checklist, its deadline, or its history - because all of that was copied
+   * onto the deliverable when it was generated rather than read through the link.
+   *
+   * The count is returned anyway. "This template produced 340 deliverables" is not a
+   * reason to stop, but it is something somebody about to delete it should see, because
+   * it is the difference between a template that was tried once and one the firm runs
+   * every quarter. A template still in use is usually better deactivated than deleted:
+   * deactivating keeps it out of the pickers and keeps the link on its deliverables.
+   */
+  router.delete("/api/templates/:id", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_TEMPLATE_ADMIN);
+    const template = await env.DB.prepare(
+      `SELECT id, name FROM task_templates WHERE id = ?`,
+    )
+      .bind(params.id)
+      .first<{ id: string; name: string }>();
+    if (!template) throw notFound("That template does not exist.");
+
+    const generated = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM tasks WHERE template_id = ?`,
+    )
+      .bind(params.id)
+      .first<{ n: number }>();
+    const count = Number(generated?.n ?? 0);
+
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO hr_events (id, subject_id, actor_id, kind, detail, created_at)
+         VALUES (?, NULL, ?, 'template:deleted', ?, ?)`,
+      ).bind(
+        newId(),
+        actor.id,
+        `“${template.name}” deleted. ${count} deliverable${count === 1 ? "" : "s"} generated from it ${count === 1 ? "was" : "were"} kept.`,
+        nowIso(),
+      ),
+      env.DB.prepare(`DELETE FROM task_templates WHERE id = ?`).bind(params.id),
+    ]);
+
+    return json({ deleted: template.name, deliverables_kept: count });
+  });
+
+  /**
+   * What deleting a template would cost. Changes nothing.
+   */
+  router.get("/api/templates/:id/removal", async ({ request, env, params }) => {
+    await requireRole(env, request, MIN_TEMPLATE_ADMIN);
+    const template = await env.DB.prepare(
+      `SELECT id, name, active FROM task_templates WHERE id = ?`,
+    )
+      .bind(params.id)
+      .first<{ id: string; name: string; active: number }>();
+    if (!template) throw notFound("That template does not exist.");
+
+    const generated = await env.DB.prepare(
+      `SELECT COUNT(*) AS n,
+              SUM(CASE WHEN status NOT IN ('closed','cancelled') THEN 1 ELSE 0 END) AS open
+         FROM tasks WHERE template_id = ?`,
+    )
+      .bind(params.id)
+      .first<{ n: number; open: number | null }>();
+
+    return json({
+      template: { id: template.id, name: template.name, active: template.active === 1 },
+      deliverables: Number(generated?.n ?? 0),
+      open_deliverables: Number(generated?.open ?? 0),
+      confirmation: template.name,
+    });
   });
 
   /**

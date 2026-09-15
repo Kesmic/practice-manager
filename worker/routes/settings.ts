@@ -69,6 +69,15 @@ const DEFAULTS: Record<string, string> = {
    * quietly stop protecting them.
    */
   idle_timeout_minutes: "",
+  /**
+   * The firm's standard contract terms, as JSON: {"NOTICE DAYS":"30", ...}. Empty
+   * means none are set, and the field registry's starting values are used.
+   *
+   * Edited through /api/contract-defaults rather than here: the tokens are validated
+   * against the registry, and changing one changes every contract issued afterwards,
+   * which is a Partner-grade decision rather than an HR-administrator one.
+   */
+  contract_defaults: "",
 };
 
 /** Everything except the settings that have their own, validating endpoints. */
@@ -76,7 +85,8 @@ const EDITABLE = Object.keys(DEFAULTS).filter(
   (key) =>
     !key.startsWith("intake_") &&
     key !== "nav_visibility" &&
-    key !== "idle_timeout_minutes",
+    key !== "idle_timeout_minutes" &&
+    key !== "contract_defaults",
 );
 
 /**

@@ -17,10 +17,24 @@ Built for [Kesmic Consulting](https://www.kesmic.org).
 
 ## The employee portal
 
-**Onboarding** - a new joiner signs in and lands on a page with a progress bar,
-the welcome message from the MD, the documents they owe a response to, what
-personal details are still missing, their own steps, and the steps the firm owes
-them.
+**Onboarding** - a dated checklist, in five stages from *Before you start* to
+*Your first review*, showing the new joiner what is coming, when each stage falls
+due, which steps are theirs and which the firm's, and where they have got to. The
+programme follows the employment type chosen when the account is created: an
+employee is registered for PAYE and SSNIT, while an Associate Consultant confirms
+their own GRA registration and invoicing instead, and is issued the Associate
+agreement rather than a contract of employment. That single step is the whole
+difference - an Associate still signs a contract, is still paid, still
+acknowledges the conduct standards, and is still reviewed.
+
+**A first sign-in in three steps** - their onboarding, then a password of their
+own, then two-step sign-in where the grade requires it. Onboarding first, so a new
+joiner's first morning starts on the page that explains what is coming rather than
+on a bare password form. Fifteen things are asked once and all are required:
+contact and emergency contact, identification and right to work, qualifications,
+and bank details. Until each step is done the API confines the person to the
+screen that lets them finish it. Everything after that stage is surfaced, not
+enforced.
 
 **Probation and annual reviews** - each person rated against what their grade
 requires, on a four-point scale with no middle box to hide in, with objectives that
@@ -44,6 +58,27 @@ clause, twenty-two numbered clauses and three schedules. Each is copied per pers
 completed, and issued to them alone. Both ship as drafts to be reviewed by a lawyer
 before use, and the Associate template names the clauses most likely to be tested and
 what the firm must change about its onboarding before putting a contractor through it.
+
+**Contracts completed from what the firm already knows** - both templates are
+written with bracketed placeholders, thirty-eight of them in the Associate
+agreement, and replacing them by hand per person is how a contract comes to be
+signed saying the notice period is `[NOTICE DAYS]` days. Every placeholder now
+says where its value comes from: the person's own record, a firm-wide standard
+term set once, or a detail supplied when their account is created. Three of them
+describe the person rather than the engagement - their address, TIN and Ghana
+Card number - and an administrator who does not have them leaves them blank,
+because they are among the things asked at first sign-in and the contract reads
+from the same column either way. Anything still without a value is left as its
+bracket rather than printed empty, and the screen says which, because a contract
+reading "notice of  days" is grammatical enough to sign by mistake.
+
+**A downloadable signed copy** - the document as it was read, plus an electronic
+signature certificate carrying the typed name, the account it was signed from, the
+date and time, the IP address, the device, the version, and the SHA-256 of the
+exact text agreed to. The file re-checks itself: if the document has been amended
+since, the certificate says so rather than looking convincing. Self-contained HTML
+that prints to a clean PDF from any browser, so somebody asked for their contract
+by a bank or a landlord has something to send.
 
 **Contracts signed on the portal** - the employee reads the document, ticks an
 explicit attestation and types their full name. The system requires the typed
@@ -107,6 +142,50 @@ SharePoint, OneDrive or Google Drive, with the provider recognised from the addr
 The portal stores no document content, grants no access, and never fetches a link:
 following one means signing in to Microsoft or Google as yourself. What the portal adds
 is the answer to "where is it", which is what was actually missing.
+
+**A staff directory everyone can open** - name, grade, job title, department, work
+email and who reports to whom, for the whole firm, because asking around for a
+colleague's job title is how a new joiner spends a fortnight. What differs by
+grade is what is said about each person, not who appears: employment status, staff
+number and start date stop at Manager, and nothing personal is there for anybody.
+It also marks the colleagues you share live deliverables with, which is the half of
+"who do I talk to" that a grade cannot answer.
+
+**Staff can be deleted outright** - the row and everything that cascades with it -
+or retired, which keeps the client work under an anonymised name. Deleting is the
+default, because it is what an administrator who opened the screen came to do. What
+the screen owes them is the count of what goes with the person: deleting a reviewer
+also strips the review rounds, review points and comments off other people's
+deliverables, which was measured rather than assumed.
+
+**Staff see their own work, not the practice's** - below Manager grade a person
+sees the deliverables they prepare or review, the clients they hold or are doing
+work for, and nothing else. The detail endpoints are scoped as well as the lists,
+because a list that filters beside a detail endpoint that does not is a decoration
+rather than a permission. Engagements are closed to staff by default, since an
+engagement says what a client agreed to pay and for what, and a firm that wants
+its staff to see the scope they work to can open it.
+
+**Clients are offered, not assigned** - an allocation waits on the person's
+answer, because the Associate Consultant Agreement gives them a right to decline
+one that would prejudice a client they already hold, and a right that can only be
+exercised by email is a right in name. The grounds are named rather than typed,
+so nobody has to know their refusal is clause 8.2 and the firm does not have to
+read a paragraph and work out afterwards which right was used. Whether a refusal
+counts against them is said before they answer, and recorded with the decision.
+Accepting and declining belong to the person the client was offered to - no grade
+is a way round that, since a partner answering on an Associate's behalf would put
+the judgement the clause protects in the firm's hands.
+
+**Twice-weekly status reports** - one short written report per person per
+reporting day, Wednesdays and Fridays by default and changeable by the firm,
+covering everything assigned to them with the deliverables it concerns picked
+from their own work. Not one report per deliverable: somebody carrying nine open
+jobs would write nine reports twice a week, and a requirement that costs that
+much is one people learn to satisfy without saying anything. Each report answers
+for the days since the previous one, so every day of the year falls in exactly
+one report - which a fixed forty-eight-hour window does not, leaving the weekend
+in none. A report filed late is still recorded against the day it was owed.
 
 **Dashboards and practice reports** - personal work queues, overdue exposure,
 workload by person, service line summaries, and review quality by preparer.
@@ -178,8 +257,27 @@ requires. Pages accepts a CNAME from external DNS. See
 ```
 shared/workflow.ts   the deliverable state machine, grades and gates - the single
                      source of truth, imported by BOTH the Worker and the React app
-shared/hr.ts         portal domain: access thresholds, document rules, the
-                     onboarding programme - likewise shared by both sides
+shared/hr.ts         portal domain: access thresholds, document rules and what
+                     a profile must carry - likewise shared by both sides
+shared/onboarding.ts the onboarding programme: five dated stages, one per
+                     employment type, and where a person has got to
+shared/contract-fields.ts
+                     every placeholder in both contract templates, and where its
+                     value is supposed to come from
+shared/status-reports.ts
+                     when a status report is due, what period it answers for,
+                     and who is behind
+shared/allocations.ts
+                     offering a client, the grounds for declining one, and which
+                     of them the agreement protects
+shared/portfolio.ts  how much of the firm's client work one person can see
+shared/directory.ts  the staff directory, and what each grade is told
+shared/first-run.ts  the three things a new joiner finishes, and in which order
+shared/markdown.ts   the document grammar, parsed once and rendered to both React
+                     and HTML so a signed copy matches what was on screen
+shared/signed-copy.ts
+                     the downloadable signed document and its signature certificate
+shared/removal.ts    what removing somebody costs, and the two ways to do it
 shared/intake.ts     client intake: the two links, request states, the field
                      limits the public form and the server both enforce
 shared/files.ts      the client file: providers recognised from a link, what
@@ -201,19 +299,22 @@ worker/              the API
   auth.ts            PBKDF2 passwords (work factor bounded by the Worker CPU
                      budget, optional pepper), database-backed sessions
   throttle.ts        the sign-in attempt limit, counted in D1
+  contract-fields.ts resolving a contract's placeholders for one person
   security-questions.ts
                      storing and checking answers, keyed with PASSWORD_PEPPER
   device-trust.ts    the remembered-device cookie and the table behind it
   dates.ts           statutory deadline and recurrence arithmetic
   routes/            auth, users, clients, client-files, engagements, tasks,
                      workflow, reviews, task-items, templates, insights, intake,
-                     employees, documents, settings
+                     employees, documents, contracts, status-reports,
+                     allocations, settings
 
 src/                 the React app (TypeScript, Vite, Tailwind)
   lib/               API client, session context, formatting
   components/        layout and shared UI
   pages/             dashboard, deliverables, task detail, clients, engagements,
-                     client requests, the two public intake forms,
+                     my clients, staff directory, status reports, client requests,
+                     the two public intake forms,
                      templates, reports, team, inbox, account,
                      onboarding, handbook, document view, my details,
                      people, employee file, portal admin

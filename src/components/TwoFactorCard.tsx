@@ -400,13 +400,23 @@ export function TwoFactorCard({
         </>
       ) : (
         <>
-          <p className="muted">
-            {status.pending
-              ? "You started setting this up and did not finish, so it is not in force. Starting again issues a new key."
-              : status.policy === TWOFACTOR_OFF
-                ? "Nobody at the firm is obliged to use this, but it is the single best thing you can do for the security of your own account."
-                : `Required at ${ROLE_LABELS[status.policy as keyof typeof ROLE_LABELS] ?? status.policy} grade and above in this firm.`}
-          </p>
+          {/*
+            Nothing is said where the firm requires nothing and nothing is half-finished.
+            The button below states the offer on its own, and a line of encouragement
+            above it would be the card talking rather than telling the reader something.
+          */}
+          {status.pending ? (
+            <p className="muted">
+              You started setting this up and did not finish, so it is not in force.
+              Starting again issues a new key.
+            </p>
+          ) : status.policy !== TWOFACTOR_OFF ? (
+            <p className="muted">
+              Required at{" "}
+              {ROLE_LABELS[status.policy as keyof typeof ROLE_LABELS] ?? status.policy}{" "}
+              grade and above in this firm.
+            </p>
+          ) : null}
           <button
             type="button"
             className="btn-primary"

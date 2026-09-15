@@ -27,11 +27,13 @@ import {
   TextInput,
   options,
 } from "../components/ui";
+import { ContractDetailsCard } from "../components/ContractDetailsCard";
 import { ReviewsPanel } from "../components/ReviewsPanel";
 import { formatDate, formatDateTime, formatMoney, percent, relativeTime } from "../lib/format";
 
 type Tab =
   | "employment"
+  | "contract"
   | "onboarding"
   | "documents"
   | "reviews"
@@ -80,6 +82,7 @@ export function EmployeeDetail() {
 
   const tabs: Array<[Tab, string]> = [
     ["employment", "Employment"],
+    ...(isHr ? ([["contract", "Contract details"]] as Array<[Tab, string]>) : []),
     ["onboarding", `Onboarding (${file.onboarding.filter((i) => i.is_done).length}/${file.onboarding.length})`],
     ["documents", `Documents (${file.signatures.length})`],
   ];
@@ -175,6 +178,16 @@ export function EmployeeDetail() {
 
         <div className="p-4">
           {tab === "reviews" && <ReviewsPanel userId={user.id} />}
+          {tab === "contract" && (
+            <ContractDetailsCard
+              userId={user.id}
+              personName={user.full_name}
+              onSaved={async (message) => {
+                setNotice(message);
+                await load();
+              }}
+            />
+          )}
           {tab === "employment" && (
             <EmploymentTab
               file={file}
@@ -549,9 +562,18 @@ function DocumentsTab({
                 <Link to={`/documents/${signature.document_id}`} className="link text-sm">
                   {signature.document_title}
                 </Link>
-                <span className="text-xs text-slate-500">
-                  {signature.action === "signed" ? "Signed" : "Acknowledged"} v
-                  {signature.version} · {formatDateTime(signature.signed_at)}
+                <span className="flex items-center gap-3 text-xs text-slate-500">
+                  <span>
+                    {signature.action === "signed" ? "Signed" : "Acknowledged"} v
+                    {signature.version} · {formatDateTime(signature.signed_at)}
+                  </span>
+                  {/* HR keeps the personnel file, so they can take the copy for it. */}
+                  <a
+                    className="link"
+                    href={api.signedCopyUrl(signature.document_id, file.user.id)}
+                  >
+                    Download
+                  </a>
                 </span>
               </li>
             ))}
