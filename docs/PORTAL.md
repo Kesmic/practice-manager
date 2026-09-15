@@ -204,8 +204,33 @@ Three steps, in this order, defined in
 
 Onboarding first, at the firm's request. Being dropped straight onto a password
 form, before anything has explained what the portal is or what is coming, tells
-somebody nothing about the firm they have joined. The onboarding page does: the
-welcome, the five stages, the dates, and what is theirs to do.
+somebody nothing about the firm they have joined.
+
+The very first thing is the **Managing Director's welcome, full screen**, with one
+button. A welcome that sits below a form demanding fifteen required fields is not a
+welcome. It is shown once - a screen that reappeared on every visit would become
+something to click past - and remembered per person in the browser, since "have you
+seen the welcome" is not a fact the firm needs a record of. The letter keeps its
+usual place further down the onboarding page for anyone who wants it again.
+
+**Who the gate applies to.** Somebody the firm has actually onboarded, meaning an
+onboarding programme has been started for them, and nobody else. Two accounts are
+never held:
+
+- **Anybody with no onboarding programme** - the founder who set the system up, and
+  every account predating the programme. The first-run form is stage one of
+  onboarding; with no programme there is no stage one to be standing on, and
+  confining somebody to a form the firm never set up for them is a trap with no
+  exit.
+- **An administrator**, ever. They are who fixes a misconfiguration, and a firm
+  whose administrator cannot reach Portal settings has no route back that does not
+  involve a database client.
+
+An earlier version tested for an absent `employee_profiles` row instead, which
+looked equivalent and was not: `ensureProfile` creates that row the moment anybody
+touches an employment record. A System Administrator who had never been onboarded
+acquired an empty profile row through ordinary use and was locked out of their own
+portal by it.
 
 That leaves the temporary password usable for a little longer, and it is worth
 being plain that this costs less than it looks. A temporary password that reaches

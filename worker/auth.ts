@@ -489,7 +489,7 @@ export async function requireUser(
    * One indexed lookup, and only for people who have not finished - which after the
    * first week is everybody, so it costs nothing in the steady state.
    */
-  if (!allowProfilePending && !(await hasFinishedFirstRun(env, user.id))) {
+  if (!allowProfilePending && !(await hasFinishedFirstRun(env, user.id, user.role))) {
     throw new HttpError(403, FIRST_RUN_MESSAGES.onboarding, FIRST_RUN_PENDING_CODE);
   }
 
@@ -509,24 +509,52 @@ export async function requireUser(
 }
 
 /**
- * Whether this person has finished what their first sign-in asked for.
+ * Whether this person is through what their first sign-in asked for.
  *
- * Reads the single stamped column rather than re-deriving completeness from a dozen
- * fields on every request. `settleFirstRun` in routes/employees.ts is what sets it, and
- * only ever sets it when nothing is outstanding.
+ * Three ways to be through, and the last two are the important ones.
  *
- * Absent profile row means nothing has been asked of them yet - a bootstrap
- * administrator, or an account created before the programme existed - and those are let
- * through rather than confined to a form nobody ever set up for them.
+ * **They finished it.** `settleFirstRun` in routes/employees.ts stamps
+ * `profile_completed_at`, and only ever when nothing is outstanding. Read as a single
+ * column rather than re-derived from a dozen fields on every request.
+ *
+ * **Nobody ever started onboarding for them.** The first-run form is the first stage of
+ * the onboarding programme. If no programme was started, there is no stage one to be
+ * standing on, and confining somebody to a form the firm never set up for them is a
+ * trap with no exit. This is the founder who set the system up, and everybody whose
+ * account predates the programme.
+ *
+ * An earlier version tested for an absent `employee_profiles` row instead, which looked
+ * equivalent and was not: `ensureProfile` creates that row the moment anybody touches an
+ * employment record - the person editing their own details, HR opening their file, the
+ * directory. So a System Administrator who had never been onboarded acquired an empty
+ * profile row through ordinary use and was locked out of their own portal by it, with
+ * no way back except editing the database.
+ *
+ * **They are an administrator.** The one account that must never be confined, for the
+ * same reason the two-step policy never locks anybody out: an administrator is who
+ * fixes a misconfiguration, and a firm whose administrator cannot reach Portal settings
+ * has no route back that does not involve a database client. They still see their
+ * onboarding page and can finish it; they are simply not held there.
  */
-export async function hasFinishedFirstRun(env: Env, userId: string): Promise<boolean> {
+export async function hasFinishedFirstRun(
+  env: Env,
+  userId: string,
+  role?: Role,
+): Promise<boolean> {
+  if (role === "admin") return true;
+
   const row = await env.DB.prepare(
-    `SELECT profile_completed_at FROM employee_profiles WHERE user_id = ?`,
+    `SELECT p.profile_completed_at AS done,
+            (SELECT COUNT(*) FROM onboarding_items o WHERE o.user_id = ?1) AS programme
+       FROM (SELECT ?1 AS id) anchor
+       LEFT JOIN employee_profiles p ON p.user_id = anchor.id`,
   )
     .bind(userId)
-    .first<{ profile_completed_at: string | null }>();
+    .first<{ done: string | null; programme: number }>();
+
   if (!row) return true;
-  return Boolean(row.profile_completed_at);
+  if (Number(row.programme) === 0) return true;
+  return Boolean(row.done);
 }
 
 /**

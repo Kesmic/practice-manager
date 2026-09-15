@@ -25,6 +25,14 @@ import {
   type FirstRunState,
 } from "../shared/first-run";
 import { programmeFor } from "../shared/onboarding";
+import {
+  FIRST_RUN_GROUPS,
+  REQUIRED_BANK_FIELDS,
+  REQUIRED_PROFILE_FIELDS,
+} from "../shared/hr";
+import { PERSONAL_FIELDS } from "../worker/routes/employees";
+import { readFileSync, readdirSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 
 const state = (over: Partial<FirstRunState> = {}): FirstRunState => ({
   onboarding_done: false,
@@ -194,4 +202,163 @@ test("every detail the first sign-in collects is asked for before the password",
     -1,
   );
   assert.ok(lastDetail < password);
+});
+
+// ---------------------------------------------------------------------------
+// Who the gate is for
+// ---------------------------------------------------------------------------
+
+/**
+ * The gate applies to somebody the firm has actually onboarded, and to nobody else.
+ *
+ * The bug it is guarding against, which reached the firm: a System Administrator was
+ * held on the first-run form with no way past it. The test for "has anything been asked
+ * of this person" was "is there an employee_profiles row", which looked equivalent to
+ * "have they been onboarded" and was not - `ensureProfile` creates that row the moment
+ * anybody touches an employment record, including the person editing their own details.
+ * So a founder who had never been onboarded acquired an empty profile row through
+ * ordinary use and was locked out of their own portal, with no route back but a
+ * database client.
+ *
+ * Exercised against the real schema rather than by reading the code, because the whole
+ * mistake was that the rule looked right.
+ */
+function firm(): DatabaseSync {
+  const db = new DatabaseSync(":memory:");
+  for (const name of readdirSync("migrations").sort()) {
+    db.exec(readFileSync(`migrations/${name}`, "utf8"));
+  }
+  const n = new Date().toISOString();
+  db.exec(`
+    INSERT INTO users (id,email,full_name,role,status,password_hash,must_change_password,created_at,updated_at)
+      VALUES ('boss','b@x.test','Founder','admin','active','x',0,'${n}','${n}'),
+             ('newbie','n@x.test','New Joiner','associate','active','x',0,'${n}','${n}'),
+             ('quiet','q@x.test','Never Onboarded','associate','active','x',0,'${n}','${n}');
+    -- Every one of them has a profile row, as ordinary use of the portal creates.
+    INSERT INTO employee_profiles (user_id,created_at,updated_at)
+      VALUES ('boss','${n}','${n}'), ('newbie','${n}','${n}'), ('quiet','${n}','${n}');
+    -- Only the new joiner has actually been put through onboarding.
+    INSERT INTO onboarding_items (id,user_id,label,owner,category,stage,is_done,created_at)
+      VALUES ('i1','newbie','Give your details','employee','Your details','first_signin',0,'${n}');
+  `);
+  return db;
+}
+
+/** The rule as worker/auth.ts applies it. */
+function through(db: DatabaseSync, userId: string, role: string): boolean {
+  if (role === "admin") return true;
+  const row = db
+    .prepare(
+      `SELECT p.profile_completed_at AS done,
+              (SELECT COUNT(*) FROM onboarding_items o WHERE o.user_id = ?) AS programme
+         FROM (SELECT ? AS id) anchor
+         LEFT JOIN employee_profiles p ON p.user_id = anchor.id`,
+    )
+    .get(userId, userId) as { done: string | null; programme: number } | undefined;
+  if (!row) return true;
+  if (Number(row.programme) === 0) return true;
+  return Boolean(row.done);
+}
+
+test("an administrator is never held on the first-run form", () => {
+  // They are who fixes a misconfiguration. A firm whose administrator cannot reach
+  // Portal settings has no route back that does not involve a database client.
+  const db = firm();
+  assert.equal(through(db, "boss", "admin"), true);
+  db.close();
+});
+
+test("an empty profile row is not by itself a reason to confine anybody", () => {
+  // The exact bug. ensureProfile creates this row through ordinary use.
+  const db = firm();
+  assert.equal(through(db, "quiet", "associate"), true);
+  db.close();
+});
+
+test("somebody the firm has actually onboarded is confined until they finish", () => {
+  const db = firm();
+  assert.equal(through(db, "newbie", "associate"), false);
+  db.close();
+});
+
+test("finishing it lets them through", () => {
+  const db = firm();
+  db.exec(
+    `UPDATE employee_profiles SET profile_completed_at = '2026-09-15T09:00:00Z' WHERE user_id = 'newbie'`,
+  );
+  assert.equal(through(db, "newbie", "associate"), true);
+  db.close();
+});
+
+test("an administrator who has been onboarded is still not held", () => {
+  // A programme started against an administrator must not trap them either.
+  const db = firm();
+  const n = new Date().toISOString();
+  db.exec(
+    `INSERT INTO onboarding_items (id,user_id,label,owner,category,stage,is_done,created_at)
+       VALUES ('i2','boss','Give your details','employee','Your details','first_signin',0,'${n}')`,
+  );
+  assert.equal(through(db, "boss", "admin"), true);
+  db.close();
+});
+
+// ---------------------------------------------------------------------------
+// Nothing may be required that cannot be given
+// ---------------------------------------------------------------------------
+
+/**
+ * The permanent-lockout class of bug, pinned.
+ *
+ * Three lists have to agree, and none of them sits next to the others:
+ * what the first sign-in *requires*, what the form *asks*, and what the endpoint the
+ * form posts to will actually *write*. A field in the first list and missing from
+ * either of the others is not a validation error - the person fills the form, presses
+ * save, and is held on it for ever with nothing on screen to explain why.
+ *
+ * Checked rather than read, because reading is what let the last trap through.
+ */
+test("every field the first sign-in requires is one the form asks for", () => {
+  const asked = new Set(FIRST_RUN_GROUPS.flatMap((g) => g.fields));
+  for (const field of [...REQUIRED_PROFILE_FIELDS, ...REQUIRED_BANK_FIELDS]) {
+    assert.ok(asked.has(field), `${field} is required but the form never asks for it`);
+  }
+});
+
+test("the form asks for nothing that is not required", () => {
+  // Not a lockout, but an optional field presented as mandatory is somebody being made
+  // to invent an answer.
+  const required = new Set([...REQUIRED_PROFILE_FIELDS, ...REQUIRED_BANK_FIELDS]);
+  for (const field of FIRST_RUN_GROUPS.flatMap((g) => g.fields)) {
+    assert.ok(required.has(field), `the form asks for ${field}, which is not required`);
+  }
+});
+
+test("every required personal field is one the profile endpoint will write", () => {
+  // PATCH /api/me/profile copies only the columns in PERSONAL_FIELDS. A required field
+  // missing from that list is dropped by the write without an error.
+  const writable = new Set(PERSONAL_FIELDS);
+  for (const field of REQUIRED_PROFILE_FIELDS) {
+    assert.ok(writable.has(field), `${field} is required but /api/me/profile drops it`);
+  }
+});
+
+test("every required bank field is one the bank endpoint will write", () => {
+  // PATCH /api/me/bank names its four columns explicitly.
+  const writable = new Set(["bank_name", "bank_branch", "account_name", "account_number"]);
+  for (const field of REQUIRED_BANK_FIELDS) {
+    assert.ok(writable.has(field), `${field} is required but /api/me/bank drops it`);
+  }
+});
+
+test("the two halves of the form go to the two endpoints that can store them", () => {
+  // The form splits its payload on BANK_FIELDS. A bank column routed to the profile
+  // endpoint, or the reverse, is dropped in the same silent way.
+  const bank = new Set(REQUIRED_BANK_FIELDS);
+  const personal = new Set(PERSONAL_FIELDS);
+  for (const field of REQUIRED_PROFILE_FIELDS) {
+    assert.ok(!bank.has(field), `${field} is on both sides of the split`);
+  }
+  for (const field of REQUIRED_BANK_FIELDS) {
+    assert.ok(!personal.has(field), `${field} is on both sides of the split`);
+  }
 });

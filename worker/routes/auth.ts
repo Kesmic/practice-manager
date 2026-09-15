@@ -815,7 +815,7 @@ async function firstRunState(
    * done", the browser would send such a person to /onboarding while the server let
    * them past, which is a redirect loop with nothing on screen to explain it.
    */
-  const onboardingDone = await hasFinishedFirstRun(env, user.id);
+  const onboardingDone = await hasFinishedFirstRun(env, user.id, user.role);
 
   /*
    * Only asked where the first two are already done, because it is the only one of the
