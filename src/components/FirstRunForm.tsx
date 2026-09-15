@@ -91,10 +91,6 @@ export function FirstRunForm({
         <p className="font-medium">
           {missing.length} of these are still outstanding.
         </p>
-        <p className="mt-0.5">
-          All of it is needed before you can be paid, checked, or put on client work. It is
-          asked once, now, rather than chased over the next month.
-        </p>
       </div>
 
       <ErrorBanner error={error} onDismiss={() => setError(null)} />

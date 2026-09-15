@@ -5,6 +5,7 @@ import { PROFILE_FIELD_LABELS, requiredAction } from "@shared/hr";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { FirstRunPrompt } from "../components/FirstRunPrompt";
+import { WelcomeGate } from "../components/WelcomeGate";
 import { WelcomeCard } from "../components/WelcomeCard";
 import { FirstRunForm } from "../components/FirstRunForm";
 import { OnboardingStages } from "../components/OnboardingStages";
@@ -60,6 +61,20 @@ export function Onboarding() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      {/*
+        The welcome comes first, on its own screen, before anything is asked. Held over
+        the page only while the person still owes their first sign-in - after that they
+        are visiting the page, not arriving at the firm.
+      */}
+      <WelcomeGate
+        userId={user.id}
+        body={data.welcome_message}
+        firmName={data.firm_name}
+        mdName={data.md_name}
+        mdTitle={data.md_title}
+        active={firstRunStep === "onboarding"}
+      />
+
       <FirstRunPrompt step={firstRunStep} />
       <div>
         <h1 className="section-title">Welcome to {data.firm_name}</h1>

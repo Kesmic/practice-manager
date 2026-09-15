@@ -25,6 +25,8 @@ import {
   type FirstRunState,
 } from "../shared/first-run";
 import { programmeFor } from "../shared/onboarding";
+import { readFileSync, readdirSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 
 const state = (over: Partial<FirstRunState> = {}): FirstRunState => ({
   onboarding_done: false,
@@ -194,4 +196,102 @@ test("every detail the first sign-in collects is asked for before the password",
     -1,
   );
   assert.ok(lastDetail < password);
+});
+
+// ---------------------------------------------------------------------------
+// Who the gate is for
+// ---------------------------------------------------------------------------
+
+/**
+ * The gate applies to somebody the firm has actually onboarded, and to nobody else.
+ *
+ * The bug it is guarding against, which reached the firm: a System Administrator was
+ * held on the first-run form with no way past it. The test for "has anything been asked
+ * of this person" was "is there an employee_profiles row", which looked equivalent to
+ * "have they been onboarded" and was not - `ensureProfile` creates that row the moment
+ * anybody touches an employment record, including the person editing their own details.
+ * So a founder who had never been onboarded acquired an empty profile row through
+ * ordinary use and was locked out of their own portal, with no route back but a
+ * database client.
+ *
+ * Exercised against the real schema rather than by reading the code, because the whole
+ * mistake was that the rule looked right.
+ */
+function firm(): DatabaseSync {
+  const db = new DatabaseSync(":memory:");
+  for (const name of readdirSync("migrations").sort()) {
+    db.exec(readFileSync(`migrations/${name}`, "utf8"));
+  }
+  const n = new Date().toISOString();
+  db.exec(`
+    INSERT INTO users (id,email,full_name,role,status,password_hash,must_change_password,created_at,updated_at)
+      VALUES ('boss','b@x.test','Founder','admin','active','x',0,'${n}','${n}'),
+             ('newbie','n@x.test','New Joiner','associate','active','x',0,'${n}','${n}'),
+             ('quiet','q@x.test','Never Onboarded','associate','active','x',0,'${n}','${n}');
+    -- Every one of them has a profile row, as ordinary use of the portal creates.
+    INSERT INTO employee_profiles (user_id,created_at,updated_at)
+      VALUES ('boss','${n}','${n}'), ('newbie','${n}','${n}'), ('quiet','${n}','${n}');
+    -- Only the new joiner has actually been put through onboarding.
+    INSERT INTO onboarding_items (id,user_id,label,owner,category,stage,is_done,created_at)
+      VALUES ('i1','newbie','Give your details','employee','Your details','first_signin',0,'${n}');
+  `);
+  return db;
+}
+
+/** The rule as worker/auth.ts applies it. */
+function through(db: DatabaseSync, userId: string, role: string): boolean {
+  if (role === "admin") return true;
+  const row = db
+    .prepare(
+      `SELECT p.profile_completed_at AS done,
+              (SELECT COUNT(*) FROM onboarding_items o WHERE o.user_id = ?) AS programme
+         FROM (SELECT ? AS id) anchor
+         LEFT JOIN employee_profiles p ON p.user_id = anchor.id`,
+    )
+    .get(userId, userId) as { done: string | null; programme: number } | undefined;
+  if (!row) return true;
+  if (Number(row.programme) === 0) return true;
+  return Boolean(row.done);
+}
+
+test("an administrator is never held on the first-run form", () => {
+  // They are who fixes a misconfiguration. A firm whose administrator cannot reach
+  // Portal settings has no route back that does not involve a database client.
+  const db = firm();
+  assert.equal(through(db, "boss", "admin"), true);
+  db.close();
+});
+
+test("an empty profile row is not by itself a reason to confine anybody", () => {
+  // The exact bug. ensureProfile creates this row through ordinary use.
+  const db = firm();
+  assert.equal(through(db, "quiet", "associate"), true);
+  db.close();
+});
+
+test("somebody the firm has actually onboarded is confined until they finish", () => {
+  const db = firm();
+  assert.equal(through(db, "newbie", "associate"), false);
+  db.close();
+});
+
+test("finishing it lets them through", () => {
+  const db = firm();
+  db.exec(
+    `UPDATE employee_profiles SET profile_completed_at = '2026-09-15T09:00:00Z' WHERE user_id = 'newbie'`,
+  );
+  assert.equal(through(db, "newbie", "associate"), true);
+  db.close();
+});
+
+test("an administrator who has been onboarded is still not held", () => {
+  // A programme started against an administrator must not trap them either.
+  const db = firm();
+  const n = new Date().toISOString();
+  db.exec(
+    `INSERT INTO onboarding_items (id,user_id,label,owner,category,stage,is_done,created_at)
+       VALUES ('i2','boss','Give your details','employee','Your details','first_signin',0,'${n}')`,
+  );
+  assert.equal(through(db, "boss", "admin"), true);
+  db.close();
 });
