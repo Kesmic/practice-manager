@@ -24,7 +24,7 @@ import type {
 } from "./allocations";
 import type { ContractField, ContractTemplate } from "./contract-fields";
 import type { RemovalAdvice, RemovalFootprint } from "./removal";
-import type { ReportSchedule, ReportState } from "./status-reports";
+import type { ReportDuty, ReportSchedule, ReportState } from "./status-reports";
 import type { Stage, StageProgress } from "./onboarding";
 import type {
   Criterion,
@@ -760,6 +760,13 @@ export interface StatusReportTask {
   status: TaskStatus;
   client_name: string;
   note: string | null;
+  /** The earlier of the internal target and the statutory deadline. */
+  due_on?: string | null;
+  /**
+   * 1 where that deadline has gone by. Overdue work must be answered before a report
+   * can be filed - the server checks it too, so the form is not the only guard.
+   */
+  overdue?: 0 | 1;
 }
 
 export interface StatusReport {
@@ -780,6 +787,10 @@ export interface StatusReport {
 export interface StatusReportView {
   schedule: ReportSchedule;
   state: ReportState;
+  /** What the firm has decided about this person. */
+  duty: ReportDuty;
+  /** Whether they owe reports at all today. */
+  owes: boolean;
   /** The reporting day currently being answered for. */
   due_on: string | null;
   period_from: string | null;
@@ -793,6 +804,18 @@ export interface StatusReportView {
   recent: StatusReport[];
 }
 
+/** One person, and whether the firm asks them for status reports. */
+export interface ReportDutyRow {
+  id: string;
+  full_name: string;
+  role: Role;
+  title: string | null;
+  open_tasks: number;
+  duty: ReportDuty;
+  /** What the setting means for them today - the thing being decided about. */
+  owes: boolean;
+}
+
 export interface TeamStatusReports {
   schedule: ReportSchedule;
   due_on: string | null;
@@ -803,6 +826,7 @@ export interface TeamStatusReports {
     full_name: string;
     role: Role;
     open_tasks: number;
+    duty: ReportDuty;
     report_id: string | null;
     report?: StatusReport;
   }>;

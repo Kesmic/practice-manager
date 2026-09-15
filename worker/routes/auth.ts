@@ -66,7 +66,12 @@ import {
   nextFirstRunStep,
   type FirstRunState,
 } from "../../shared/first-run";
-import { MISSED_LOOKBACK_DAYS, missedDays } from "../../shared/status-reports";
+import {
+  MISSED_LOOKBACK_DAYS,
+  missedDays,
+  owesReports,
+  readDuty,
+} from "../../shared/status-reports";
 import { readReportSchedule } from "./status-reports";
 
 /**
@@ -180,7 +185,11 @@ async function countAttention(
         WHERE user_id = ? AND due_on >= date('now', ?)`,
     ).bind(user.id, `-${MISSED_LOOKBACK_DAYS} days`),
     env.DB.prepare(
-      `SELECT COALESCE(p.start_date, date(u.created_at)) AS joined
+      `SELECT COALESCE(p.start_date, date(u.created_at)) AS joined,
+              p.status_reports AS duty,
+              (SELECT COUNT(*) FROM tasks t
+                WHERE t.assignee_id = u.id
+                  AND t.status NOT IN ('approved','closed','cancelled')) AS open_tasks
          FROM users u LEFT JOIN employee_profiles p ON p.user_id = u.id
         WHERE u.id = ?`,
     ).bind(user.id),
@@ -198,11 +207,20 @@ async function countAttention(
       ? count(requests.results)
       : 0,
     notifications: count(unread.results),
+    /*
+     * Nothing is counted against somebody the firm does not ask. A badge they cannot
+     * clear - because there is nothing they are supposed to file - is the one thing a
+     * badge must never be.
+     */
     status_reports: missedDays(
       new Date().toISOString().slice(0, 10),
       schedule,
       filed.results.map((row) => String(row.due_on)),
       (joined.results[0]?.joined as string | null | undefined) ?? null,
+      owesReports(
+        readDuty(joined.results[0]?.duty as string | null | undefined),
+        Number(joined.results[0]?.open_tasks ?? 0) > 0,
+      ),
     ).length,
     allocations: count(offers.results),
   };

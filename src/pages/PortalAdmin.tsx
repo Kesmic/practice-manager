@@ -19,6 +19,7 @@ import { deriveLightInk, whyNotDerivable } from "../lib/logo";
 import { useFirm } from "../lib/firm";
 import { useSession } from "../lib/auth";
 import { ContractTermsCard } from "../components/ContractTermsCard";
+import { StatusReportDutiesCard } from "../components/StatusReportDutiesCard";
 import { StatusReportPolicyCard } from "../components/StatusReportPolicyCard";
 import { EraseAdmin } from "../components/EraseAdmin";
 import { Markdown } from "../components/Markdown";
@@ -121,6 +122,7 @@ export function PortalAdmin() {
         <div className="space-y-5">
           <ContractTermsCard canEdit={can("partner")} />
           <StatusReportPolicyCard canEdit={can("partner")} />
+          <StatusReportDutiesCard canEdit={can("partner")} />
         </div>
       ) : tab === "appearance" ? (
         <AppearanceAdmin setError={setError} setNotice={setNotice} />

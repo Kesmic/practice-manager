@@ -178,9 +178,13 @@ is a way round that, since a partner answering on an Associate's behalf would pu
 the judgement the clause protects in the firm's hands.
 
 **Twice-weekly status reports** - one short written report per person per
-reporting day, Wednesdays and Fridays by default and changeable by the firm,
-covering everything assigned to them with the deliverables it concerns picked
-from their own work. Not one report per deliverable: somebody carrying nine open
+reporting day, Wednesdays and Fridays by default and changeable by the firm, with
+who is asked decided person by person: while they carry client work (the default),
+always, or never. Any deliverable of theirs past its deadline is pulled into the
+report, listed first and impossible to untick, with a required answer for why it
+is late and what the plan is - a report saying everything is on track beside three
+overdue jobs is not a report. Otherwise it covers everything assigned to them,
+with the deliverables it concerns picked from their own work. Not one report per deliverable: somebody carrying nine open
 jobs would write nine reports twice a week, and a requirement that costs that
 much is one people learn to satisfy without saying anything. Each report answers
 for the days since the previous one, so every day of the year falls in exactly

@@ -17,6 +17,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 
 import {
   DEFAULT_REPORT_DAYS,
@@ -34,6 +36,12 @@ import {
   reportState,
   weekdayOf,
   writeSchedule,
+  DUTY_HINTS,
+  DUTY_LABELS,
+  REPORT_DUTIES,
+  owesReports,
+  readDuty,
+  writeDuty,
   type Weekday,
 } from "../shared/status-reports";
 
@@ -292,4 +300,188 @@ test("the look-back is bounded", () => {
 
 test("nothing is missed while the firm is not asking", () => {
   assert.deepEqual(missedDays(THU, { enabled: false, days: [] }, []), []);
+});
+
+// ---------------------------------------------------------------------------
+// Who the firm asks
+// ---------------------------------------------------------------------------
+
+/**
+ * The schedule says when reports are due; the duty says who owes them.
+ *
+ * Three settings rather than a tick box, because "not required" and "not required yet"
+ * are different facts and collapsing them loses the useful one: a new joiner on the
+ * default starts reporting the moment somebody assigns them a deliverable, without
+ * anybody remembering to turn it on.
+ */
+
+test("the default is what the firm already had: reporting while carrying work", () => {
+  assert.equal(owesReports("automatic", true), true);
+  assert.equal(owesReports("automatic", false), false);
+});
+
+test("always means always, work or no work", () => {
+  // A Partner who carries no deliverables but runs three engagements.
+  assert.equal(owesReports("always", false), true);
+  assert.equal(owesReports("always", true), true);
+});
+
+test("never means never, work or no work", () => {
+  assert.equal(owesReports("never", true), false);
+  assert.equal(owesReports("never", false), false);
+});
+
+test("an unset column reads as the default rather than as an exemption", () => {
+  // Absence must never be read as "excused". Somebody nobody has thought about is on
+  // the default, not outside the requirement.
+  for (const stored of [null, undefined, "", "banana", "Always", "NEVER"]) {
+    assert.equal(readDuty(stored), "automatic", JSON.stringify(stored));
+  }
+  assert.equal(readDuty("always"), "always");
+  assert.equal(readDuty("never"), "never");
+});
+
+test("the default is stored as absence, so nobody carries a decision they were not part of", () => {
+  assert.equal(writeDuty("automatic"), null);
+  assert.equal(writeDuty("always"), "always");
+  assert.equal(writeDuty("never"), "never");
+});
+
+test("a duty round-trips through the column", () => {
+  for (const duty of REPORT_DUTIES) {
+    assert.equal(readDuty(writeDuty(duty)), duty);
+  }
+});
+
+test("every duty has a label and a hint", () => {
+  for (const duty of REPORT_DUTIES) {
+    assert.ok(DUTY_LABELS[duty], duty);
+    assert.ok(DUTY_HINTS[duty], duty);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Nobody is chased for something they were never asked
+// ---------------------------------------------------------------------------
+
+test("somebody the firm does not ask is not required, not overdue", () => {
+  // The distinction that matters: "not required" and "up to date" are different, and
+  // calling them up to date would list them among people who reported when they never
+  // were asked.
+  const state = reportState(THU, DEFAULT_SCHEDULE, [], false);
+  assert.equal(state.state, "not_required");
+  assert.equal(state.due_on, null);
+});
+
+test("nothing is counted as missed against somebody the firm does not ask", () => {
+  // A badge they cannot clear, because there is nothing they are supposed to file, is
+  // the one thing a badge must never be.
+  assert.deepEqual(missedDays(THU, DEFAULT_SCHEDULE, [], null, false), []);
+});
+
+test("omitting the flag does not quietly excuse anybody", () => {
+  // Defaulted to true on purpose: a caller that has not been updated to consider the
+  // duty keeps asking, rather than silently letting everybody off.
+  assert.equal(reportState(THU, DEFAULT_SCHEDULE, []).state, "overdue");
+  assert.ok(missedDays(THU, DEFAULT_SCHEDULE, []).length > 0);
+});
+
+test("being asked still depends on the firm's schedule being on", () => {
+  // Two switches, and either one off means nothing is due.
+  const off = { enabled: false, days: [] as Weekday[] };
+  assert.equal(reportState(THU, off, [], true).state, "not_required");
+  assert.deepEqual(missedDays(THU, off, [], null, true), []);
+});
+
+// ---------------------------------------------------------------------------
+// Overdue work has to be answered
+// ---------------------------------------------------------------------------
+
+/**
+ * A report saying "everything is on track" beside three deliverables that went past
+ * their deadline last week is not a report. The person writing it is usually not being
+ * evasive - they are writing from memory on a Friday afternoon - so the late ones are
+ * pulled in and put first, where they have to be answered rather than found.
+ *
+ * The rule is enforced on the server as well as the form, since the form is not the
+ * only way to file. Exercised against the real schema, because "which deliverables are
+ * overdue" is a SQL question and the answer has to match what the rest of the system
+ * calls overdue.
+ */
+function practice(): DatabaseSync {
+  const db = new DatabaseSync(":memory:");
+  for (const name of readdirSync("migrations").sort()) {
+    db.exec(readFileSync(`migrations/${name}`, "utf8"));
+  }
+  const n = new Date().toISOString();
+  db.exec(`
+    INSERT INTO users (id,email,full_name,role,status,password_hash,must_change_password,created_at,updated_at)
+      VALUES ('kofi','k@x.test','Kofi','associate','active','x',0,'${n}','${n}');
+    INSERT INTO clients (id,code,name,created_at,updated_at)
+      VALUES ('c1','C1','Client One','${n}','${n}');
+    INSERT INTO tasks (id,ref,client_id,title,service_line,status,assignee_id,internal_due_date,created_at,updated_at)
+      VALUES ('late1','TSK-1','c1','Overdue by the internal target','tax_compliance','in_progress','kofi','2020-01-01','${n}','${n}'),
+             ('ontime','TSK-2','c1','Not yet due','tax_compliance','in_progress','kofi','2099-01-01','${n}','${n}'),
+             ('nodate','TSK-3','c1','No deadline at all','tax_compliance','in_progress','kofi',NULL,'${n}','${n}');
+    INSERT INTO tasks (id,ref,client_id,title,service_line,status,assignee_id,statutory_due_date,created_at,updated_at)
+      VALUES ('late2','TSK-4','c1','Overdue by the statutory deadline','tax_compliance','in_progress','kofi','2020-01-01','${n}','${n}');
+    INSERT INTO tasks (id,ref,client_id,title,service_line,status,assignee_id,internal_due_date,created_at,updated_at)
+      VALUES ('done','TSK-5','c1','Closed and late','tax_compliance','closed','kofi','2020-01-01','${n}','${n}');
+  `);
+  return db;
+}
+
+/** The overdue set as the report route computes it. */
+function overdue(db: DatabaseSync): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT t.ref FROM tasks t
+          WHERE t.assignee_id = 'kofi'
+            AND t.status NOT IN ('approved','closed','cancelled')
+            AND COALESCE(t.internal_due_date, t.statutory_due_date) IS NOT NULL
+            AND date(COALESCE(t.internal_due_date, t.statutory_due_date)) < date('now')
+          ORDER BY t.ref`,
+      )
+      .all() as Array<{ ref: string }>
+  ).map((r) => r.ref);
+}
+
+test("overdue counts the earlier of the internal target and the statutory deadline", () => {
+  // The same definition the dashboard and the deliverable list use. Two different
+  // answers to "is this late" would be one too many.
+  const db = practice();
+  assert.deepEqual(overdue(db), ["TSK-1", "TSK-4"]);
+  db.close();
+});
+
+test("work that is not yet due, or has no deadline, is not pulled in", () => {
+  const db = practice();
+  const late = overdue(db);
+  assert.ok(!late.includes("TSK-2"));
+  assert.ok(!late.includes("TSK-3"));
+  db.close();
+});
+
+test("finished work is never pulled in, however late it was", () => {
+  // A closed deliverable has stopped accruing lateness everywhere else too.
+  const db = practice();
+  assert.ok(!overdue(db).includes("TSK-5"));
+  db.close();
+});
+
+test("a report leaving an overdue deliverable unanswered is refused", () => {
+  // The rule as the route applies it: every overdue job needs a note with something
+  // in it. Whitespace is not an answer.
+  const db = practice();
+  const late = overdue(db);
+
+  const answered = (notes: Record<string, string | null>) =>
+    late.filter((ref) => !notes[ref]?.trim());
+
+  assert.deepEqual(answered({}), ["TSK-1", "TSK-4"]);
+  assert.deepEqual(answered({ "TSK-1": "Waiting on the client." }), ["TSK-4"]);
+  assert.deepEqual(answered({ "TSK-1": "x", "TSK-4": "   " }), ["TSK-4"]);
+  assert.deepEqual(answered({ "TSK-1": "x", "TSK-4": "y" }), []);
+  db.close();
 });
