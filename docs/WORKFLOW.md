@@ -304,9 +304,37 @@ Defined in [`shared/allocations.ts`](../shared/allocations.ts).
 
 ## Status reports
 
-Everybody carrying client work writes one short report per reporting day -
-**Wednesdays and Fridays** by default, changed in Portal settings → Contract
-terms and reporting, or switched off entirely.
+One short report per reporting day - **Wednesdays and Fridays** by default,
+changed in Portal settings → Contract terms and reporting, or switched off
+entirely.
+
+**Who is asked is the firm's decision, person by person.** Portal settings lists
+everybody with three settings each:
+
+| | |
+| --- | --- |
+| **While carrying client work** | The default. Asked while they hold a live deliverable, and not when they do not - so a new joiner starts reporting the moment somebody assigns them work, without anybody remembering to turn it on. |
+| **Always** | Asked every reporting day. For a Partner who carries no deliverables but runs three engagements. |
+| **Never** | Not asked, and never counted as behind. |
+
+Three settings rather than a tick box, because "not required" and "not required
+yet" are different facts. The default is stored as absence rather than the word,
+so somebody nobody has considered carries no decision they were not part of. A
+person the firm does not ask sees that said plainly, carries no badge they cannot
+clear, and is refused if they try to file anyway.
+
+**Overdue work is pulled into the report and has to be answered.** Every
+deliverable of theirs past its deadline is listed first, ticked, and cannot be
+unticked, with a required box asking why it is late and what the plan is. A report
+saying everything is on track beside three deliverables that went past their
+deadline last week is not a report - and the person writing it is usually not
+being evasive, just writing from memory on a Friday afternoon. The rule is
+enforced on the server as well as the form, and the refusal names the references
+rather than saying a field is missing.
+
+"Overdue" is the same definition used everywhere else: the earlier of the internal
+target and the statutory deadline, and never a deliverable that is approved,
+closed or cancelled.
 
 **One report per person, not one per deliverable.** Somebody carrying nine open
 jobs would otherwise write nine reports twice a week, which is how a reporting

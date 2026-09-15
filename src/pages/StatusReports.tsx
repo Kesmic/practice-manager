@@ -29,6 +29,8 @@ import {
   TextArea,
 } from "../components/ui";
 import { StatusPill } from "../components/ui";
+import { StatusReportDutiesCard } from "../components/StatusReportDutiesCard";
+import { StatusReportPolicyCard } from "../components/StatusReportPolicyCard";
 
 export function StatusReports() {
   const { can } = useSession();
@@ -64,16 +66,32 @@ export function StatusReports() {
         <h1 className="text-2xl font-semibold text-slate-900">Status reports</h1>
         <p className="text-sm text-slate-600">
           A short written account of your work, due{" "}
-          <strong>{describeSchedule(view.schedule)}</strong>. One report covers
-          everything assigned to you - name the deliverables it concerns rather than
-          writing one report each.
+          <strong>{describeSchedule(view.schedule)}</strong>.
         </p>
       </header>
 
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <SuccessBanner message={notice} onDismiss={() => setNotice(null)} />
 
-      {view.schedule.enabled ? (
+      {!view.owes ? (
+        /*
+         * Said plainly rather than shown as an empty form. Somebody the firm does not
+         * ask should not be left wondering whether they have missed something - and the
+         * reason differs: switched off for everybody, or not asked of them.
+         */
+        <EmptyState
+          title={
+            view.duty === "never"
+              ? "You are not asked for status reports"
+              : "Nothing to report on at the moment"
+          }
+          description={
+            view.duty === "never"
+              ? "The firm does not ask you for these. Nothing is outstanding and nothing is counted against you."
+              : "You are asked for a report while you are carrying client work. Nothing is assigned to you at the moment, so there is nothing due."
+          }
+        />
+      ) : view.schedule.enabled ? (
         <ReportForm
           view={view}
           onSaved={async (message) => {
@@ -94,6 +112,21 @@ export function StatusReports() {
       <PastReports reports={view.recent} currentDueOn={view.due_on} />
 
       {can("senior_associate") ? <TeamPanel /> : null}
+
+      {/*
+        * When reports are due, and who is asked for one.
+        *
+        * Here rather than only under Portal settings. A Partner wondering why somebody
+        * is not on the list above is on this page, looking at that list - not three
+        * clicks away under a heading about contracts. The settings page keeps a pointer
+        * to here so there is one copy of the controls rather than two.
+        */}
+      {can("partner") ? (
+        <div className="space-y-5 border-t border-slate-200 pt-5">
+          <StatusReportPolicyCard canEdit />
+          <StatusReportDutiesCard canEdit />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -114,9 +147,18 @@ function ReportForm({
   const current = view.current;
   const [body, setBody] = useState(current?.body ?? "");
   const [blockers, setBlockers] = useState(current?.blockers ?? "");
-  const [chosen, setChosen] = useState<string[]>(
-    current?.tasks.map((t) => t.id) ?? [],
+  /*
+   * Overdue deliverables start ticked and cannot be unticked: they are the fact the
+   * report exists to surface, and the server refuses a report that leaves one
+   * unanswered. Everything else is the writer's choice.
+   */
+  const late = useMemo(
+    () => view.tasks.filter((t) => t.overdue === 1).map((t) => t.id),
+    [view.tasks],
   );
+  const [chosen, setChosen] = useState<string[]>(() => [
+    ...new Set([...(current?.tasks.map((t) => t.id) ?? []), ...late]),
+  ]);
   const [notes, setNotes] = useState<Record<string, string>>(() => {
     const out: Record<string, string> = {};
     for (const t of current?.tasks ?? []) if (t.note) out[t.id] = t.note;
@@ -135,6 +177,13 @@ function ReportForm({
     return [...known.values()];
   }, [view.tasks, current]);
 
+  // A deliverable that went overdue since the page loaded joins the ticked set rather
+  // than sitting unticked where it would be missed.
+  const ticked = useMemo(
+    () => [...new Set([...chosen, ...late])],
+    [chosen, late],
+  );
+
   if (!view.due_on) {
     return (
       <EmptyState
@@ -152,10 +201,23 @@ function ReportForm({
     setBusy(true);
     setError(null);
     try {
+      const unanswered = late.filter((id) => !notes[id]?.trim());
+      if (unanswered.length) {
+        const refs = view.tasks
+          .filter((t) => unanswered.includes(t.id))
+          .map((t) => t.ref)
+          .join(", ");
+        setError(
+          `${refs} ${unanswered.length === 1 ? "is" : "are"} past ${unanswered.length === 1 ? "its deadline" : "their deadlines"}. Say why, and what the plan is to meet ${unanswered.length === 1 ? "it" : "them"}.`,
+        );
+        setBusy(false);
+        return;
+      }
+
       await api.submitStatusReport({
         body,
         blockers: blockers.trim() || null,
-        tasks: chosen.map((id) => ({ task_id: id, note: notes[id]?.trim() || null })),
+        tasks: ticked.map((id) => ({ task_id: id, note: notes[id]?.trim() || null })),
       });
       await onSaved(
         current
@@ -180,11 +242,7 @@ function ReportForm({
         nextDueOn={view.next_due_on}
       />
 
-      <Field
-        label="What happened, and where each job stands"
-        required
-        hint="Enough that somebody picking this up cold would know what to do next."
-      >
+      <Field label="What happened, and where each job stands" required>
         {(id) => (
           <TextArea
             id={id}
@@ -196,17 +254,14 @@ function ReportForm({
         )}
       </Field>
 
-      <Field
-        label="Anything in your way"
-        hint="Read first by whoever can clear it. Leave it empty if there is nothing."
-      >
+      <Field label="Anything in your way">
         {(id) => (
           <TextArea
             id={id}
             rows={3}
             value={blockers}
             onChange={(e) => setBlockers(e.target.value)}
-            placeholder="Waiting on records from the client, a query for a partner, a conflict of deadlines."
+            placeholder="Waiting on records, a query for a partner, a clash of deadlines."
           />
         )}
       </Field>
@@ -215,10 +270,13 @@ function ReportForm({
         <legend className="text-sm font-medium text-slate-800">
           Deliverables this report concerns
         </legend>
-        <p className="hint">
-          Your own open work. Tick the ones this report is about; add a line against any
-          you want to say something specific on.
-        </p>
+        {late.length ? (
+          <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+            {late.length} {late.length === 1 ? "deliverable is" : "deliverables are"} past{" "}
+            {late.length === 1 ? "its deadline" : "their deadlines"}. Answer{" "}
+            {late.length === 1 ? "it" : "them"} below before submitting.
+          </p>
+        ) : null}
         {!options.length ? (
           <p className="text-sm text-slate-500">
             Nothing is assigned to you at the moment, so there is nothing to reference.
@@ -226,14 +284,27 @@ function ReportForm({
         ) : (
           <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
             {options.map((task) => {
-              const ticked = chosen.includes(task.id);
+              const isLate = task.overdue === 1;
+              const on = ticked.includes(task.id);
               return (
-                <li key={task.id} className="space-y-2 p-3">
-                  <label className="flex cursor-pointer items-start gap-2.5">
+                <li
+                  key={task.id}
+                  className={`space-y-2 p-3 ${isLate ? "bg-rose-50/60" : ""}`}
+                >
+                  <label
+                    className={`flex items-start gap-2.5 ${isLate ? "" : "cursor-pointer"}`}
+                  >
                     <input
                       type="checkbox"
                       className="mt-1 h-4 w-4 shrink-0"
-                      checked={ticked}
+                      checked={on}
+                      /*
+                        An overdue deliverable cannot be unticked. It is the fact the
+                        report exists to surface, and the server refuses a report that
+                        leaves one unanswered - so letting it be unticked here would
+                        only produce a rejection further on.
+                      */
+                      disabled={isLate}
                       onChange={(e) =>
                         setChosen((c) =>
                           e.target.checked
@@ -248,10 +319,39 @@ function ReportForm({
                       <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                         <span>{task.client_name}</span>
                         <StatusPill status={task.status} />
+                        {isLate ? (
+                          <span className="pill bg-rose-100 text-rose-800 ring-rose-200">
+                            Overdue
+                            {task.due_on ? ` since ${formatDate(task.due_on)}` : ""}
+                          </span>
+                        ) : task.due_on ? (
+                          <span>Due {formatDate(task.due_on)}</span>
+                        ) : null}
                       </span>
                     </span>
                   </label>
-                  {ticked ? (
+
+                  {isLate ? (
+                    <div className="space-y-1">
+                      <label
+                        className="block text-xs font-medium text-rose-800"
+                        htmlFor={`note-${task.id}`}
+                      >
+                        Why is it late, and what is the plan?
+                        <span aria-hidden="true"> *</span>
+                      </label>
+                      <TextArea
+                        id={`note-${task.id}`}
+                        rows={3}
+                        required
+                        value={notes[task.id] ?? ""}
+                        onChange={(e) =>
+                          setNotes((n) => ({ ...n, [task.id]: e.target.value }))
+                        }
+                        placeholder="What held it up, and when you now expect to deliver."
+                      />
+                    </div>
+                  ) : on ? (
                     <TextArea
                       rows={2}
                       aria-label={`Note on ${task.ref}`}
@@ -280,8 +380,7 @@ function ReportForm({
         </button>
         {current ? (
           <span className="text-xs text-slate-500">
-            Submitted {formatDateTime(current.submitted_at)}. You can amend it until the
-            next reporting day.
+            Submitted {formatDateTime(current.submitted_at)}.
           </span>
         ) : null}
       </div>
@@ -323,11 +422,7 @@ function Banner({
   if (state === "overdue") {
     return (
       <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
-        <strong>Your report for {formatDate(dueOn)} is late.</strong> It{" "}
-        {from && from !== dueOn
-          ? `covers ${formatDate(from)} to ${formatDate(dueOn)}`
-          : "covers that day"}
-        , and filing it now still records it against {formatDate(dueOn)}.
+        <strong>Your report for {formatDate(dueOn)} is late.</strong> It is {period}.
       </p>
     );
   }
@@ -345,10 +440,7 @@ function Missed({ days }: { days: string[] }) {
         {days.length} reporting {days.length === 1 ? "day" : "days"} went by without a
         report
       </h2>
-      <p className="text-sm text-slate-600">
-        {days.map(formatDate).join(", ")}. These cannot be filed now - the current
-        report is the one above. Say what happened in it if it matters.
-      </p>
+      <p className="text-sm text-slate-600">{days.map(formatDate).join(", ")}.</p>
     </section>
   );
 }

@@ -126,6 +126,69 @@ export function describeSchedule(schedule: ReportSchedule): string {
 }
 
 // ---------------------------------------------------------------------------
+// Who reports
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a particular person owes status reports.
+ *
+ * The firm-wide schedule says *when* reports are due. This says *who* owes them, and it
+ * is the firm's to decide person by person - a Partner who carries no deliverables but
+ * runs three engagements may well owe one, and a bookkeeper on a fixed routine may not.
+ *
+ * Three states rather than a tick box, because "not required" and "not required yet"
+ * are different facts and collapsing them loses the useful one:
+ *
+ * - **automatic** - owed while they are carrying live client work. The default, and the
+ *   behaviour the firm already had. A new joiner starts reporting when somebody assigns
+ *   them a deliverable, without anybody remembering to turn it on.
+ * - **always** - owed whether or not they hold any deliverables.
+ * - **never** - not owed at all.
+ *
+ * `automatic` is a null in the database rather than a stored word, so a person nobody
+ * has ever thought about carries no setting instead of a decision they were never part
+ * of. That also means the default can change without rewriting every row.
+ */
+export const REPORT_DUTIES = ["automatic", "always", "never"] as const;
+export type ReportDuty = (typeof REPORT_DUTIES)[number];
+
+export const DUTY_LABELS: Record<ReportDuty, string> = {
+  automatic: "While carrying client work",
+  always: "Always",
+  never: "Never",
+};
+
+export const DUTY_HINTS: Record<ReportDuty, string> = {
+  automatic:
+    "Reports while they hold a live deliverable, and stops when they do not. The default.",
+  always: "Reports every reporting day, whether or not they hold any deliverables.",
+  never: "Never asked, and never counted as behind.",
+};
+
+/** Reads the stored column. Anything unrecognised means nobody has decided. */
+export function readDuty(value: string | null | undefined): ReportDuty {
+  return value === "always" || value === "never" ? value : "automatic";
+}
+
+/** What to store. `automatic` is absence, so it writes null. */
+export function writeDuty(duty: ReportDuty): string | null {
+  return duty === "automatic" ? null : duty;
+}
+
+/**
+ * Whether this person owes a report at all.
+ *
+ * Consulted before anything else in this module. Somebody who owes nothing is not
+ * "up to date" - they are outside the requirement, and calling them up to date would
+ * put them in a list of people who have reported when they were never asked.
+ */
+export function owesReports(duty: ReportDuty, carryingWork: boolean): boolean {
+  if (duty === "never") return false;
+  if (duty === "always") return true;
+  return carryingWork;
+}
+
+// ---------------------------------------------------------------------------
 // Which report is current
 // ---------------------------------------------------------------------------
 
@@ -213,17 +276,63 @@ export function reportState(
   today: string,
   schedule: ReportSchedule,
   submittedFor: string[],
+  /** The day they joined, if known. Nothing is due for a reporting day before it. */
+  since?: string | null,
+  /** False for somebody the firm does not ask. Defaults to true for callers that do
+   *  not yet know, so an omission cannot silently excuse anybody. */
+  owes = true,
 ): { state: ReportState; due_on: string | null; from: string | null } {
-  if (!schedule.enabled) return { state: "not_required", due_on: null, from: null };
+  if (!schedule.enabled || !owes) {
+    return { state: "not_required", due_on: null, from: null };
+  }
 
   const dueOn = currentDueDate(today, schedule.days);
   if (!dueOn) return { state: "not_required", due_on: null, from: null };
+
+  /*
+   * Somebody who joined on Saturday does not owe Friday's report.
+   *
+   * `missedDays` has always stopped at the joining date; this did not, so a new joiner
+   * arriving between two reporting days was shown a form for a period that ended before
+   * their first day, marked overdue, covering work they could not have done. They report
+   * from their first reporting day onwards.
+   */
+  if (since && dueOn < since) {
+    return { state: "not_required", due_on: null, from: null };
+  }
 
   const { from } = periodFor(dueOn, schedule.days);
   if (submittedFor.includes(dueOn)) {
     return { state: "submitted", due_on: dueOn, from };
   }
   return { state: dueOn === today ? "due" : "overdue", due_on: dueOn, from };
+}
+
+/**
+ * What the sidebar badge counts: the report they owe now, and nothing else.
+ *
+ * One or zero, never seven.
+ *
+ * The badge used to count missed reporting days, and a missed day cannot be filed - the
+ * current report is the only one there is. So somebody who joined a firm that had the
+ * schedule switched on carried a badge of eight that dropped to seven when they filed
+ * and then never moved again. `shared/attention.ts` says why that is the one thing a
+ * badge must not do: a count that never reaches zero teaches people the numbers are
+ * decoration, and it makes the badge that *is* news easier to miss.
+ *
+ * The missed days are still worth showing - they are a record, and a manager reading a
+ * colleague's page should see them. They are just not a badge, because nothing the
+ * person does clears them.
+ */
+export function outstandingReports(
+  today: string,
+  schedule: ReportSchedule,
+  submittedFor: string[],
+  since?: string | null,
+  owes = true,
+): number {
+  const { state } = reportState(today, schedule, submittedFor, since, owes);
+  return state === "submitted" || state === "not_required" ? 0 : 1;
 }
 
 /**
@@ -240,8 +349,10 @@ export function missedDays(
   schedule: ReportSchedule,
   submittedFor: string[],
   since?: string | null,
+  /** As in reportState: defaulted to true so an omission cannot excuse anybody. */
+  owes = true,
 ): string[] {
-  if (!schedule.enabled) return [];
+  if (!schedule.enabled || !owes) return [];
 
   const missed: string[] = [];
   let cursor = currentDueDate(today, schedule.days);

@@ -66,7 +66,11 @@ import {
   nextFirstRunStep,
   type FirstRunState,
 } from "../../shared/first-run";
-import { MISSED_LOOKBACK_DAYS, missedDays } from "../../shared/status-reports";
+import {
+  outstandingReports,
+  owesReports,
+  readDuty,
+} from "../../shared/status-reports";
 import { readReportSchedule } from "./status-reports";
 
 /**
@@ -133,7 +137,7 @@ async function countAttention(
   user: AuthenticatedUser,
 ): Promise<Attention> {
   const schedule = await readReportSchedule(env);
-  const [documents, onboarding, requests, unread, filed, joined, offers] = await env.DB.batch<
+  const [documents, onboarding, requests, unread, filed, reporter, offers] = await env.DB.batch<
     Record<string, unknown>
   >([
     /*
@@ -169,18 +173,22 @@ async function countAttention(
       `SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL`,
     ).bind(user.id),
     /*
-     * The reporting days this person has already answered for, over the window the
-     * missed-report count looks back across. The dates rather than a count: which
-     * reporting days fall in the window is a calendar question, answered in
-     * shared/status-reports.ts, and asking SQL to work out when Wednesdays fall would
-     * put the schedule in two places.
+     * The reporting days this person has already answered for recently. Two weeks is
+     * more than the badge needs - it only asks about the reporting day in hand - but it
+     * costs nothing and means the query does not have to know when Wednesdays fall.
+     * Which days those are is a calendar question, answered in
+     * shared/status-reports.ts, and asking SQL would put the schedule in two places.
      */
     env.DB.prepare(
       `SELECT due_on FROM status_reports
-        WHERE user_id = ? AND due_on >= date('now', ?)`,
-    ).bind(user.id, `-${MISSED_LOOKBACK_DAYS} days`),
+        WHERE user_id = ? AND due_on >= date('now', '-14 days')`,
+    ).bind(user.id),
     env.DB.prepare(
-      `SELECT COALESCE(p.start_date, date(u.created_at)) AS joined
+      `SELECT COALESCE(p.start_date, date(u.created_at)) AS joined,
+              p.status_reports AS duty,
+              (SELECT COUNT(*) FROM tasks t
+                WHERE t.assignee_id = u.id
+                  AND t.status NOT IN ('approved','closed','cancelled')) AS open_tasks
          FROM users u LEFT JOIN employee_profiles p ON p.user_id = u.id
         WHERE u.id = ?`,
     ).bind(user.id),
@@ -198,12 +206,27 @@ async function countAttention(
       ? count(requests.results)
       : 0,
     notifications: count(unread.results),
-    status_reports: missedDays(
+    /*
+     * The report they owe now, and nothing else - so one or nothing, never seven.
+     *
+     * Nothing is counted against somebody the firm does not ask. A badge they cannot
+     * clear - because there is nothing they are supposed to file - is the one thing a
+     * badge must never be, and a missed reporting day is exactly that: the current
+     * report is the only one anybody can write, so counting last Wednesday's alongside
+     * it produces a number that drops by one when they file and then sticks forever.
+     * The missed days are still shown on the status report page itself, where they are
+     * a record to explain rather than a task to clear.
+     */
+    status_reports: outstandingReports(
       new Date().toISOString().slice(0, 10),
       schedule,
       filed.results.map((row) => String(row.due_on)),
-      (joined.results[0]?.joined as string | null | undefined) ?? null,
-    ).length,
+      (reporter.results[0]?.joined as string | null | undefined) ?? null,
+      owesReports(
+        readDuty(reporter.results[0]?.duty as string | null | undefined),
+        Number(reporter.results[0]?.open_tasks ?? 0) > 0,
+      ),
+    ),
     allocations: count(offers.results),
   };
 }

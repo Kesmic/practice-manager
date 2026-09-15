@@ -29,13 +29,22 @@
 
 import type { Env } from "../env";
 import { requireUser, requireRole, type AuthenticatedUser } from "../auth";
-import { newId, nowIso, optionalString, requireString } from "../db";
+import {
+  hrEventStatement,
+  newId,
+  nowIso,
+  optionalString,
+  requireEnum,
+  requireString,
+} from "../db";
 import { Router, badRequest, forbidden, json, notFound, readJson } from "../http";
 import { today } from "../dates";
 import { MIN_HR_ADMIN_ROLE } from "../../shared/hr";
+import { ensureProfile } from "./employees";
 import { MIN_REVIEWER_ROLE, ROLE_RANK, type Role } from "../../shared/workflow";
 import {
   DEFAULT_SCHEDULE,
+  REPORT_DUTIES,
   WEEKDAYS,
   type ReportSchedule,
   type Weekday,
@@ -43,9 +52,14 @@ import {
   missedDays,
   nextDueDate,
   periodFor,
+  owesReports,
+  readDuty,
+  DUTY_LABELS,
   readSchedule,
   reportState,
+  writeDuty,
   writeSchedule,
+  type ReportDuty,
 } from "../../shared/status-reports";
 
 /**
@@ -105,13 +119,32 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
        * are left out of the dropdown but not out of an existing report - somebody who
        * reported on a job on Wednesday and closed it on Thursday said something true.
        */
+      /*
+       * Overdue work is marked here rather than left for the writer to remember.
+       *
+       * A report that says "everything is on track" beside three deliverables that went
+       * past their deadline last week is not a report, and the person writing it is
+       * usually not being evasive - they are writing from memory on a Friday afternoon.
+       * So the deadline comes back with each job and the screen puts the late ones
+       * first, where they have to be answered rather than found.
+       *
+       * `due_on` is the earlier of the internal target and the statutory deadline, which
+       * is what "overdue" means everywhere else in the system.
+       */
       env.DB.prepare(
-        `SELECT t.id, t.ref, t.title, t.status, c.name AS client_name
+        `SELECT t.id, t.ref, t.title, t.status, c.name AS client_name,
+                COALESCE(t.internal_due_date, t.statutory_due_date) AS due_on,
+                CASE
+                  WHEN COALESCE(t.internal_due_date, t.statutory_due_date) IS NOT NULL
+                   AND date(COALESCE(t.internal_due_date, t.statutory_due_date)) < date('now')
+                  THEN 1 ELSE 0
+                END AS overdue
            FROM tasks t
            JOIN clients c ON c.id = t.client_id
           WHERE t.assignee_id = ?
             AND t.status NOT IN ('approved','closed','cancelled')
-          ORDER BY COALESCE(t.internal_due_date, t.statutory_due_date) ASC, t.ref ASC`,
+          ORDER BY overdue DESC,
+                   COALESCE(t.internal_due_date, t.statutory_due_date) ASC, t.ref ASC`,
       ).bind(actor.id),
       env.DB.prepare(
         `SELECT id, due_on, period_from, body, blockers, submitted_at, updated_at
@@ -126,7 +159,16 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
       (r) => r.due_on,
     );
     const since = await joinedOn(env, actor.id);
-    const state = reportState(now, schedule, submittedFor);
+
+    /*
+     * Whether this person owes reports at all, before anything about dates. Somebody
+     * the firm does not ask is not "up to date" - they are outside the requirement, and
+     * treating them as up to date would put them in a list of people who have reported
+     * when they were never asked.
+     */
+    const duty = await readReportDuty(env, actor.id);
+    const owes = owesReports(duty, mine.results.length > 0);
+    const state = reportState(now, schedule, submittedFor, since, owes);
 
     // The current report, if it has already been written, so the form opens on it
     // rather than on a blank page the person has to retype.
@@ -141,7 +183,9 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
       due_on: state.due_on,
       period_from: state.from,
       next_due_on: nextDueDate(now, schedule.days),
-      missed: missedDays(now, schedule, submittedFor, since).filter(
+      duty,
+      owes,
+      missed: missedDays(now, schedule, submittedFor, since, owes).filter(
         (day) => day !== state.due_on,
       ),
       current: current ? await withTasks(env, current) : null,
@@ -164,9 +208,20 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
       throw badRequest("The firm is not asking for status reports at the moment.");
     }
 
+    if ((await readReportDuty(env, actor.id)) === "never") {
+      throw badRequest("The firm is not asking you for status reports.");
+    }
+
     const now = today();
     const dueOn = currentDueDate(now, schedule.days);
     if (!dueOn) throw badRequest("There is no reporting day to file against.");
+
+    // The same rule the screen applies: nothing is filed for a reporting day that fell
+    // before this person joined.
+    const joined = await joinedOn(env, actor.id);
+    if (joined && dueOn < joined) {
+      throw badRequest("That reporting day falls before you joined the firm.");
+    }
 
     const body = await readJson<{
       body?: unknown;
@@ -195,6 +250,40 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
           "One of the deliverables named is not assigned to you. Choose from your own work.",
         );
       }
+    }
+
+    /*
+     * Every overdue deliverable has to be answered.
+     *
+     * This is the one thing the firm asked the report to force, and it is enforced here
+     * rather than only in the form. A deadline that has gone by is the fact a report
+     * exists to surface: what happened, and what the plan is now. Left optional it is
+     * the first thing omitted, because it is the least comfortable thing to write.
+     *
+     * Enforced on the server as well as the screen, so a report cannot be filed past
+     * it - and named in the message, since "fill in the missing field" on a page of
+     * twelve deliverables tells nobody which.
+     */
+    const { results: late } = await env.DB.prepare(
+      `SELECT t.id, t.ref FROM tasks t
+        WHERE t.assignee_id = ?
+          AND t.status NOT IN ('approved','closed','cancelled')
+          AND COALESCE(t.internal_due_date, t.statutory_due_date) IS NOT NULL
+          AND date(COALESCE(t.internal_due_date, t.statutory_due_date)) < date('now')
+        ORDER BY t.ref`,
+    )
+      .bind(actor.id)
+      .all<{ id: string; ref: string }>();
+
+    const answered = new Map(references.map((r) => [r.task_id, r.note]));
+    const unanswered = late.filter((task) => !answered.get(task.id)?.trim());
+    if (unanswered.length) {
+      const refs = unanswered.map((t) => t.ref).join(", ");
+      throw badRequest(
+        unanswered.length === 1
+          ? `${refs} is past its deadline. Say why, and what the plan is to meet it, before submitting.`
+          : `${refs} are past their deadlines. Say why for each, and what the plan is to meet them, before submitting.`,
+      );
     }
 
     const existing = await env.DB.prepare(
@@ -288,21 +377,34 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
      * who filed one anyway. The second half matters - somebody whose last deliverable
      * was closed on Tuesday still wrote about the week, and dropping their report
      * because they now carry nothing would lose it.
+     *
+     * Anybody who joined after the reporting day is left out, for the same reason the
+     * screen does not ask them for it: a new joiner appearing under "has not reported"
+     * for a week before their first day is a supervisor's problem that is not real, and
+     * it is the new joiner who gets asked about it. A report they filed anyway is still
+     * shown - that is a fact about them, not an accusation.
      */
     const { results } = await env.DB.prepare(
       `SELECT u.id, u.full_name, u.role,
               (SELECT COUNT(*) FROM tasks t
                 WHERE t.assignee_id = u.id
                   AND t.status NOT IN ('approved','closed','cancelled')) AS open_tasks,
+              p.status_reports AS duty,
               r.id AS report_id, r.due_on, r.period_from, r.body, r.blockers,
               r.submitted_at, r.updated_at
          FROM users u
+         LEFT JOIN employee_profiles p ON p.user_id = u.id
          LEFT JOIN status_reports r ON r.user_id = u.id AND r.due_on = ?1
         WHERE u.status = 'active'
+          AND p.status_reports IS NOT 'never'
           AND (r.id IS NOT NULL
-               OR EXISTS (SELECT 1 FROM tasks t
-                           WHERE t.assignee_id = u.id
-                             AND t.status NOT IN ('approved','closed','cancelled')))
+               OR COALESCE(p.start_date, date(u.created_at)) <= ?1)
+          AND (r.id IS NOT NULL
+               OR p.status_reports = 'always'
+               OR (p.status_reports IS NULL
+                   AND EXISTS (SELECT 1 FROM tasks t
+                                WHERE t.assignee_id = u.id
+                                  AND t.status NOT IN ('approved','closed','cancelled'))))
         ORDER BY (r.id IS NOT NULL), u.full_name`,
     )
       .bind(dueOn)
@@ -323,6 +425,7 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
         full_name: row.full_name,
         role: row.role,
         open_tasks: Number(row.open_tasks ?? 0),
+        duty: readDuty(row.duty as string | null),
         report_id: (row.report_id as string | null) ?? null,
       };
 
@@ -352,6 +455,80 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
       people: visible,
       outstanding: visible.filter((p) => !p.report_id).length,
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // Who reports
+  // -------------------------------------------------------------------------
+
+  /**
+   * Everybody, and whether the firm asks them for status reports.
+   *
+   * One screen rather than a setting buried on each personnel file: the question is
+   * "who reports", and answering it by opening forty records in turn is how a firm ends
+   * up not knowing.
+   */
+  router.get("/api/status-report-duties", async ({ request, env }) => {
+    await requireRole(env, request, MIN_POLICY_ROLE);
+
+    const { results } = await env.DB.prepare(
+      `SELECT u.id, u.full_name, u.role, p.job_title,
+              p.status_reports AS duty,
+              (SELECT COUNT(*) FROM tasks t
+                WHERE t.assignee_id = u.id
+                  AND t.status NOT IN ('approved','closed','cancelled')) AS open_tasks
+         FROM users u
+         LEFT JOIN employee_profiles p ON p.user_id = u.id
+        WHERE u.status = 'active'
+          AND u.email NOT LIKE '%@removed.invalid'
+        ORDER BY u.full_name`,
+    ).all<Record<string, unknown>>();
+
+    return json({
+      schedule: await readReportSchedule(env),
+      people: results.map((row) => {
+        const duty = readDuty(row.duty as string | null);
+        const openTasks = Number(row.open_tasks ?? 0);
+        return {
+          id: row.id,
+          full_name: row.full_name,
+          role: row.role,
+          title: row.job_title ?? null,
+          open_tasks: openTasks,
+          duty,
+          // What the setting means for them today, which is the thing an administrator
+          // is actually deciding about and cannot read off the word "automatic".
+          owes: owesReports(duty, openTasks > 0),
+        };
+      }),
+    });
+  });
+
+  /** Sets one person's duty. Partner grade, as the schedule itself is. */
+  router.patch("/api/employees/:id/status-report-duty", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_POLICY_ROLE);
+    const body = await readJson<{ duty?: unknown }>(request);
+    const duty = requireEnum(body.duty, "duty", REPORT_DUTIES) as ReportDuty;
+
+    const exists = await env.DB.prepare(`SELECT id, full_name FROM users WHERE id = ?`)
+      .bind(params.id)
+      .first<{ id: string; full_name: string }>();
+    if (!exists) throw notFound("That person does not exist.");
+    await ensureProfile(env, params.id);
+
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE employee_profiles SET status_reports = ?, updated_at = ? WHERE user_id = ?`,
+      ).bind(writeDuty(duty), nowIso(), params.id),
+      hrEventStatement(env, {
+        subjectId: params.id,
+        actorId: actor.id,
+        kind: "status_reports:duty_changed",
+        detail: `Status reports set to “${DUTY_LABELS[duty]}”`,
+      }),
+    ]);
+
+    return json({ duty });
   });
 
   // -------------------------------------------------------------------------
@@ -501,4 +678,19 @@ async function mayRead(
     .first<{ manages: number; reviews: number }>();
 
   return (row?.manages ?? 0) > 0 || (row?.reviews ?? 0) > 0;
+}
+
+/**
+ * One person's reporting duty.
+ *
+ * An absent profile row reads as `automatic`, the same as an unset column: somebody
+ * nobody has recorded anything about is on the default, not excused.
+ */
+async function readReportDuty(env: Env, userId: string): Promise<ReportDuty> {
+  const row = await env.DB.prepare(
+    `SELECT status_reports FROM employee_profiles WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ status_reports: string | null }>();
+  return readDuty(row?.status_reports ?? null);
 }

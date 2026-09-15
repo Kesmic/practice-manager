@@ -23,7 +23,7 @@ import type { ContractField } from "@shared/contract-fields";
 import type { FirstRunState, FirstRunStep } from "@shared/first-run";
 import type { DirectoryEntry } from "@shared/directory";
 import type { Removal, RemovalFootprint } from "@shared/removal";
-import type { ReportSchedule } from "@shared/status-reports";
+import type { ReportDuty, ReportSchedule } from "@shared/status-reports";
 import type {
   ChecklistItem,
   DocumentSignature,
@@ -35,6 +35,7 @@ import type {
   OnboardingItem,
   ClientAllocation,
   ContractDetails,
+  ReportDutyRow,
   RemovalPreview,
   ContractMergeResult,
   PortalDocument,
@@ -939,6 +940,18 @@ export const api = {
 
   statusReportPolicy: () =>
     request<{ schedule: ReportSchedule }>("/api/status-report-policy"),
+
+  /** Everybody, and whether the firm asks them for status reports. */
+  statusReportDuties: () =>
+    request<{ schedule: ReportSchedule; people: ReportDutyRow[] }>(
+      "/api/status-report-duties",
+    ),
+
+  setStatusReportDuty: (userId: string, duty: ReportDuty) =>
+    request<{ duty: ReportDuty }>(`/api/employees/${userId}/status-report-duty`, {
+      method: "PATCH",
+      body: { duty },
+    }),
 
   saveStatusReportPolicy: (schedule: ReportSchedule) =>
     request<{ schedule: ReportSchedule }>("/api/status-report-policy", {
