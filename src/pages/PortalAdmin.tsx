@@ -19,8 +19,6 @@ import { deriveLightInk, whyNotDerivable } from "../lib/logo";
 import { useFirm } from "../lib/firm";
 import { useSession } from "../lib/auth";
 import { ContractTermsCard } from "../components/ContractTermsCard";
-import { StatusReportDutiesCard } from "../components/StatusReportDutiesCard";
-import { StatusReportPolicyCard } from "../components/StatusReportPolicyCard";
 import { EraseAdmin } from "../components/EraseAdmin";
 import { Markdown } from "../components/Markdown";
 import { SignInSecurityAdmin } from "../components/SignInSecurityAdmin";
@@ -53,7 +51,7 @@ type Tab =
 const TABS: Array<[Tab, string]> = [
   ["documents", "Documents and handbook"],
   ["welcome", "Welcome message and firm details"],
-  ["contract", "Contract terms and reporting"],
+  ["contract", "Contract terms"],
   ["appearance", "Logo and colours"],
   ["email", "Email notifications"],
   ["visibility", "Who sees what"],
@@ -121,8 +119,20 @@ export function PortalAdmin() {
       ) : tab === "contract" ? (
         <div className="space-y-5">
           <ContractTermsCard canEdit={can("partner")} />
-          <StatusReportPolicyCard canEdit={can("partner")} />
-          <StatusReportDutiesCard canEdit={can("partner")} />
+          {/*
+            * Status reporting is set from the reports page itself, not duplicated here.
+            * Two copies of the same control is how a firm ends up with two answers.
+            */}
+          <div className="card">
+            <h2 className="card-title">Status reports</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              When reports are due, and who the firm asks for one, are set on the{" "}
+              <Link className="link" to="/status-reports">
+                status reports
+              </Link>{" "}
+              page.
+            </p>
+          </div>
         </div>
       ) : tab === "appearance" ? (
         <AppearanceAdmin setError={setError} setNotice={setNotice} />

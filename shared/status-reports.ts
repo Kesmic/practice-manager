@@ -276,6 +276,8 @@ export function reportState(
   today: string,
   schedule: ReportSchedule,
   submittedFor: string[],
+  /** The day they joined, if known. Nothing is due for a reporting day before it. */
+  since?: string | null,
   /** False for somebody the firm does not ask. Defaults to true for callers that do
    *  not yet know, so an omission cannot silently excuse anybody. */
   owes = true,
@@ -287,11 +289,50 @@ export function reportState(
   const dueOn = currentDueDate(today, schedule.days);
   if (!dueOn) return { state: "not_required", due_on: null, from: null };
 
+  /*
+   * Somebody who joined on Saturday does not owe Friday's report.
+   *
+   * `missedDays` has always stopped at the joining date; this did not, so a new joiner
+   * arriving between two reporting days was shown a form for a period that ended before
+   * their first day, marked overdue, covering work they could not have done. They report
+   * from their first reporting day onwards.
+   */
+  if (since && dueOn < since) {
+    return { state: "not_required", due_on: null, from: null };
+  }
+
   const { from } = periodFor(dueOn, schedule.days);
   if (submittedFor.includes(dueOn)) {
     return { state: "submitted", due_on: dueOn, from };
   }
   return { state: dueOn === today ? "due" : "overdue", due_on: dueOn, from };
+}
+
+/**
+ * What the sidebar badge counts: the report they owe now, and nothing else.
+ *
+ * One or zero, never seven.
+ *
+ * The badge used to count missed reporting days, and a missed day cannot be filed - the
+ * current report is the only one there is. So somebody who joined a firm that had the
+ * schedule switched on carried a badge of eight that dropped to seven when they filed
+ * and then never moved again. `shared/attention.ts` says why that is the one thing a
+ * badge must not do: a count that never reaches zero teaches people the numbers are
+ * decoration, and it makes the badge that *is* news easier to miss.
+ *
+ * The missed days are still worth showing - they are a record, and a manager reading a
+ * colleague's page should see them. They are just not a badge, because nothing the
+ * person does clears them.
+ */
+export function outstandingReports(
+  today: string,
+  schedule: ReportSchedule,
+  submittedFor: string[],
+  since?: string | null,
+  owes = true,
+): number {
+  const { state } = reportState(today, schedule, submittedFor, since, owes);
+  return state === "submitted" || state === "not_required" ? 0 : 1;
 }
 
 /**

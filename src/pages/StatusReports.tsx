@@ -29,6 +29,8 @@ import {
   TextArea,
 } from "../components/ui";
 import { StatusPill } from "../components/ui";
+import { StatusReportDutiesCard } from "../components/StatusReportDutiesCard";
+import { StatusReportPolicyCard } from "../components/StatusReportPolicyCard";
 
 export function StatusReports() {
   const { can } = useSession();
@@ -110,6 +112,21 @@ export function StatusReports() {
       <PastReports reports={view.recent} currentDueOn={view.due_on} />
 
       {can("senior_associate") ? <TeamPanel /> : null}
+
+      {/*
+        * When reports are due, and who is asked for one.
+        *
+        * Here rather than only under Portal settings. A Partner wondering why somebody
+        * is not on the list above is on this page, looking at that list - not three
+        * clicks away under a heading about contracts. The settings page keeps a pointer
+        * to here so there is one copy of the controls rather than two.
+        */}
+      {can("partner") ? (
+        <div className="space-y-5 border-t border-slate-200 pt-5">
+          <StatusReportPolicyCard canEdit />
+          <StatusReportDutiesCard canEdit />
+        </div>
+      ) : null}
     </div>
   );
 }

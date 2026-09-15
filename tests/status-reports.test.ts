@@ -30,6 +30,7 @@ import {
   describeSchedule,
   missedDays,
   nextDueDate,
+  outstandingReports,
   periodFor,
   previousDueDate,
   readSchedule,
@@ -368,7 +369,7 @@ test("somebody the firm does not ask is not required, not overdue", () => {
   // The distinction that matters: "not required" and "up to date" are different, and
   // calling them up to date would list them among people who reported when they never
   // were asked.
-  const state = reportState(THU, DEFAULT_SCHEDULE, [], false);
+  const state = reportState(THU, DEFAULT_SCHEDULE, [], null, false);
   assert.equal(state.state, "not_required");
   assert.equal(state.due_on, null);
 });
@@ -389,7 +390,7 @@ test("omitting the flag does not quietly excuse anybody", () => {
 test("being asked still depends on the firm's schedule being on", () => {
   // Two switches, and either one off means nothing is due.
   const off = { enabled: false, days: [] as Weekday[] };
-  assert.equal(reportState(THU, off, [], true).state, "not_required");
+  assert.equal(reportState(THU, off, [], null, true).state, "not_required");
   assert.deepEqual(missedDays(THU, off, [], null, true), []);
 });
 
@@ -484,4 +485,100 @@ test("a report leaving an overdue deliverable unanswered is refused", () => {
   assert.deepEqual(answered({ "TSK-1": "x", "TSK-4": "   " }), ["TSK-4"]);
   assert.deepEqual(answered({ "TSK-1": "x", "TSK-4": "y" }), []);
   db.close();
+});
+
+// ---------------------------------------------------------------------------
+// What the sidebar badge counts
+// ---------------------------------------------------------------------------
+
+/*
+ * The badge used to count missed reporting days, and a missed day cannot be filed - the
+ * current report is the only one there is. Somebody who joined a firm that already had
+ * the schedule running carried a badge of eight, filed a report, watched it drop to
+ * seven, and then watched it sit there. These pin it at one or nothing.
+ */
+
+test("the badge counts the report in hand and nothing else", () => {
+  // Thursday, with Wednesday's report unwritten and a fortnight of missed days behind
+  // it. The person can write one report. The badge says one.
+  assert.ok(missedDays(THU, DEFAULT_SCHEDULE, []).length > 1);
+  assert.equal(outstandingReports(THU, DEFAULT_SCHEDULE, []), 1);
+});
+
+test("the badge reaches zero the moment the report is filed", () => {
+  assert.equal(outstandingReports(WED, DEFAULT_SCHEDULE, [WED]), 0);
+  assert.equal(outstandingReports(THU, DEFAULT_SCHEDULE, [WED]), 0);
+});
+
+test("the badge is never more than one, whatever is behind it", () => {
+  for (const today of [MON, TUE, WED, THU, FRI, SAT, SUN]) {
+    for (const filed of [[], [WED], [FRI], [WED, FRI]]) {
+      const n = outstandingReports(today, DEFAULT_SCHEDULE, filed);
+      assert.ok(n === 0 || n === 1, `${today} with ${filed.length} filed gave ${n}`);
+    }
+  }
+});
+
+test("nothing is counted against somebody the firm does not ask", () => {
+  assert.equal(outstandingReports(THU, DEFAULT_SCHEDULE, [], null, false), 0);
+  assert.equal(outstandingReports(THU, { enabled: false, days: [] }, []), 0);
+});
+
+test("a weekend owes nothing, because no report falls due on one", () => {
+  // Saturday after a week both of whose reports were filed.
+  assert.equal(outstandingReports(SAT, DEFAULT_SCHEDULE, [WED, FRI]), 0);
+});
+
+// ---------------------------------------------------------------------------
+// Arriving between two reporting days
+// ---------------------------------------------------------------------------
+
+/*
+ * This file's own header has always said nobody is asked for a report covering time
+ * before they arrived, and `missedDays` stopped at the joining date accordingly.
+ * `reportState` did not, so somebody who joined on Saturday opened the portal on Monday
+ * and found Friday's report waiting, marked overdue, covering a period that ended two
+ * days before their first morning.
+ */
+
+test("a reporting day before somebody joined is not theirs to file", () => {
+  // Friday's report, read on the Monday, by somebody who joined on the Saturday.
+  assert.equal(reportState(MON, DEFAULT_SCHEDULE, [], SAT).state, "not_required");
+  assert.equal(reportState(MON, DEFAULT_SCHEDULE, [], SAT).due_on, null);
+  assert.equal(outstandingReports(MON, DEFAULT_SCHEDULE, [], SAT), 0);
+});
+
+test("the first reporting day after somebody joins is theirs", () => {
+  // Same joiner, read on the Wednesday: that Wednesday is their first report.
+  const next = "2026-09-23";
+  assert.equal(reportState(next, DEFAULT_SCHEDULE, [], SAT).state, "due");
+  assert.equal(outstandingReports(next, DEFAULT_SCHEDULE, [], SAT), 1);
+});
+
+test("a joining date changes nothing for somebody who was already here", () => {
+  // The rule must not quietly excuse an established member of staff.
+  assert.equal(reportState(THU, DEFAULT_SCHEDULE, [], "2026-01-01").state, "overdue");
+  assert.equal(outstandingReports(THU, DEFAULT_SCHEDULE, [], "2026-01-01"), 1);
+});
+
+test("reportState and missedDays agree about the joining date", () => {
+  // They disagreed before, which is how the bug survived: one of them was right.
+  for (const joined of [null, MON, TUE, WED, THU, FRI, SAT]) {
+    for (const today of [WED, THU, FRI, SAT, SUN]) {
+      const state = reportState(today, DEFAULT_SCHEDULE, [], joined);
+      const missed = missedDays(today, DEFAULT_SCHEDULE, [], joined);
+      if (state.state === "not_required") {
+        assert.deepEqual(
+          missed,
+          [],
+          `joined ${joined}, read ${today}: nothing due but ${missed.length} missed`,
+        );
+      } else {
+        assert.ok(
+          missed.includes(state.due_on!),
+          `joined ${joined}, read ${today}: ${state.due_on} due but not counted missed`,
+        );
+      }
+    }
+  }
 });

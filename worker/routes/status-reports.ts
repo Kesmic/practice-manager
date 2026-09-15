@@ -168,7 +168,7 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
      */
     const duty = await readReportDuty(env, actor.id);
     const owes = owesReports(duty, mine.results.length > 0);
-    const state = reportState(now, schedule, submittedFor, owes);
+    const state = reportState(now, schedule, submittedFor, since, owes);
 
     // The current report, if it has already been written, so the form opens on it
     // rather than on a blank page the person has to retype.
@@ -215,6 +215,13 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
     const now = today();
     const dueOn = currentDueDate(now, schedule.days);
     if (!dueOn) throw badRequest("There is no reporting day to file against.");
+
+    // The same rule the screen applies: nothing is filed for a reporting day that fell
+    // before this person joined.
+    const joined = await joinedOn(env, actor.id);
+    if (joined && dueOn < joined) {
+      throw badRequest("That reporting day falls before you joined the firm.");
+    }
 
     const body = await readJson<{
       body?: unknown;
@@ -370,6 +377,12 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
      * who filed one anyway. The second half matters - somebody whose last deliverable
      * was closed on Tuesday still wrote about the week, and dropping their report
      * because they now carry nothing would lose it.
+     *
+     * Anybody who joined after the reporting day is left out, for the same reason the
+     * screen does not ask them for it: a new joiner appearing under "has not reported"
+     * for a week before their first day is a supervisor's problem that is not real, and
+     * it is the new joiner who gets asked about it. A report they filed anyway is still
+     * shown - that is a fact about them, not an accusation.
      */
     const { results } = await env.DB.prepare(
       `SELECT u.id, u.full_name, u.role,
@@ -384,6 +397,8 @@ export function registerStatusReportRoutes(router: Router<Env>): void {
          LEFT JOIN status_reports r ON r.user_id = u.id AND r.due_on = ?1
         WHERE u.status = 'active'
           AND p.status_reports IS NOT 'never'
+          AND (r.id IS NOT NULL
+               OR COALESCE(p.start_date, date(u.created_at)) <= ?1)
           AND (r.id IS NOT NULL
                OR p.status_reports = 'always'
                OR (p.status_reports IS NULL
