@@ -151,6 +151,13 @@ number and start date stop at Manager, and nothing personal is there for anybody
 It also marks the colleagues you share live deliverables with, which is the half of
 "who do I talk to" that a grade cannot answer.
 
+**Staff can be deleted outright** - the row and everything that cascades with it -
+or retired, which keeps the client work under an anonymised name. Deleting is the
+default, because it is what an administrator who opened the screen came to do. What
+the screen owes them is the count of what goes with the person: deleting a reviewer
+also strips the review rounds, review points and comments off other people's
+deliverables, which was measured rather than assumed.
+
 **Staff see their own work, not the practice's** - below Manager grade a person
 sees the deliverables they prepare or review, the clients they hold or are doing
 work for, and nothing else. The detail endpoints are scoped as well as the lists,

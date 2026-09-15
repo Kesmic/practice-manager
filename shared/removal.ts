@@ -90,12 +90,17 @@ export function canErase(footprint: RemovalFootprint): boolean {
 // The two removals
 // ---------------------------------------------------------------------------
 
-export const REMOVALS = ["retire", "erase"] as const;
+/**
+ * Deleting outright comes first, because it is what an administrator who opened this
+ * screen came to do. Keeping the client work is the alternative, offered rather than
+ * urged.
+ */
+export const REMOVALS = ["erase", "retire"] as const;
 export type Removal = (typeof REMOVALS)[number];
 
 export const REMOVAL_LABELS: Record<Removal, string> = {
-  retire: "Remove their personal record",
-  erase: "Delete the account entirely",
+  retire: "Keep their client work, remove the person",
+  erase: "Delete everything",
 };
 
 /**
@@ -197,7 +202,7 @@ export function adviseRemoval(footprint: RemovalFootprint): RemovalAdvice {
       recommended: "erase",
       erase_available: true,
       summary:
-        "This account has touched no client work, so deleting it entirely takes nothing else with it.",
+        "This account has touched no client work, so deleting it takes nothing else with it.",
       collateral: [],
     };
   }
@@ -211,12 +216,22 @@ export function adviseRemoval(footprint: RemovalFootprint): RemovalAdvice {
     (item) => item.othersAffected && footprint[item.key] > 0,
   );
 
+  /*
+   * Deleting outright stays the answer, whatever the person is attached to.
+   *
+   * An earlier version of this recommended retiring instead once somebody had touched
+   * any client work, which was the wrong call: the firm asked to be able to delete
+   * staff completely, and a screen that answers "are you sure you would not rather do
+   * something else" to a decision its owner has already made is arguing rather than
+   * informing. What the count is for is telling them what goes with it, which they can
+   * only weigh if they are told it - so the number stays and the argument goes.
+   */
   return {
-    recommended: "retire",
+    recommended: "erase",
     erase_available: true,
     summary: touchesOthers
-      ? "Deleting this account entirely would also remove their work from other people's deliverables, which would leave those records incomplete."
-      : "Deleting this account entirely would remove the firm's record of what they did.",
+      ? "This will also remove their work from other people's deliverables, which leaves those records incomplete."
+      : "This will remove the firm's record of what they did.",
     collateral,
   };
 }

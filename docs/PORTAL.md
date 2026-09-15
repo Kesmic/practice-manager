@@ -373,6 +373,43 @@ loosen it.
 
 ---
 
+## Removing somebody
+
+**Accounts and grades → Remove.** Two removals, and deleting outright is the
+default, because that is what an administrator who opened the screen came to do.
+
+| | What happens |
+| --- | --- |
+| **Delete everything** | The user row goes, cascades and all |
+| **Keep their client work, remove the person** | The personal record goes; the row stays, anonymised, so the client work keeps the shape of who did what |
+
+What the dialog owes an administrator is the truth about what goes with them,
+because "delete the account" sounds like one action on one row and it is not. A
+user row is referenced by forty-odd columns and about a third of them cascade.
+Measured against the real schema with foreign keys on, as D1 enforces them:
+deleting a reviewer removes the review round, the review point and the comment
+from **somebody else's** deliverable, and leaves that deliverable in
+`under_review` with no reviewer and no record of what was asked for. Deleting a
+preparer takes the hours logged against the client. That measurement is a test, so
+if the schema is ever fixed the wording can be softened deliberately rather than
+drifting.
+
+So the counts are shown, plainly, and then the button does what it says. An
+earlier version recommended retiring instead once somebody had touched any client
+work; that was the wrong call. A screen that answers "would you not rather do
+something else" to a decision its owner has already made is arguing rather than
+informing.
+
+The confirmation is the person's own name rather than a fixed word. "DELETE" can
+be typed without reading; the point is not friction but making somebody look at
+which account they have selected.
+
+Three removals are refused outright, whichever option is chosen: your own account,
+an account senior to you, and the last active administrator. The reason is shown
+before anybody types a confirmation rather than at the point of failure.
+
+---
+
 ## Where things are
 
 | Screen | Path | Who |

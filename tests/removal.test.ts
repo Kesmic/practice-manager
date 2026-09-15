@@ -141,12 +141,30 @@ test("an account that has touched nothing can simply be deleted", () => {
   assert.equal(canErase(NO_FOOTPRINT), true);
 });
 
-test("anything at all on the firm's side makes retiring the recommendation", () => {
+test("deleting outright stays the default however much they are attached to", () => {
+  /*
+   * An earlier version recommended retiring once somebody had touched any client work.
+   * That was the wrong call: the firm asked to be able to delete staff completely, and a
+   * screen that answers "would you not rather do something else" to a decision its owner
+   * has already made is arguing rather than informing.
+   */
   for (const key of Object.keys(NO_FOOTPRINT) as Array<keyof RemovalFootprint>) {
     const one = footprint({ [key]: 1 });
     assert.equal(canErase(one), false, key);
-    assert.equal(adviseRemoval(one).recommended, "retire", key);
+    assert.equal(adviseRemoval(one).recommended, "erase", key);
   }
+});
+
+test("the full delete is the first option offered", () => {
+  assert.equal(REMOVALS[0], "erase");
+});
+
+test("what goes with them is still counted, whatever is recommended", () => {
+  // The count is the whole reason the dialog is more than a button: it is the thing an
+  // administrator cannot work out for themselves.
+  const advice = adviseRemoval(footprint({ review_points: 4, time_entries: 12 }));
+  assert.ok(advice.collateral.length > 0);
+  assert.ok(advice.summary.length > 0);
 });
 
 test("the full delete is never taken off the table", () => {
@@ -164,6 +182,13 @@ test("the strongest wording is kept for the case that damages other people's rec
 
   assert.ok(!ownOnly.summary.includes("other people"));
   assert.match(othersToo.summary, /other people/);
+});
+
+test("the wording states what happens rather than asking them to reconsider", () => {
+  for (const f of [footprint({ review_points: 3 }), footprint({ signatures: 2 })]) {
+    const { summary } = adviseRemoval(f);
+    assert.ok(!/would you|are you sure|rather|instead|recommend/i.test(summary), summary);
+  }
 });
 
 test("the collateral names what would actually go, in numbers", () => {

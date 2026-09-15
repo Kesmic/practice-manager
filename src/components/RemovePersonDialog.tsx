@@ -1,18 +1,23 @@
 /**
- * Removing somebody from the firm, with the cost shown first.
+ * Removing somebody from the firm.
  *
- * "Delete the account" sounds like one action on one row. It is not: a user row is
- * referenced by forty-odd columns and about a third of them cascade, so the plain delete
- * takes review rounds, review points, comments and logged hours off **other people's**
- * deliverables as well. That was measured, not guessed - deleting a reviewer leaves the
- * deliverable they were reviewing sitting in `under_review` with no reviewer and no
- * record of what was asked for, and the person whose deliverable it is did nothing.
+ * Two removals, and deleting outright is the default because that is what an
+ * administrator who opened this screen came to do. The firm asked to be able to delete
+ * staff completely; a dialog that answers "are you sure you would not rather do
+ * something else" to a decision its owner has already made is arguing rather than
+ * informing.
  *
- * So the dialog leads with what the person is attached to, and offers two removals
- * rather than one. Neither is hidden: an administrator who created an account with a
- * typo in the address wants the row gone, and telling them they may only "retire" it
- * would be the system deciding something that is not its to decide. What it can do is
- * make sure nobody finds out afterwards.
+ * What it does owe them is the truth about what goes. "Delete the account" sounds like
+ * one action on one row and it is not: a user row is referenced by forty-odd columns and
+ * about a third of them cascade, so the delete takes review rounds, review points,
+ * comments and logged hours off **other people's** deliverables as well. That was
+ * measured, not guessed - deleting a reviewer leaves the deliverable they were reviewing
+ * in `under_review` with no reviewer and no record of what was asked for, and the person
+ * whose deliverable it is did nothing.
+ *
+ * So the count is shown, plainly, and then the button does what it says. The second
+ * option - keep the client work, remove the person - is there for whoever wants it,
+ * which is often what a practice actually needs, but it is offered rather than urged.
  *
  * The confirmation is the person's own name rather than a fixed word. "DELETE" can be
  * typed without reading; the point is not friction but making somebody look at which
@@ -112,7 +117,11 @@ export function RemovePersonDialog({
             disabled={!ready}
             onClick={() => void submit()}
           >
-            {busy ? "Removing…" : REMOVAL_LABELS[removal]}
+            {busy
+              ? "Removing…"
+              : removal === "erase"
+                ? `Delete ${preview?.user.full_name ?? "this account"}`
+                : REMOVAL_LABELS.retire}
           </button>
         </>
       }
@@ -156,11 +165,6 @@ export function RemovePersonDialog({
                     <span className="min-w-0 flex-1 text-sm">
                       <span className="font-medium text-slate-800">
                         {REMOVAL_LABELS[key]}
-                        {preview.advice.recommended === key ? (
-                          <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-normal text-emerald-700">
-                            Recommended
-                          </span>
-                        ) : null}
                       </span>
                       <Effects removal={key} />
                     </span>
@@ -192,7 +196,12 @@ export function RemovePersonDialog({
   );
 }
 
-/** What the person is attached to, and what the strong option would take with it. */
+/**
+ * What goes with them.
+ *
+ * Stated once, in numbers, and then left alone. This is the part an administrator
+ * cannot work out for themselves and the only reason the dialog is more than a button.
+ */
 function Footprint({ preview }: { preview: RemovalPreview }) {
   const { advice } = preview;
 
@@ -206,11 +215,11 @@ function Footprint({ preview }: { preview: RemovalPreview }) {
 
   return (
     <div className="space-y-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
-      <p>{advice.summary}</p>
       <p>
-        Deleting the account entirely would also remove{" "}
+        <strong>Deleting everything also removes</strong>{" "}
         {advice.collateral.join(", ").replace(/, ([^,]*)$/, " and $1")}.
       </p>
+      <p>{advice.summary}</p>
     </div>
   );
 }
