@@ -30,6 +30,7 @@ import {
 } from "../../shared/removal";
 import { sendToPerson } from "../email";
 import { readSettings } from "./settings";
+import { startOnboardingProgramme } from "./employees";
 
 /** Grade required to administer staff records. */
 const MIN_USER_ADMIN: Role = "partner";
@@ -125,6 +126,26 @@ export function registerUserRoutes(router: Router<Env>): void {
       )
       .run();
 
+    /*
+     * The onboarding programme is created with the account, not left for a second
+     * action somebody has to remember.
+     *
+     * Without it a new joiner signed in and was sent straight to the password form:
+     * the first-run gate treats "no programme" as "nothing outstanding", which is what
+     * keeps a founder who was never onboarded from being trapped by a gate meant for
+     * new joiners. The cost was that an invited member of staff never met the welcome
+     * or their checklist at all - the firm had to know to press Start the programme on
+     * their record first.
+     *
+     * Administrators are the exception, and for the same reason the gate exempts them:
+     * a Partner setting up a colleague's admin account is not a new joiner being
+     * onboarded, and a nineteen-step checklist appearing on their first morning would
+     * be noise they cannot clear.
+     */
+    if (role !== "admin") {
+      await startOnboardingProgramme(env, id, actor.id);
+    }
+
     // The invitation is sent inside the request rather than in waitUntil, because
     // the screen has to tell the administrator whether it went: "invitation sent" and
     // "write the password down, it did not send" are different instructions, and
@@ -139,7 +160,7 @@ export function registerUserRoutes(router: Router<Env>): void {
       invitation = await sendToPerson(env, {
         to: { email, full_name: fullName },
         subject: `Your ${settings.firm_name} portal account`,
-        headline: `${actor.full_name} has created your account on the ${settings.firm_name} staff portal. Sign in with this email address and the temporary password below, and you will be asked to choose your own password straight away.`,
+        headline: `Your account on the ${settings.firm_name} staff portal has been created. Sign in with this email address and the temporary password below, and you will be asked to choose your own password straight away.`,
         detail: `Email address: ${email}\nTemporary password: ${password}`,
         link: `${portal}/login`,
         linkLabel: "Sign in to the portal",
