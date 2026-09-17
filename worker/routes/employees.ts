@@ -298,7 +298,9 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
    * and above, and nothing personal for anybody here at all.
    */
   router.get("/api/directory", async ({ request, env, url }) => {
-    const actor = await requireUser(env, request);
+    // The firm's own setting, enforced here as well as in the sidebar. A directory the
+    // firm has switched off has to be refused, not merely unlinked.
+    const actor = await requireArea(env, request, "directory");
     const detail = seesEmploymentDetail(actor.role);
 
     /*

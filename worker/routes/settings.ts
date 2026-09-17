@@ -11,7 +11,10 @@ import {
   DEFAULT_VISIBILITY,
   type Area,
   type Visibility,
+  OFF,
   canSeeArea,
+  canSwitchOff,
+  isOff,
   readVisibility,
   writeVisibility,
 } from "../../shared/visibility";
@@ -190,8 +193,11 @@ export async function requireArea(
   const visibility = await readVisibilitySetting(env);
   if (!canSeeArea(visibility, area, actor.role)) {
     throw forbidden(
-      `${AREA_SPECS[area].label} is not open to ${ROLE_LABELS[actor.role]} grade in this firm. ` +
-        `A Partner can change that under Portal settings, Who sees what.`,
+      isOff(visibility[area])
+        ? `${AREA_SPECS[area].label} is switched off in this firm. ` +
+            `A Partner can turn it back on under Portal settings, Who sees what.`
+        : `${AREA_SPECS[area].label} is not open to ${ROLE_LABELS[actor.role]} grade in this firm. ` +
+            `A Partner can change that under Portal settings, Who sees what.`,
     );
   }
   return actor;
@@ -229,6 +235,20 @@ export function registerSettingsRoutes(router: Router<Env>): void {
     for (const area of AREAS) {
       const value = body[area];
       if (value === undefined) continue;
+      /*
+       * Switching an area off, where the area allows it. Refused where it does not,
+       * rather than quietly ignored: a firm that believes it has closed something has
+       * to be told when it has not.
+       */
+      if (value === OFF) {
+        if (!canSwitchOff(area)) {
+          throw badRequest(
+            `${AREA_SPECS[area].label} cannot be switched off. Choose the lowest grade that should see it.`,
+          );
+        }
+        next[area] = OFF;
+        continue;
+      }
       if (typeof value !== "string" || !ROLES.includes(value as Role)) {
         throw badRequest(`"${String(value)}" is not a grade.`);
       }
