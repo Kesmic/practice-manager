@@ -7,13 +7,15 @@
  */
 
 import { useEffect, useState } from "react";
-import { ROLE_LABELS, ROLES, ROLE_RANK, type Role } from "@shared/workflow";
+import { ROLE_LABELS, ROLES, ROLE_RANK } from "@shared/workflow";
 import {
   AREAS,
   AREA_SPECS,
   DEFAULT_VISIBILITY,
   type Visibility,
-  choicesFor,
+  opennessChoicesFor,
+  isOff,
+  type Openness,
   isFixed,
 } from "@shared/visibility";
 import { ApiRequestError, api } from "../lib/api";
@@ -80,15 +82,16 @@ export function VisibilityAdmin({
         <h2 className="card-title">Who sees what</h2>
         <p className="muted mb-4 mt-0.5">
           For each area, the lowest grade that can open it. Everyone at that grade and
-          above sees it. This is enforced by the server as well as the sidebar, so a
-          screen you close here is refused, not merely hidden.
+          above sees it, and some can be switched off altogether. This is enforced by the
+          server as well as the sidebar, so a screen you close here is refused, not
+          merely hidden.
         </p>
 
         <div className="space-y-3">
           {AREAS.map((area) => {
             const spec = AREA_SPECS[area];
             const fixed = isFixed(area);
-            const choices = choicesFor(area);
+            const choices = opennessChoicesFor(area);
             const changed = draft[area] !== saved[area];
             return (
               <div
@@ -117,15 +120,17 @@ export function VisibilityAdmin({
                       </p>
                     ) : (
                       <Select
-                        aria-label={`Lowest grade that can see ${spec.label}`}
+                        aria-label={`Who can see ${spec.label}`}
                         value={draft[area]}
                         onChange={(e) =>
-                          setDraft({ ...draft, [area]: e.target.value as Role })
+                          setDraft({ ...draft, [area]: e.target.value as Openness })
                         }
                       >
-                        {choices.map((role) => (
-                          <option key={role} value={role}>
-                            {ROLE_LABELS[role]} and above
+                        {choices.map((choice) => (
+                          <option key={choice} value={choice}>
+                            {isOff(choice)
+                              ? "Off - nobody"
+                              : `${ROLE_LABELS[choice]} and above`}
                           </option>
                         ))}
                       </Select>
@@ -180,7 +185,7 @@ export function VisibilityAdmin({
                   <td className="py-2 pr-3">{AREA_SPECS[area].label}</td>
                   {ROLES.map((role) => (
                     <td key={role} className="py-2 pr-3 text-center">
-                      {ROLE_RANK[role] >= ROLE_RANK[draft[area]] ? (
+                      {!isOff(draft[area]) && ROLE_RANK[role] >= ROLE_RANK[draft[area]] ? (
                         <span className="text-emerald-700" aria-label="yes">
                           yes
                         </span>

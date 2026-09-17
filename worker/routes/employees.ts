@@ -298,7 +298,9 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
    * and above, and nothing personal for anybody here at all.
    */
   router.get("/api/directory", async ({ request, env, url }) => {
-    const actor = await requireUser(env, request);
+    // The firm's own setting, enforced here as well as in the sidebar. A directory the
+    // firm has switched off has to be refused, not merely unlinked.
+    const actor = await requireArea(env, request, "directory");
     const detail = seesEmploymentDetail(actor.role);
 
     /*
@@ -728,77 +730,14 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
       );
     }
 
-    await ensureProfile(env, params.id);
-    const timestamp = nowIso();
-
-    /*
-     * Which programme, and dated from what.
-     *
-     * The employment type is read from the record the administrator has already set
-     * rather than passed in here, so the checklist somebody gets always matches the
-     * engagement the firm recorded for them. Change the type before starting the
-     * programme, not after.
-     */
-    const record = await env.DB.prepare(
-      `SELECT employment_type, start_date, probation_end_date
-         FROM employee_profiles WHERE user_id = ?`,
-    )
-      .bind(params.id)
-      .first<{
-        employment_type: EmploymentType;
-        start_date: string | null;
-        probation_end_date: string | null;
-      }>();
-
-    const employmentType = record?.employment_type ?? "permanent";
-    const programme = programmeFor(employmentType);
-
-    await env.DB.batch([
-      ...programme.map((item, index) =>
-        env.DB.prepare(
-          `INSERT INTO onboarding_items
-             (id, user_id, position, label, detail, owner, category, stage, due_date,
-              is_done, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
-        ).bind(
-          newId(),
-          params.id,
-          index,
-          item.label,
-          item.detail ?? null,
-          item.owner,
-          item.category,
-          item.stage,
-          /*
-           * Dated once, when the programme is created, rather than derived on every read.
-           * A step's due date should not move because somebody later corrected the start
-           * date by a day - if the dates need redoing, the programme is rebuilt.
-           */
-          stageDueDate(item.stage, record?.start_date, record?.probation_end_date),
-          timestamp,
-        ),
-      ),
-      hrEventStatement(env, {
-        subjectId: params.id,
-        actorId: actor.id,
-        kind: "onboarding:started",
-        detail: `${programme.length} steps created for a ${EMPLOYMENT_TYPE_LABELS[employmentType].toLowerCase()} engagement`,
-      }),
-      notificationStatement(env, {
-        userId: params.id,
-        taskId: null,
-        kind: "hr:onboarding_started",
-        title: "Your onboarding is ready",
-        body: "Your checklist shows what happens when, and how far through you are.",
-      }),
-    ]);
+    const started = await startOnboardingProgramme(env, params.id, actor.id);
 
     return json(
       {
         ok: true,
-        created: programme.length,
-        employment_type: employmentType,
-        contract_template: contractTemplateFor(employmentType),
+        created: started.created,
+        employment_type: started.employment_type,
+        contract_template: contractTemplateFor(started.employment_type),
       },
       201,
     );
@@ -965,6 +904,104 @@ function canSeeDirectoryOrHr(actor: AuthenticatedUser): boolean {
  * That keeps user creation simple and means records created before this feature
  * existed still work.
  */
+/**
+ * Creates somebody's onboarding programme.
+ *
+ * Called when an account is created, so that a new joiner signing in for the first time
+ * meets the Managing Director's welcome and their own checklist - and called again by
+ * the administrator's "start the programme" action, for accounts that pre-date this or
+ * whose programme was cleared.
+ *
+ * Shared rather than duplicated because the first-run gate is built on this: a person
+ * with no programme is treated as having nothing outstanding and is sent straight to the
+ * password step. That rule is what keeps a founder who was never onboarded out of a gate
+ * meant for new joiners, and it is also why a new joiner who never got a programme
+ * silently skipped their onboarding. One function, so the two cannot drift apart.
+ *
+ * Returns `created: 0` and changes nothing if a programme already exists. Rebuilding one
+ * would duplicate every step and reset dates somebody may already have worked to.
+ */
+export async function startOnboardingProgramme(
+  env: Env,
+  userId: string,
+  actorId: string | null,
+): Promise<{ created: number; employment_type: EmploymentType }> {
+  const existing = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM onboarding_items WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ n: number }>();
+
+  await ensureProfile(env, userId);
+
+  /*
+   * Which programme, and dated from what.
+   *
+   * The employment type is read from the record the administrator has already set
+   * rather than passed in here, so the checklist somebody gets always matches the
+   * engagement the firm recorded for them. Change the type before starting the
+   * programme, not after.
+   */
+  const record = await env.DB.prepare(
+    `SELECT employment_type, start_date, probation_end_date
+       FROM employee_profiles WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{
+      employment_type: EmploymentType;
+      start_date: string | null;
+      probation_end_date: string | null;
+    }>();
+
+  const employmentType = record?.employment_type ?? "permanent";
+  if ((existing?.n ?? 0) > 0) return { created: 0, employment_type: employmentType };
+
+  const programme = programmeFor(employmentType);
+  const timestamp = nowIso();
+
+  await env.DB.batch([
+    ...programme.map((item, index) =>
+      env.DB.prepare(
+        `INSERT INTO onboarding_items
+           (id, user_id, position, label, detail, owner, category, stage, due_date,
+            is_done, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+      ).bind(
+        newId(),
+        userId,
+        index,
+        item.label,
+        item.detail ?? null,
+        item.owner,
+        item.category,
+        item.stage,
+        /*
+         * Dated once, when the programme is created, rather than derived on every read.
+         * A step's due date should not move because somebody later corrected the start
+         * date by a day - if the dates need redoing, the programme is rebuilt.
+         */
+        stageDueDate(item.stage, record?.start_date, record?.probation_end_date),
+        timestamp,
+      ),
+    ),
+    hrEventStatement(env, {
+      subjectId: userId,
+      actorId,
+      kind: "onboarding:started",
+      detail: `${programme.length} steps created for a ${EMPLOYMENT_TYPE_LABELS[employmentType].toLowerCase()} engagement`,
+    }),
+    notificationStatement(env, {
+      userId,
+      taskId: null,
+      kind: "hr:onboarding_started",
+      title: "Your onboarding is ready",
+      body: "Your checklist shows what happens when, and how far through you are.",
+    }),
+  ]);
+
+  return { created: programme.length, employment_type: employmentType };
+}
+
 export async function ensureProfile(env: Env, userId: string): Promise<void> {
   const timestamp = nowIso();
   await env.DB.prepare(
