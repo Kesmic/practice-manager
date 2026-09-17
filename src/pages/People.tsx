@@ -15,16 +15,21 @@ import {
   EmptyState,
   ErrorBanner,
   Select,
+  SuccessBanner,
   Spinner,
   TextInput,
   options,
 } from "../components/ui";
 import { formatDate, percent } from "../lib/format";
+import { RemovePersonDialog } from "../components/RemovePersonDialog";
 
 type Tab = "directory" | "onboarding";
 
 export function People() {
-  const { can } = useSession();
+  const { can, user: me } = useSession();
+  // The same grade the removal endpoints require, so the button is never offered to
+  // somebody the server will refuse.
+  const canRemove = can("partner");
   const [tab, setTab] = useState<Tab>("directory");
   const [employees, setEmployees] = useState<EmployeeSummary[] | null>(null);
   const [onboarding, setOnboarding] = useState<Array<Record<string, unknown>> | null>(
@@ -33,6 +38,8 @@ export function People() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -96,6 +103,7 @@ export function People() {
       )}
 
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
+      <SuccessBanner message={notice} onDismiss={() => setNotice(null)} />
 
       {tab === "directory" ? (
         <>
@@ -135,6 +143,7 @@ export function People() {
                       <th>Started</th>
                       <th className="text-right">Open work</th>
                       <th className="text-right">Docs due</th>
+                      {canRemove ? <th className="text-right">Remove</th> : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -198,6 +207,28 @@ export function People() {
                             "0"
                           )}
                         </td>
+                        {/*
+                          * Removing somebody is offered here, on the list of people,
+                          * because that is where an administrator looks for it. It was
+                          * only under Accounts and grades, which is a true description
+                          * of that screen and no help at all to somebody who wants to
+                          * delete an account created by mistake.
+                          */}
+                        {canRemove ? (
+                          <td className="whitespace-nowrap text-right">
+                            {person.user_id === me?.id ? (
+                              <span className="text-xs text-slate-400">You</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn-ghost btn-sm text-rose-700"
+                                onClick={() => setRemoving(person.user_id)}
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </td>
+                        ) : null}
                       </tr>
                     ))}
                   </tbody>
@@ -309,6 +340,16 @@ export function People() {
           )}
         </div>
       )}
+
+      <RemovePersonDialog
+        userId={removing}
+        onClose={() => setRemoving(null)}
+        onRemoved={async (message) => {
+          setRemoving(null);
+          await load();
+          setNotice(message);
+        }}
+      />
     </div>
   );
 }
