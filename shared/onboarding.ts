@@ -185,7 +185,13 @@ const COMMON: OnboardingStep[] = [
 
   // ------------------------------------------------------------- first week
   {
-    label: "Read the welcome message from the Managing Director",
+    /*
+     * The role is deliberately not named here. This label is copied into every
+     * person's checklist when their programme is created, so a title written into it
+     * goes stale the moment the firm changes one - and the welcome sitting directly
+     * above this step already says who it is from and signs it.
+     */
+    label: "Read the welcome message",
     owner: "employee",
     category: "Welcome",
     stage: "first_week",
