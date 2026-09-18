@@ -12,7 +12,7 @@
  * badly.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FIRST_RUN_GROUPS, PROFILE_FIELD_LABELS } from "@shared/hr";
 import { ApiRequestError, api } from "../lib/api";
 import { ErrorBanner, Field, Select, TextArea, TextInput } from "./ui";
@@ -55,19 +55,34 @@ export function FirstRunForm({
   const [form, setForm] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /*
+   * Which fields this person has typed into.
+   *
+   * The profile is re-read whenever an attachment is added, and this form is seeded
+   * from it - so a straight reseed threw away everything typed so far the moment
+   * somebody attached their passport half way down the form. Twenty fields, gone, with
+   * no error to explain it. Server values now fill only the fields nobody has touched.
+   */
+  const touched = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const seed: Record<string, string> = {};
-    for (const group of FIRST_RUN_GROUPS) {
-      for (const field of group.fields) {
-        seed[field] = (values[field] as string) ?? "";
+    setForm((prev) => {
+      const seed: Record<string, string> = {};
+      for (const group of FIRST_RUN_GROUPS) {
+        for (const field of group.fields) {
+          seed[field] = touched.current.has(field)
+            ? (prev[field] ?? "")
+            : ((values[field] as string) ?? "");
+        }
       }
-    }
-    setForm(seed);
+      return seed;
+    });
   }, [values]);
 
-  const set = (field: string) => (value: string) =>
+  const set = (field: string) => (value: string) => {
+    touched.current.add(field);
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
 
   const stillMissing = FIRST_RUN_GROUPS.flatMap((g) => g.fields).filter(
     (f) => !form[f]?.trim(),
@@ -87,6 +102,13 @@ export function FirstRunForm({
       const profile: Record<string, string> = {};
       const bank: Record<string, string> = {};
       for (const [key, value] of Object.entries(form)) {
+        /*
+         * Attachments are not sent back. The upload endpoint writes the column when the
+         * file arrives, so resubmitting it here is at best a no-op - and it was worse
+         * than that: the form posted the portal's own reference back as though it were
+         * a link somebody had typed, and the profile refused the whole save.
+         */
+        if (FIELD_KINDS[key]) continue;
         (BANK_FIELDS.has(key) ? bank : profile)[key] = value;
       }
       await api.updateMyProfile(profile);

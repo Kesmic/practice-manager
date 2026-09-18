@@ -65,9 +65,21 @@ export function nextFirstRunStep(state: FirstRunState): FirstRunStep | null {
   return null;
 }
 
-/** Where the browser should send somebody who still owes this step. */
-export function firstRunDestination(step: FirstRunStep): string {
-  return step === "onboarding" ? "/onboarding" : "/account";
+/**
+ * Where the browser should send somebody who still owes this step.
+ *
+ * All three go to the same place, which is the point. The onboarding page is where the
+ * firm sets out what a new joiner has to do and in what order, so it is the one screen
+ * that can show them where they are in it; the password and two-step steps are asked
+ * there, over it, rather than on a different screen.
+ *
+ * It used to send the last two to the account screen. That made the first run feel like
+ * three unrelated errands - and worse, finishing the last one left somebody sitting on
+ * the account screen with nothing telling them they were done or where to go next,
+ * because there was no step left to route them anywhere.
+ */
+export function firstRunDestination(_step: FirstRunStep): string {
+  return "/onboarding";
 }
 
 /** What the server says when a request is refused for this step. */

@@ -48,6 +48,7 @@ import {
 import { OUTSTANDING_DOCUMENTS_SQL } from "./documents";
 import { readSettings, requireArea } from "./settings";
 import { attachmentsFor } from "./staff-files";
+import { isAttachment } from "../../shared/staff-files";
 import { seesEmploymentDetail } from "../../shared/directory";
 
 /** Employment columns - safe for anyone with directory access. */
@@ -1037,9 +1038,25 @@ function readPersonalFields(body: Record<string, unknown>): Record<string, unkno
      * a stored `javascript:` address would run in a colleague's session the moment
      * somebody with HR access clicked it.
      */
-    if (value && field.endsWith("_url") && !/^https?:\/\//i.test(value)) {
+    if (
+      value &&
+      field.endsWith("_url") &&
+      !/^https?:\/\//i.test(value) &&
+      /*
+       * The portal's own reference to a file somebody attached, which is not a link
+       * anybody clicks - the screen turns it into a request to the download endpoint.
+       * Allowed by exact scheme rather than by relaxing the rule: the rule is what stops
+       * a stored `javascript:` address running in a colleague's session the moment
+       * somebody with HR access clicks it, and it is worth keeping intact.
+       *
+       * Nothing is trusted from it beyond the fact that it is one. Which file is handed
+       * back is decided by whose record it is and which kind was asked for, never by
+       * what this column says, so a reference to somebody else's file reaches nothing.
+       */
+      !isAttachment(value)
+    ) {
       throw badRequest(
-        `"${field}" must be a link beginning http:// or https://. Paste the address of the document in SharePoint, OneDrive or Google Drive.`,
+        `"${field}" must be a link beginning http:// or https://, or a file attached on this screen.`,
       );
     }
     out[field] = value;
