@@ -133,3 +133,58 @@ test("the defaults round-trip to an empty settings row", () => {
   assert.equal(writeVisibility(defaults()), "");
   assert.deepEqual(readVisibility(""), DEFAULT_VISIBILITY);
 });
+
+// ---------------------------------------------------------------------------
+// A partial save leaves the rest alone
+// ---------------------------------------------------------------------------
+
+/*
+ * The write endpoint builds its next map from what is already stored, so an area the
+ * caller did not mention keeps the firm's choice. It used to build from the defaults,
+ * which turned "not mentioned" into "put this back how it shipped" - a browser tab
+ * opened before Staff directory existed re-opened the staff directory every time
+ * somebody pressed Save on that screen, silently.
+ *
+ * Modelled here as the route does it, because the route's own merge is three lines and
+ * the thing worth pinning is which map it starts from.
+ */
+
+function saveAsRouteDoes(
+  stored: Visibility,
+  body: Partial<Record<string, string>>,
+): Visibility {
+  const next: Visibility = { ...stored };
+  for (const area of AREAS) {
+    const value = body[area];
+    if (value === undefined) continue;
+    if (value === OFF) {
+      if (canSwitchOff(area)) next[area] = OFF;
+      continue;
+    }
+    if (!ROLES.includes(value as Role)) continue;
+    if (ROLE_RANK[value as Role] < ROLE_RANK[AREA_SPECS[area].floor]) continue;
+    next[area] = value as Role;
+  }
+  return next;
+}
+
+test("an area left out of a save keeps what the firm chose", () => {
+  const stored: Visibility = { ...defaults(), directory: OFF };
+  // An older client that has never heard of the directory, saving the rest.
+  const body = { clients: "manager", engagements: "manager" };
+  const after = saveAsRouteDoes(stored, body);
+
+  assert.equal(after.directory, OFF, "the directory was silently re-opened");
+  assert.equal(after.clients, "manager");
+  assert.equal(after.engagements, "manager");
+  assert.equal(after.people, stored.people);
+});
+
+test("a save that mentions every area still sets every area", () => {
+  // Back to the defaults works by sending them all, so this must keep working.
+  const stored: Visibility = { ...defaults(), directory: OFF, clients: "partner" };
+  const body = Object.fromEntries(
+    AREAS.map((a) => [a, DEFAULT_VISIBILITY[a] as string]),
+  );
+  assert.deepEqual(saveAsRouteDoes(stored, body), DEFAULT_VISIBILITY);
+});
