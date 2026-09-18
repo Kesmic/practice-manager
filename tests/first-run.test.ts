@@ -102,10 +102,21 @@ test("the sequence is exactly these three, in this order", () => {
 // Where each step sends somebody
 // ---------------------------------------------------------------------------
 
-test("onboarding goes to the onboarding page; the other two to the account screen", () => {
-  assert.equal(firstRunDestination("onboarding"), "/onboarding");
-  assert.equal(firstRunDestination("password"), "/account");
-  assert.equal(firstRunDestination("two_factor"), "/account");
+test("every step is asked on the onboarding page", () => {
+  /*
+   * One destination for all three, so the first run reads as one sequence on the screen
+   * that sets that sequence out. Splitting it across two screens is what left somebody
+   * stranded on the account page after the last step: nothing was outstanding, so
+   * nothing routed them anywhere, and the portal simply stopped.
+   */
+  for (const step of FIRST_RUN_STEPS) {
+    assert.equal(firstRunDestination(step), "/onboarding", step);
+  }
+});
+
+test("the destination never depends on the step being the first one", () => {
+  // A person landing mid-sequence sees the same page as one starting it.
+  assert.equal(firstRunDestination("two_factor"), firstRunDestination("onboarding"));
 });
 
 test("every step has somewhere to send somebody", () => {

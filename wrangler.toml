@@ -26,6 +26,19 @@ database_name = "kesmic-practice"
 database_id = "8d0f0a0e-01f3-4fd2-9eee-48677f51f17d"
 migrations_dir = "migrations"
 
+# Where a member of staff's own documents are kept - their identification and their
+# qualification certificate, and nothing else. See shared/staff-files.ts for why these
+# two are held by the portal when client working papers deliberately are not.
+#
+# Created once with:
+#   wrangler r2 bucket create kesmic-practice-files
+# The publishing token needs an "Account | Workers R2 Storage | Edit" row added to it,
+# alongside the Pages and D1 rows it already has. A deploy attempted before the bucket
+# exists fails, so create it first.
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "kesmic-practice-files"
+
 # Plain-text settings.
 #
 # Once this file declares any of them, Cloudflare treats it as the only place they

@@ -12,10 +12,21 @@
  * badly.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FIRST_RUN_GROUPS, PROFILE_FIELD_LABELS } from "@shared/hr";
 import { ApiRequestError, api } from "../lib/api";
 import { ErrorBanner, Field, Select, TextArea, TextInput } from "./ui";
+import { AttachmentField } from "./AttachmentField";
+import {
+  STAFF_FILE_FIELDS,
+  type StaffAttachment,
+  type StaffFileKind,
+} from "@shared/staff-files";
+
+/** The profile field each attachment kind fills in, read the other way round. */
+const FIELD_KINDS: Record<string, StaffFileKind> = Object.fromEntries(
+  Object.entries(STAFF_FILE_FIELDS).map(([kind, field]) => [field, kind as StaffFileKind]),
+);
 
 const ID_TYPES = [
   "Ghana Card",
@@ -30,28 +41,48 @@ const BANK_FIELDS = new Set(["bank_name", "bank_branch", "account_name", "accoun
 export function FirstRunForm({
   values,
   missing,
+  attachments,
   onSaved,
+  onAttachmentChanged,
 }: {
   values: Record<string, unknown>;
   missing: string[];
+  /** What is already attached, by kind, so the form opens on the truth. */
+  attachments?: Partial<Record<StaffFileKind, StaffAttachment | null>>;
   onSaved: () => Promise<void> | void;
+  onAttachmentChanged: () => Promise<void> | void;
 }) {
   const [form, setForm] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /*
+   * Which fields this person has typed into.
+   *
+   * The profile is re-read whenever an attachment is added, and this form is seeded
+   * from it - so a straight reseed threw away everything typed so far the moment
+   * somebody attached their passport half way down the form. Twenty fields, gone, with
+   * no error to explain it. Server values now fill only the fields nobody has touched.
+   */
+  const touched = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const seed: Record<string, string> = {};
-    for (const group of FIRST_RUN_GROUPS) {
-      for (const field of group.fields) {
-        seed[field] = (values[field] as string) ?? "";
+    setForm((prev) => {
+      const seed: Record<string, string> = {};
+      for (const group of FIRST_RUN_GROUPS) {
+        for (const field of group.fields) {
+          seed[field] = touched.current.has(field)
+            ? (prev[field] ?? "")
+            : ((values[field] as string) ?? "");
+        }
       }
-    }
-    setForm(seed);
+      return seed;
+    });
   }, [values]);
 
-  const set = (field: string) => (value: string) =>
+  const set = (field: string) => (value: string) => {
+    touched.current.add(field);
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
 
   const stillMissing = FIRST_RUN_GROUPS.flatMap((g) => g.fields).filter(
     (f) => !form[f]?.trim(),
@@ -71,6 +102,13 @@ export function FirstRunForm({
       const profile: Record<string, string> = {};
       const bank: Record<string, string> = {};
       for (const [key, value] of Object.entries(form)) {
+        /*
+         * Attachments are not sent back. The upload endpoint writes the column when the
+         * file arrives, so resubmitting it here is at best a no-op - and it was worse
+         * than that: the form posted the portal's own reference back as though it were
+         * a link somebody had typed, and the profile refused the whole save.
+         */
+        if (FIELD_KINDS[key]) continue;
         (BANK_FIELDS.has(key) ? bank : profile)[key] = value;
       }
       await api.updateMyProfile(profile);
@@ -109,6 +147,8 @@ export function FirstRunForm({
                 field={field}
                 value={form[field] ?? ""}
                 onChange={set(field)}
+                attachments={attachments}
+                onAttachmentChanged={onAttachmentChanged}
               />
             ))}
           </div>
@@ -134,13 +174,20 @@ function FirstRunField({
   field,
   value,
   onChange,
+  attachments,
+  onAttachmentChanged,
 }: {
   field: string;
   value: string;
   onChange: (value: string) => void;
+  attachments?: Partial<Record<StaffFileKind, StaffAttachment | null>>;
+  onAttachmentChanged: () => Promise<void> | void;
 }) {
   const label = PROFILE_FIELD_LABELS[field] ?? field;
   const wide = field === "residential_address";
+  // The two document fields are attached rather than linked. `field.endsWith("_url")`
+  // is not used to decide this: the kind has to be known to upload against it.
+  const kind = FIELD_KINDS[field];
 
   return (
     <div className={wide ? "sm:col-span-2" : undefined}>
@@ -148,15 +195,21 @@ function FirstRunField({
         label={label}
         required
         hint={
-          field.endsWith("_url")
-            ? "A link into SharePoint, OneDrive or Google Drive. Nothing is uploaded here."
-            : field === "tin"
-              ? "Your Taxpayer Identification Number, as registered with the GRA."
-              : undefined
+          field === "tin"
+            ? "Your Taxpayer Identification Number, as registered with the GRA."
+            : undefined
         }
       >
         {(id) =>
-          field === "id_type" ? (
+          kind ? (
+            <AttachmentField
+              kind={kind}
+              value={value}
+              attached={attachments?.[kind] ?? null}
+              onChange={onChange}
+              onAttachmentChanged={onAttachmentChanged}
+            />
+          ) : field === "id_type" ? (
             <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
               <option value="">Choose...</option>
               {ID_TYPES.map((t) => (

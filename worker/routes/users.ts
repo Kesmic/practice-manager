@@ -31,6 +31,7 @@ import {
 import { sendToPerson } from "../email";
 import { readSettings } from "./settings";
 import { startOnboardingProgramme } from "./employees";
+import { deleteStaffFiles } from "./staff-files";
 
 /** Grade required to administer staff records. */
 const MIN_USER_ADMIN: Role = "partner";
@@ -453,6 +454,16 @@ export function registerUserRoutes(router: Router<Env>): void {
 
     const footprint = await countFootprint(env, target.id);
     const timestamp = nowIso();
+
+    /*
+     * The documents in the bucket, before the rows that name them.
+     *
+     * `staff_files` cascades with the user row on an erase, and a retirement clears the
+     * personal record - but a cascade in D1 says nothing to R2. Done first, because once
+     * the rows are gone nothing knows which objects to delete, and a passport scan of
+     * somebody the firm deleted would sit in the bucket indefinitely.
+     */
+    await deleteStaffFiles(env, target.id);
 
     if (removal === "erase") {
       /*

@@ -23,6 +23,21 @@ export interface WelcomeCardProps {
   variant?: WelcomeVariant;
 }
 
+/**
+ * The title this firm gives the person signing, for the line above the letter.
+ *
+ * Read from the firm's settings rather than written in, because it is already editable
+ * under Portal settings and the signature at the foot has always used it. With the two
+ * taken from different places they disagreed: a letter headed "A word from the Managing
+ * Director" signed "Founding Partner".
+ *
+ * The fallback is for a firm that clears the field. A stored blank overrides the
+ * default, and "A word from the" is worse than a title nobody chose.
+ */
+function roleOf(mdTitle: string): string {
+  return mdTitle.trim() || "Managing Director";
+}
+
 /** Initials for the signature block, where there is no photograph to use. */
 function initials(name: string): string {
   return name
@@ -69,7 +84,7 @@ function Letter({ body, firmName, mdName, mdTitle }: Inner) {
     <section className="card overflow-hidden">
       <div className="border-b border-slate-200 bg-slate-50 px-6 py-3 dark:bg-slate-800/40">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-          A word from the Managing Director
+          A word from the {roleOf(mdTitle)}
         </p>
       </div>
       <div className="px-6 py-7">

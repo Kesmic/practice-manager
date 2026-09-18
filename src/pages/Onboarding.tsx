@@ -2,6 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { MyOnboarding } from "@shared/types";
 import { PROFILE_FIELD_LABELS, requiredAction } from "@shared/hr";
+import {
+  FIRST_RUN_PROMPTS,
+  FIRST_RUN_STEPS,
+  stepNumber,
+} from "@shared/first-run";
+import { FirstRunDialog } from "../components/FirstRunDialog";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { FirstRunPrompt } from "../components/FirstRunPrompt";
@@ -26,6 +32,12 @@ export function Onboarding() {
   const [data, setData] = useState<MyOnboarding | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /*
+   * Whether the step dialog is showing. Driven by the session's own step, so it opens
+   * on arrival and reopens when the step changes; the state is only so somebody who
+   * dismisses it is not shown it again on the next render.
+   */
+  const [dismissedStep, setDismissedStep] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -93,10 +105,45 @@ export function Onboarding() {
         - above the welcome message and the progress bar, because neither is any use to
         somebody who cannot get past this.
       */}
+      {/*
+        The password and two-step steps, asked over this page rather than on a screen of
+        their own. It closes itself: the step comes from the session, doing the step
+        advances the session, and after the last one there is no step left to show.
+      */}
+      <FirstRunDialog
+        step={firstRunStep}
+        open={Boolean(firstRunStep) && dismissedStep !== firstRunStep}
+        onDismiss={() => setDismissedStep(firstRunStep)}
+        onDone={async () => {
+          await refresh();
+          await load();
+        }}
+        setNotice={setNotice}
+      />
+
+      {/* Dismissed, but still outstanding - so there is a way back to it. */}
+      {firstRunStep && firstRunStep !== "onboarding" && dismissedStep === firstRunStep && (
+        <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
+          <p className="text-sm text-slate-700">
+            {FIRST_RUN_PROMPTS[firstRunStep].title} - step {stepNumber(firstRunStep)} of{" "}
+            {FIRST_RUN_STEPS.length}, and the last thing before the portal opens up.
+          </p>
+          <button
+            type="button"
+            className="btn-primary btn-sm"
+            onClick={() => setDismissedStep(null)}
+          >
+            Carry on
+          </button>
+        </div>
+      )}
+
       {data.first_run_complete === false && (
         <FirstRunForm
           values={{ ...(data.personal ?? {}), ...(data.bank ?? {}) }}
           missing={[...data.missing_profile_fields, ...(data.missing_bank_fields ?? [])]}
+          attachments={data.attachments}
+          onAttachmentChanged={load}
           onSaved={async () => {
             await load();
             await refresh();
