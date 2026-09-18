@@ -16,6 +16,7 @@ import type {
   ServiceLine,
   TaskStatus,
 } from "./workflow";
+import type { StaffAttachment, StaffFileKind } from "./staff-files";
 import type {
   AllocationAction,
   AllocationStatus,
@@ -597,6 +598,8 @@ export interface MyOnboarding {
   profile: EmployeeProfile | null;
   personal: EmployeePersonalDetails | null;
   missing_profile_fields: string[];
+  /** The documents this person has attached, by kind. Absent kinds are null. */
+  attachments?: Partial<Record<StaffFileKind, StaffAttachment | null>>;
   items: OnboardingItem[];
   /** Documents awaiting the viewer's signature or acknowledgement. */
   outstanding_documents: PortalDocument[];

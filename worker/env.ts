@@ -4,6 +4,13 @@ export interface Env {
   /** Static asset binding - serves the built React app. */
   ASSETS: Fetcher;
   /**
+   * Object storage for the two documents a member of staff attaches to their own
+   * record. Declared optional so the Worker starts on a deployment where the bucket
+   * has not been created yet - the upload endpoints say so plainly instead of the
+   * whole portal failing to boot over a feature most of it does not use.
+   */
+  FILES?: R2Bucket;
+  /**
    * One-time secret that authorises creation of the very first administrator.
    * Set with `wrangler secret put BOOTSTRAP_SECRET`. The bootstrap endpoint
    * refuses to run once any user exists, so this cannot be replayed.

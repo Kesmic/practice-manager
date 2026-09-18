@@ -147,6 +147,16 @@ Right now the two websites do not know each other. This part introduces them.
    | --- | --- | --- |
    | Account | Account Settings | Read |
 
+8. Click **+ Add more** and set the fourth row to:
+
+   | Box 1 | Box 2 | Box 3 |
+   | --- | --- | --- |
+   | Account | Workers R2 Storage | Edit |
+
+   This one is for the two documents a new member of staff attaches to their own
+   record - their identification and their certificate. Without it the publish
+   fails; with it but without the bucket below, it also fails, so do both.
+
 8. Click **Continue to summary**, then **Create Token**
 9. A long code appears. **Copy it now** - Cloudflare will never show it again.
 
@@ -154,6 +164,30 @@ Right now the two websites do not know each other. This part introduces them.
 
 If you lose it, no harm done: come back and create another one, then use the new
 one instead.
+
+### 3a(ii). Create the place staff documents are kept
+
+The portal holds two files per person: the identification and the qualification
+certificate a new joiner attaches during their first sign-in. Nothing else is
+stored - client working papers stay in SharePoint, as they always have.
+
+1. In the Cloudflare menu on the left, click **R2 Object Storage**.
+2. If you have never used R2, Cloudflare asks you to add a payment method before
+   it will turn it on. Do that. At this firm's volume - a couple of files per
+   member of staff - the storage falls inside the free allowance, so adding the
+   card is a formality rather than a bill.
+3. Click **Create bucket**.
+4. Name it exactly `kesmic-practice-files`. The name is in `wrangler.toml`; if you
+   want a different one, change it in both places.
+5. Leave the location on **Automatic** and click **Create bucket**.
+
+**Do this before the next publish.** The deploy reads `wrangler.toml`, sees the
+bucket named there, and fails if it does not exist yet.
+
+If you would rather not hold staff documents at all, the portal still works: the
+form offers **Paste a link instead** beside every attachment, which is how it
+behaved before. Somebody meeting a portal with no bucket is told the firm has not
+finished setting it up and is shown the link box.
 
 ### 3b. Find your Cloudflare account number
 

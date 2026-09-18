@@ -9,6 +9,7 @@
 
 import type { ErasePreview, EraseScope } from "@shared/erase";
 import type { Visibility } from "@shared/visibility";
+import type { StaffAttachment, StaffFileKind } from "@shared/staff-files";
 import type { TwoFactorStatus } from "@shared/twofactor";
 import type { DeviceTrustPolicy, TrustedDevice } from "@shared/device-trust";
 import type { ReviewDetail, ReviewObjective, ReviewSummary } from "@shared/types";
@@ -832,6 +833,52 @@ export const api = {
     request<{ people: DirectoryEntry[]; can_open_records: boolean }>(
       `/api/directory${q ? `?q=${encodeURIComponent(q)}` : ""}`,
     ),
+
+  // ------------------------------------------------------------ attachments
+
+  /**
+   * Attaches one of the person's own documents.
+   *
+   * Its own fetch rather than `request`, because the body is the file itself. Sending
+   * it as JSON would mean base64, which inflates a 10 MB photograph by a third for no
+   * gain, and a multipart form would mean a parser on the other side for a format with
+   * exactly one use here.
+   */
+  uploadStaffFile: async (kind: StaffFileKind, file: File) => {
+    let response: Response;
+    try {
+      response = await fetch(`/api/me/files/${kind}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type,
+          // Encoded, because a header may only carry Latin-1 and filenames do not.
+          "X-Filename": encodeURIComponent(file.name),
+        },
+        body: file,
+        credentials: "same-origin",
+      });
+    } catch {
+      throw new ApiRequestError(0, "Could not reach the server. Check your connection.");
+    }
+    const text = await response.text();
+    const payload = text ? (JSON.parse(text) as { error?: string; detail?: string }) : null;
+    if (!response.ok) {
+      throw new ApiRequestError(
+        response.status,
+        payload?.error ?? `Could not attach that file (${response.status}).`,
+        payload?.detail,
+      );
+    }
+    return payload as { attached: StaffAttachment };
+  },
+
+  removeStaffFile: (kind: StaffFileKind) =>
+    request<void>(`/api/me/files/${kind}`, { method: "DELETE" }),
+
+  /** Opened in a new tab rather than fetched: the response is a download. */
+  myStaffFileUrl: (kind: StaffFileKind) => `/api/me/files/${kind}`,
+  employeeStaffFileUrl: (userId: string, kind: StaffFileKind) =>
+    `/api/employees/${userId}/files/${kind}`,
 
   // -------------------------------------------------------------- removals
   /** What removing this person would cost. Changes nothing; safe to call freely. */

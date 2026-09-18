@@ -47,6 +47,7 @@ import {
 } from "../../shared/hr";
 import { OUTSTANDING_DOCUMENTS_SQL } from "./documents";
 import { readSettings, requireArea } from "./settings";
+import { attachmentsFor } from "./staff-files";
 import { seesEmploymentDetail } from "../../shared/directory";
 
 /** Employment columns - safe for anyone with directory access. */
@@ -210,6 +211,11 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
       personal: profile,
       bank,
       missing_profile_fields: missingProfileFields(profile),
+      /*
+       * What is attached, alongside the fields rather than fetched after them: a form
+       * that drew the fields first would flash "nothing attached" at somebody who had.
+       */
+      attachments: await attachmentsFor(env, actor.id),
       missing_bank_fields: missingBankFields(bank),
       /** Everything still outstanding from the first sign-in, both halves together. */
       first_run_complete: Boolean(profile?.profile_completed_at),

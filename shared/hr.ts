@@ -282,13 +282,13 @@ export const FIRST_RUN_GROUPS = [
     key: "identity",
     label: "Identification and right to work",
     detail:
-      "Checked before you start on client work. The document is a link into the firm's document store - nothing is uploaded here.",
+      "Checked before you start on client work. Attach a photograph or a scan - only you and a Partner can open it.",
     fields: ["id_type", "id_number", "tin", "id_document_url"],
   },
   {
     key: "qualifications",
     label: "Qualifications",
-    detail: "What you hold, and where the certificate can be seen.",
+    detail: "What you hold, with a copy of the certificate.",
     fields: ["highest_qualification", "qualification_document_url"],
   },
   {
@@ -343,8 +343,8 @@ export const PROFILE_FIELD_LABELS: Record<string, string> = {
   id_type: "Identification type",
   id_number: "Identification number",
   tin: "Taxpayer Identification Number",
-  id_document_url: "Link to your identification document",
-  qualification_document_url: "Link to your certificate",
+  id_document_url: "Identification document",
+  qualification_document_url: "Certificate",
   bank_name: "Bank",
   account_name: "Account name",
   account_number: "Account number",

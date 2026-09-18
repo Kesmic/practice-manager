@@ -18,6 +18,7 @@ import { registerClientFileRoutes } from "./routes/client-files";
 import { registerClientRoutes } from "./routes/clients";
 import { registerContractRoutes } from "./routes/contracts";
 import { registerDocumentRoutes } from "./routes/documents";
+import { registerStaffFileRoutes } from "./routes/staff-files";
 import { registerEmployeeRoutes } from "./routes/employees";
 import { registerEraseRoutes } from "./routes/erase";
 import { registerEngagementRoutes } from "./routes/engagements";
@@ -57,6 +58,7 @@ registerIntakeRoutes(router);
 
 // Employee portal: HR records, onboarding and portal documents.
 registerEmployeeRoutes(router);
+registerStaffFileRoutes(router);
 registerDocumentRoutes(router);
 registerSettingsRoutes(router);
 registerContractRoutes(router);

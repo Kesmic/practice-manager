@@ -97,6 +97,8 @@ export function Onboarding() {
         <FirstRunForm
           values={{ ...(data.personal ?? {}), ...(data.bank ?? {}) }}
           missing={[...data.missing_profile_fields, ...(data.missing_bank_fields ?? [])]}
+          attachments={data.attachments}
+          onAttachmentChanged={load}
           onSaved={async () => {
             await load();
             await refresh();
