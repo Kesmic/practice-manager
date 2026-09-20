@@ -240,7 +240,12 @@ interface Message {
   headline: string;
   /** Optional detail, such as the comment itself or the reviewer's note. */
   detail?: string | null;
-  /** Where to go to deal with it. */
+  /**
+   * Where to go to deal with it. Empty for a message with nowhere to send anybody -
+   * the work email details being the case in point, where the thing the person needs
+   * is in the message itself and the only button the portal could offer would take
+   * them somewhere irrelevant.
+   */
   link: string;
   linkLabel: string;
   firmName: string;
@@ -256,15 +261,20 @@ interface Message {
  * Both a plain-text and an HTML body. Plain text is not a courtesy: it is what
  * many corporate mail filters score a message on, and a message with only HTML is
  * likelier to be treated as bulk.
+ *
+ * Exported for the tests. What is worth pinning is what a person actually receives,
+ * and the two halves have to say the same things - a button present in one and absent
+ * from the other is a message that reads differently depending on the mail client.
  */
-function render(message: Message, recipient: Recipient) {
+export function render(message: Message, recipient: Recipient) {
   const text = [
     `Hello ${recipient.full_name.split(" ")[0]},`,
     "",
     message.headline,
     ...(message.detail ? ["", message.detail] : []),
-    "",
-    `${message.linkLabel}: ${message.link}`,
+    // No link, no line. "Kesmic Consultancy Hub website: " followed by nothing is
+    // worse than saying nothing at all.
+    ...(message.link ? ["", `${message.linkLabel}: ${message.link}`] : []),
     "",
     `${message.firmName} Practice Manager`,
     `You are receiving this because ${message.reason}.`,
@@ -283,12 +293,21 @@ function render(message: Message, recipient: Recipient) {
           )}</blockquote>`
         : ""
     }
-    <p style="margin:0 0 24px">
+    ${
+      /*
+       * The button only where there is somewhere to go. Rendered unconditionally it
+       * produced `<a href="">`, which looks exactly like a button and does nothing -
+       * and a message whose one prominent control is dead reads as a broken message.
+       */
+      message.link
+        ? `<p style="margin:0 0 24px">
       <a href="${escapeHtml(message.link)}"
          style="display:inline-block;background:#255291;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;font-weight:500">
         ${escapeHtml(message.linkLabel)}
       </a>
-    </p>
+    </p>`
+        : `<div style="margin:0 0 24px"></div>`
+    }
     <hr style="border:0;border-top:1px solid #e2e8f0;margin:0 0 16px">
     <p style="margin:0;font-size:12px;line-height:1.5;color:#64748b">
       ${escapeHtml(message.firmName)} Practice Manager.
@@ -330,22 +349,42 @@ interface ProviderRequest {
  * elsewhere. Postmark and SendGrid verify with TXT and CNAME records, which Wix does
  * support. See docs/EMAIL.md.
  */
-const PROVIDERS: Record<
+export const PROVIDERS: Record<
   string,
-  (env: Env, to: string, subject: string, text: string, html: string) => ProviderRequest
+  (
+    env: Env,
+    to: string,
+    subject: string,
+    text: string,
+    html: string,
+    /**
+     * Copied in, visibly. A reminder that somebody is behind is a message the person
+     * chasing them should be able to point at later, and a blind copy would let the
+     * recipient believe it was between the two of them.
+     */
+    cc: string[],
+  ) => ProviderRequest
 > = {
-  resend: (env, to, subject, text, html) => ({
+  resend: (env, to, subject, text, html, cc) => ({
     url: "https://api.resend.com/emails",
     headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
-    body: { from: env.EMAIL_FROM, to: [to], subject, text, html },
+    body: {
+      from: env.EMAIL_FROM,
+      to: [to],
+      ...(cc.length ? { cc } : {}),
+      subject,
+      text,
+      html,
+    },
   }),
 
-  postmark: (env, to, subject, text, html) => ({
+  postmark: (env, to, subject, text, html, cc) => ({
     url: "https://api.postmarkapp.com/email",
     headers: { "X-Postmark-Server-Token": env.EMAIL_API_KEY ?? "", Accept: "application/json" },
     body: {
       From: env.EMAIL_FROM,
       To: to,
+      ...(cc.length ? { Cc: cc.join(",") } : {}),
       Subject: subject,
       TextBody: text,
       HtmlBody: html,
@@ -355,13 +394,18 @@ const PROVIDERS: Record<
     },
   }),
 
-  sendgrid: (env, to, subject, text, html) => {
+  sendgrid: (env, to, subject, text, html, cc) => {
     const from = fromAddress(env.EMAIL_FROM ?? "");
     return {
       url: "https://api.sendgrid.com/v3/mail/send",
       headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
       body: {
-        personalizations: [{ to: [{ email: to }] }],
+        personalizations: [
+          {
+            to: [{ email: to }],
+            ...(cc.length ? { cc: cc.map((email) => ({ email })) } : {}),
+          },
+        ],
         from: from.name ? { email: from.email, name: from.name } : { email: from.email },
         subject,
         content: [
@@ -372,6 +416,18 @@ const PROVIDERS: Record<
     };
   },
 };
+
+/**
+ * Who is copied, after the copies that would be pointless are dropped.
+ *
+ * Exported alongside the providers so the rule can be tested once rather than three
+ * times: every provider gets the same list.
+ */
+export function copyList(to: string, cc: string[]): string[] {
+  return [...new Set(cc.map((a) => a.trim()).filter(Boolean))].filter(
+    (a) => a.toLowerCase() !== to.trim().toLowerCase(),
+  );
+}
 
 /** The provider named in the environment, or Resend. Unknown names are refused. */
 function providerName(env: Env): string {
@@ -393,9 +449,16 @@ async function deliver(
   subject: string,
   text: string,
   html: string,
+  cc: string[] = [],
 ): Promise<void> {
   const name = providerName(env);
-  const request = PROVIDERS[name](env, to, subject, text, html);
+  /*
+   * Nobody is copied on their own message. A person who is both the recipient and on
+   * the copy list would otherwise receive it twice, and some providers refuse an
+   * address that appears in both.
+   */
+  const copies = copyList(to, cc);
+  const request = PROVIDERS[name](env, to, subject, text, html, copies);
 
   const response = await fetch(request.url, {
     method: "POST",
@@ -433,6 +496,12 @@ export async function sendToPerson(
     linkLabel: string;
     firmName: string;
     reason: string;
+    /**
+     * Copied in, visibly, and never blind. A reminder that somebody is behind is a
+     * message the person chasing them should be able to point at later, and the person
+     * being chased is entitled to see who else read it.
+     */
+    cc?: string[];
   },
 ): Promise<{ sent: boolean; error?: string }> {
   if (!emailConfigured(env)) {
@@ -452,7 +521,7 @@ export async function sendToPerson(
       },
       recipient,
     );
-    await deliver(env, recipient.email, input.subject, text, html);
+    await deliver(env, recipient.email, input.subject, text, html, input.cc ?? []);
     return { sent: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

@@ -41,6 +41,7 @@ import {
 } from "../components/ui";
 import { ContractDetailsCard } from "../components/ContractDetailsCard";
 import { WorkEmailCard } from "../components/WorkEmailCard";
+import { StaffTrainingCard } from "../components/StaffTrainingCard";
 import { ReviewsPanel } from "../components/ReviewsPanel";
 import { formatDate, formatDateTime, formatMoney, percent, relativeTime } from "../lib/format";
 
@@ -50,6 +51,7 @@ type Tab =
   | "onboarding"
   | "documents"
   | "work_email"
+  | "training"
   | "reviews"
   | "personal"
   | "pay"
@@ -105,6 +107,7 @@ export function EmployeeDetail() {
   // Partner business, like the rest of the personal record - an address is one thing,
   // but issuing credentials against it is not something every manager should do.
   if (isHr) tabs.push(["work_email", "Work email"]);
+  if (isHr) tabs.push(["training", "Tools and training"]);
   if (file.compensation !== null || can("partner")) tabs.push(["pay", "Pay and bank"]);
   if (isHr) tabs.push(["trail", "HR trail"]);
 
@@ -280,6 +283,10 @@ export function EmployeeDetail() {
 
           {tab === "documents" && (
             <DocumentsTab file={file} isHr={isHr} onChanged={load} setError={setError} />
+          )}
+
+          {tab === "training" && (
+            <StaffTrainingCard userId={user.id} fullName={String(user.full_name)} />
           )}
 
           {tab === "work_email" && (

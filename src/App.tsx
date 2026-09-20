@@ -20,6 +20,7 @@ import { Intake } from "./pages/Intake";
 import { Login } from "./pages/Login";
 import { MyProfile } from "./pages/MyProfile";
 import { Onboarding } from "./pages/Onboarding";
+import { MyTraining } from "./pages/MyTraining";
 import { People } from "./pages/People";
 import { PortalAdmin } from "./pages/PortalAdmin";
 import { Notifications } from "./pages/Notifications";
@@ -118,6 +119,7 @@ export function App() {
 
         {/* Employee portal */}
         <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/my-training" element={<MyTraining />} />
         <Route path="/handbook" element={<Handbook />} />
         <Route path="/guide" element={<Guide />} />
         <Route path="/documents/:id" element={<DocumentView />} />

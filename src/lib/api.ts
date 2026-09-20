@@ -11,6 +11,11 @@ import type { ErasePreview, EraseScope } from "@shared/erase";
 import type { Visibility } from "@shared/visibility";
 import type { StaffAttachment, StaffFileKind } from "@shared/staff-files";
 import type { StaffEmailPolicy } from "@shared/staff-email";
+import type {
+  ToolCatalogue,
+  TrainingOverview,
+  TrainingView,
+} from "@shared/types";
 import type { TwoFactorStatus } from "@shared/twofactor";
 import type { DeviceTrustPolicy, TrustedDevice } from "@shared/device-trust";
 import type { ReviewDetail, ReviewObjective, ReviewSummary } from "@shared/types";
@@ -834,6 +839,82 @@ export const api = {
     request<{ people: DirectoryEntry[]; can_open_records: boolean }>(
       `/api/directory${q ? `?q=${encodeURIComponent(q)}` : ""}`,
     ),
+
+  // ------------------------------------------------- tools and certifications
+
+  tools: () => request<ToolCatalogue>("/api/tools"),
+  addTool: (body: Record<string, unknown>) =>
+    request<{ id: string }>("/api/tools", { method: "POST", body }),
+  editTool: (id: string, body: Record<string, unknown>) =>
+    request<{ ok: true }>(`/api/tools/${id}`, { method: "PATCH", body }),
+  removeTool: (id: string) =>
+    request<void>(`/api/tools/${id}`, { method: "DELETE" }),
+  addCertification: (toolId: string, body: Record<string, unknown>) =>
+    request<{ id: string }>(`/api/tools/${toolId}/certifications`, { method: "POST", body }),
+  editCertification: (id: string, body: Record<string, unknown>) =>
+    request<{ ok: true }>(`/api/certifications/${id}`, { method: "PATCH", body }),
+  removeCertification: (id: string) =>
+    request<void>(`/api/certifications/${id}`, { method: "DELETE" }),
+
+  myTraining: () => request<TrainingView>("/api/me/training"),
+  employeeTraining: (userId: string) =>
+    request<TrainingView>(`/api/employees/${userId}/training`),
+  trainingOverview: () => request<TrainingOverview>("/api/training/overview"),
+
+  issueToolLogin: (
+    userId: string,
+    body: { tool_id: string; username: string; password?: string; send_to?: string; notify: boolean },
+  ) =>
+    request<{
+      tool: string;
+      username: string;
+      sent_to: string | null;
+      notified: boolean;
+      notify_error: string | null;
+    }>(`/api/employees/${userId}/tool-logins`, { method: "POST", body }),
+
+  clearToolLogin: (userId: string, toolId: string) =>
+    request<void>(`/api/employees/${userId}/tool-logins/${toolId}`, { method: "DELETE" }),
+
+  assignCertification: (userId: string, body: { certification_id: string; due_on?: string | null }) =>
+    request<{ id: string }>(`/api/employees/${userId}/certifications`, { method: "POST", body }),
+
+  setCertificationProgress: (id: string, body: Record<string, unknown>) =>
+    request<{ ok: true }>(`/api/staff-certifications/${id}`, { method: "PATCH", body }),
+
+  setMyCertificationProgress: (id: string, body: Record<string, unknown>) =>
+    request<{ ok: true }>(`/api/me/certifications/${id}`, { method: "PATCH", body }),
+
+  unassignCertification: (id: string) =>
+    request<void>(`/api/staff-certifications/${id}`, { method: "DELETE" }),
+
+  remindCertification: (id: string) =>
+    request<{ sent_to: string; copied_to: string }>(
+      `/api/staff-certifications/${id}/remind`,
+      { method: "POST" },
+    ),
+
+  /** Its own fetch, because the body is the file itself. */
+  uploadCertificate: async (id: string, file: File) => {
+    const response = await fetch(`/api/me/certifications/${id}/certificate`, {
+      method: "PUT",
+      headers: { "Content-Type": file.type, "X-Filename": encodeURIComponent(file.name) },
+      body: file,
+      credentials: "same-origin",
+    });
+    const text = await response.text();
+    const payload = text ? (JSON.parse(text) as { error?: string }) : null;
+    if (!response.ok) {
+      throw new ApiRequestError(
+        response.status,
+        payload?.error ?? `Could not attach that file (${response.status}).`,
+      );
+    }
+    return payload;
+  },
+
+  myCertificateUrl: (id: string) => `/api/me/certifications/${id}/certificate`,
+  certificateUrl: (id: string) => `/api/staff-certifications/${id}/certificate`,
 
   // ------------------------------------------------------------ staff email
 
