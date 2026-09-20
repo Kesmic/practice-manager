@@ -19,6 +19,7 @@ import { deriveLightInk, whyNotDerivable } from "../lib/logo";
 import { useFirm } from "../lib/firm";
 import { useSession } from "../lib/auth";
 import { ContractTermsCard } from "../components/ContractTermsCard";
+import { StaffEmailCard } from "../components/StaffEmailCard";
 import { EraseAdmin } from "../components/EraseAdmin";
 import { Markdown } from "../components/Markdown";
 import { SignInSecurityAdmin } from "../components/SignInSecurityAdmin";
@@ -44,6 +45,7 @@ type Tab =
   | "contract"
   | "appearance"
   | "email"
+  | "staff_email"
   | "visibility"
   | "signin"
   | "erase";
@@ -54,6 +56,7 @@ const TABS: Array<[Tab, string]> = [
   ["contract", "Contract terms"],
   ["appearance", "Logo and colours"],
   ["email", "Email notifications"],
+  ["staff_email", "Staff email"],
   ["visibility", "Who sees what"],
   ["signin", "Sign-in security"],
   ["erase", "Erase data"],
@@ -138,6 +141,8 @@ export function PortalAdmin() {
         <AppearanceAdmin setError={setError} setNotice={setNotice} />
       ) : tab === "email" ? (
         <EmailAdmin setError={setError} setNotice={setNotice} />
+      ) : tab === "staff_email" ? (
+        <StaffEmailCard canEdit={can("partner")} />
       ) : tab === "visibility" ? (
         <VisibilityAdmin setError={setError} setNotice={setNotice} />
       ) : tab === "signin" ? (

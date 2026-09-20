@@ -10,6 +10,7 @@
 import type { ErasePreview, EraseScope } from "@shared/erase";
 import type { Visibility } from "@shared/visibility";
 import type { StaffAttachment, StaffFileKind } from "@shared/staff-files";
+import type { StaffEmailPolicy } from "@shared/staff-email";
 import type { TwoFactorStatus } from "@shared/twofactor";
 import type { DeviceTrustPolicy, TrustedDevice } from "@shared/device-trust";
 import type { ReviewDetail, ReviewObjective, ReviewSummary } from "@shared/types";
@@ -833,6 +834,41 @@ export const api = {
     request<{ people: DirectoryEntry[]; can_open_records: boolean }>(
       `/api/directory${q ? `?q=${encodeURIComponent(q)}` : ""}`,
     ),
+
+  // ------------------------------------------------------------ staff email
+
+  staffEmail: () =>
+    request<{
+      policy: StaffEmailPolicy;
+      host_label: string;
+      admin_url: string;
+      configured: boolean;
+    }>("/api/staff-email"),
+
+  saveStaffEmail: (policy: StaffEmailPolicy) =>
+    request<{
+      policy: StaffEmailPolicy;
+      host_label: string;
+      admin_url: string;
+      configured: boolean;
+    }>("/api/staff-email", { method: "PUT", body: policy }),
+
+  issueWorkEmail: (
+    userId: string,
+    input: { address: string; password?: string; send_to?: string; notify: boolean },
+  ) =>
+    request<{
+      work_email: string;
+      host: string;
+      sent_to: string | null;
+      notified: boolean;
+      notify_error: string | null;
+    }>(`/api/employees/${userId}/work-email`, { method: "POST", body: input }),
+
+  clearWorkEmail: (userId: string) =>
+    request<{ cleared: true }>(`/api/employees/${userId}/work-email`, {
+      method: "DELETE",
+    }),
 
   // ------------------------------------------------------------ attachments
 
