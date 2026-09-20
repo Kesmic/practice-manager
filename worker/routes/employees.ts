@@ -52,19 +52,32 @@ import { isAttachment } from "../../shared/staff-files";
 import { seesEmploymentDetail } from "../../shared/directory";
 
 /** Employment columns - safe for anyone with directory access. */
+/*
+ * The work address and its host sit here rather than with the personal columns. An
+ * address on the firm's own domain is how colleagues reach each other, not something
+ * held back from the people who manage them.
+ */
 const EMPLOYMENT_COLUMNS = `p.user_id, p.staff_no, p.job_title, p.department,
   p.employment_type, p.employment_status, p.start_date, p.probation_end_date,
   p.confirmed_on, p.exit_date, p.line_manager_id, p.work_location,
-  p.profile_completed_at, p.created_at, p.updated_at`;
+  p.profile_completed_at, p.created_at, p.updated_at,
+  p.work_email, p.work_email_host`;
 
-/** Personal columns - the employee themselves, or an HR administrator. */
+/**
+ * Personal columns - the employee themselves, or an HR administrator.
+ *
+ * `work_email_issued_to` is here rather than with the employment columns because it is
+ * somebody's own address, the one they use outside the firm, and that is not a
+ * colleague's business even when the work address is.
+ */
 const PERSONAL_COLUMNS = `p.date_of_birth, p.gender, p.marital_status,
   p.personal_email, p.phone, p.residential_address, p.emergency_contact_name,
   p.emergency_contact_phone, p.emergency_contact_relationship,
   p.next_of_kin_name, p.next_of_kin_phone, p.highest_qualification,
   p.professional_body, p.membership_number,
   p.id_type, p.id_number, p.tin, p.id_document_url, p.right_to_work_note,
-  p.qualification_document_url`;
+  p.qualification_document_url,
+  p.work_email_issued_at, p.work_email_issued_to`;
 
 /**
  * The columns `PATCH /api/me/profile` will write.

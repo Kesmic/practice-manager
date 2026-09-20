@@ -443,6 +443,17 @@ export interface ApiError {
 // ---------------------------------------------------------------------------
 
 export interface EmployeeProfile {
+  /**
+   * The work email address this person has been given, and the record of handing it
+   * over. The portal does not create the mailbox; see shared/staff-email.ts.
+   *
+   * The temporary password is deliberately absent - it is passed through once and
+   * never stored.
+   */
+  work_email?: string | null;
+  work_email_host?: string | null;
+  work_email_issued_at?: string | null;
+  work_email_issued_to?: string | null;
   user_id: string;
   staff_no: string | null;
   job_title: string | null;

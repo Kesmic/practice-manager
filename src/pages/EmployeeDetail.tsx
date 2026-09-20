@@ -40,6 +40,7 @@ import {
   options,
 } from "../components/ui";
 import { ContractDetailsCard } from "../components/ContractDetailsCard";
+import { WorkEmailCard } from "../components/WorkEmailCard";
 import { ReviewsPanel } from "../components/ReviewsPanel";
 import { formatDate, formatDateTime, formatMoney, percent, relativeTime } from "../lib/format";
 
@@ -48,6 +49,7 @@ type Tab =
   | "contract"
   | "onboarding"
   | "documents"
+  | "work_email"
   | "reviews"
   | "personal"
   | "pay"
@@ -100,6 +102,9 @@ export function EmployeeDetail() {
   ];
   tabs.push(["reviews", "Performance"]);
   if (file.personal) tabs.push(["personal", "Personal details"]);
+  // Partner business, like the rest of the personal record - an address is one thing,
+  // but issuing credentials against it is not something every manager should do.
+  if (isHr) tabs.push(["work_email", "Work email"]);
   if (file.compensation !== null || can("partner")) tabs.push(["pay", "Pay and bank"]);
   if (isHr) tabs.push(["trail", "HR trail"]);
 
@@ -275,6 +280,28 @@ export function EmployeeDetail() {
 
           {tab === "documents" && (
             <DocumentsTab file={file} isHr={isHr} onChanged={load} setError={setError} />
+          )}
+
+          {tab === "work_email" && (
+            <WorkEmailCard
+              userId={user.id}
+              fullName={String(user.full_name)}
+              /*
+               * Their own address, not the one being created. `personal_email` is asked
+               * for during the first run; the account address is the fallback, because
+               * for a new joiner that is the personal one they were invited on.
+               */
+              personalEmail={
+                ((file.personal?.personal_email as string) ?? "") || user.email
+              }
+              current={{
+                work_email: (profile?.work_email as string) ?? null,
+                work_email_host: (profile?.work_email_host as string) ?? null,
+                work_email_issued_at: (profile?.work_email_issued_at as string) ?? null,
+                work_email_issued_to: (profile?.work_email_issued_to as string) ?? null,
+              }}
+              onChanged={load}
+            />
           )}
 
           {tab === "personal" && file.personal && (
