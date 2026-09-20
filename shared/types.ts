@@ -620,6 +620,8 @@ export interface MyOnboarding {
 
 /** The full personnel file, assembled for the HR employee screen. */
 export interface EmployeeFile {
+  /** The documents this person attached, by kind. Null where the reader may not see them. */
+  attachments?: Partial<Record<StaffFileKind, StaffAttachment | null>> | null;
   user: User;
   profile: EmployeeProfile | null;
   personal: EmployeePersonalDetails | null;

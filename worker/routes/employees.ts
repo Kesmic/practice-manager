@@ -522,6 +522,15 @@ export function registerEmployeeRoutes(router: Router<Env>): void {
       user,
       profile,
       personal: showPersonal ? profile : null,
+      /*
+       * The documents this person attached, so the screen can offer them rather than
+       * printing the portal's internal reference at somebody.
+       *
+       * Gated on the same test as the rest of the personal record. This is only the
+       * filename and size - the file itself still comes from the download endpoint,
+       * which makes its own check, so nothing here widens who can read a passport.
+       */
+      attachments: showPersonal ? await attachmentsFor(env, String(params.id)) : null,
       compensation,
       onboarding: onboarding.results,
       documents: docs.results,
