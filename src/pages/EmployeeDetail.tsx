@@ -12,6 +12,18 @@ import {
   PROFILE_FIELD_LABELS,
 } from "@shared/hr";
 import { ROLE_LABELS, atLeast } from "@shared/workflow";
+import {
+  STAFF_FILE_FIELDS,
+  describeSize,
+  isAttachment,
+  type StaffAttachment,
+  type StaffFileKind,
+} from "@shared/staff-files";
+
+/** The attachment kind each personal-record column holds, read the other way round. */
+const FIELD_KINDS: Record<string, StaffFileKind> = Object.fromEntries(
+  Object.entries(STAFF_FILE_FIELDS).map(([kind, field]) => [field, kind as StaffFileKind]),
+);
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import {
@@ -271,9 +283,18 @@ export function EmployeeDetail() {
                 .filter(([key]) => key in PROFILE_FIELD_LABELS)
                 .map(([key, value]) => (
                   <DetailRow key={key} label={PROFILE_FIELD_LABELS[key] ?? key}>
-                    {key === "date_of_birth"
-                      ? formatDate(value as string)
-                      : ((value as string) ?? "-")}
+                    {FIELD_KINDS[key] ? (
+                      <StaffDocument
+                        userId={user.id}
+                        kind={FIELD_KINDS[key]}
+                        value={(value as string) ?? ""}
+                        attached={file.attachments?.[FIELD_KINDS[key]] ?? null}
+                      />
+                    ) : key === "date_of_birth" ? (
+                      formatDate(value as string)
+                    ) : (
+                      ((value as string) ?? "-")
+                    )}
                   </DetailRow>
                 ))}
             </dl>
@@ -866,4 +887,60 @@ function PayTab({
       </div>
     </form>
   );
+}
+
+/**
+ * One of the two documents somebody attached to their own record, as a Partner sees it.
+ *
+ * Three cases, because the column holds three kinds of thing. An attachment is offered
+ * as a download with its name and size; a link somebody pasted before attachments
+ * existed is still a link; nothing is a dash.
+ *
+ * The raw value is never printed. It used to be: an attachment reads `portal:<uuid>`
+ * in the database, and that is what this row showed - an opaque string where a Partner
+ * expected a passport, with no way to open the thing it names.
+ *
+ * Opened in a new tab rather than fetched. The endpoint answers with a download, makes
+ * its own permission check, and is the only thing that ever hands over the file.
+ */
+function StaffDocument({
+  userId,
+  kind,
+  value,
+  attached,
+}: {
+  userId: string;
+  kind: StaffFileKind;
+  value: string;
+  attached: StaffAttachment | null;
+}) {
+  if (isAttachment(value)) {
+    if (!attached) {
+      // Recorded but not in the store. Said plainly rather than shown as a dead link.
+      return <span className="text-slate-500">On file, but the file is missing.</span>;
+    }
+    return (
+      <span className="inline-flex flex-wrap items-baseline gap-x-2">
+        <a
+          className="link font-medium"
+          href={api.employeeStaffFileUrl(userId, kind)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {attached.filename}
+        </a>
+        <span className="text-xs text-slate-500">
+          {describeSize(attached.size_bytes)} · attached {formatDate(attached.uploaded_at)}
+        </span>
+      </span>
+    );
+  }
+  if (value) {
+    return (
+      <a className="link" href={value} target="_blank" rel="noreferrer">
+        {value}
+      </a>
+    );
+  }
+  return <>-</>;
 }

@@ -8,7 +8,6 @@ import { ROLES, ROLE_LABELS, ROLE_RANK, type Role } from "../../shared/workflow"
 import {
   AREAS,
   AREA_SPECS,
-  DEFAULT_VISIBILITY,
   type Area,
   type Visibility,
   OFF,
@@ -231,7 +230,19 @@ export function registerSettingsRoutes(router: Router<Env>): void {
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const body = await readJson<Record<string, unknown>>(request);
 
-    const next: Visibility = { ...DEFAULT_VISIBILITY };
+    /*
+     * Built on what the firm has already chosen, not on the defaults.
+     *
+     * An area missing from the request means "not mentioned", and the honest answer to
+     * that is to leave it alone. Starting from the defaults made it mean "put this back
+     * how it shipped", so a client that did not know about an area reset it by saving
+     * anything at all - a browser tab left open from before Staff directory existed
+     * would re-open the staff directory every time somebody pressed Save, with nothing
+     * on screen saying so.
+     *
+     * Back to the defaults still works: it sends every area explicitly.
+     */
+    const next: Visibility = { ...(await readVisibilitySetting(env)) };
     for (const area of AREAS) {
       const value = body[area];
       if (value === undefined) continue;
