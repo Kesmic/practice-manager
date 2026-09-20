@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { render } from "../worker/email";
+import { PROVIDERS, copyList, render } from "../worker/email";
 
 const recipient = { id: "u1", email: "ama@example.test", full_name: "Ama Mensah" };
 
@@ -76,4 +76,65 @@ test("the two halves carry the same headline", () => {
   const { text, html } = render(m, recipient);
   assert.ok(text.includes(m.headline));
   assert.ok(html.includes(m.headline));
+});
+
+// ---------------------------------------------------------------------------
+// Copying somebody in
+// ---------------------------------------------------------------------------
+
+/*
+ * Reminders copy the person doing the chasing. Three providers build three different
+ * payloads for that, so the rule is tested once and each payload is checked for
+ * carrying it - a cc that silently vanishes on one provider is a promise the portal
+ * made and did not keep.
+ */
+
+test("nobody is copied on their own message", () => {
+  // Otherwise the recipient gets it twice, and some providers refuse an address
+  // that appears in both fields.
+  assert.deepEqual(copyList("ama@x.test", ["ama@x.test"]), []);
+  assert.deepEqual(copyList("ama@x.test", ["AMA@X.TEST"]), []);
+  assert.deepEqual(copyList(" ama@x.test ", ["ama@x.test"]), []);
+});
+
+test("duplicates and blanks are dropped", () => {
+  assert.deepEqual(
+    copyList("ama@x.test", ["md@x.test", "md@x.test", "", "  "]),
+    ["md@x.test"],
+  );
+});
+
+test("a genuine copy survives", () => {
+  assert.deepEqual(copyList("ama@x.test", ["md@x.test"]), ["md@x.test"]);
+});
+
+test("every provider carries the copy list", () => {
+  const env = {
+    EMAIL_FROM: "Kesmic <portal@kesmic.org>",
+    EMAIL_API_KEY: "k",
+  } as never;
+  const cc = ["md@kesmic.org"];
+
+  const resend = PROVIDERS.resend(env, "ama@x.test", "s", "t", "<p>h</p>", cc);
+  assert.deepEqual((resend.body as { cc?: string[] }).cc, cc);
+
+  const postmark = PROVIDERS.postmark(env, "ama@x.test", "s", "t", "<p>h</p>", cc);
+  assert.equal((postmark.body as { Cc?: string }).Cc, "md@kesmic.org");
+
+  const sendgrid = PROVIDERS.sendgrid(env, "ama@x.test", "s", "t", "<p>h</p>", cc);
+  const personalisation = (
+    sendgrid.body as { personalizations: Array<{ cc?: Array<{ email: string }> }> }
+  ).personalizations[0];
+  assert.deepEqual(personalisation.cc, [{ email: "md@kesmic.org" }]);
+});
+
+test("no copy list means the field is absent, not empty", () => {
+  // An empty cc array is not the same as no cc, and some providers reject one.
+  const env = { EMAIL_FROM: "Kesmic <portal@kesmic.org>", EMAIL_API_KEY: "k" } as never;
+  assert.ok(!("cc" in (PROVIDERS.resend(env, "a@x.test", "s", "t", "h", []).body as object)));
+  assert.ok(!("Cc" in (PROVIDERS.postmark(env, "a@x.test", "s", "t", "h", []).body as object)));
+  const sg = PROVIDERS.sendgrid(env, "a@x.test", "s", "t", "h", []).body as {
+    personalizations: Array<Record<string, unknown>>;
+  };
+  assert.ok(!("cc" in sg.personalizations[0]));
 });

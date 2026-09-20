@@ -349,22 +349,42 @@ interface ProviderRequest {
  * elsewhere. Postmark and SendGrid verify with TXT and CNAME records, which Wix does
  * support. See docs/EMAIL.md.
  */
-const PROVIDERS: Record<
+export const PROVIDERS: Record<
   string,
-  (env: Env, to: string, subject: string, text: string, html: string) => ProviderRequest
+  (
+    env: Env,
+    to: string,
+    subject: string,
+    text: string,
+    html: string,
+    /**
+     * Copied in, visibly. A reminder that somebody is behind is a message the person
+     * chasing them should be able to point at later, and a blind copy would let the
+     * recipient believe it was between the two of them.
+     */
+    cc: string[],
+  ) => ProviderRequest
 > = {
-  resend: (env, to, subject, text, html) => ({
+  resend: (env, to, subject, text, html, cc) => ({
     url: "https://api.resend.com/emails",
     headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
-    body: { from: env.EMAIL_FROM, to: [to], subject, text, html },
+    body: {
+      from: env.EMAIL_FROM,
+      to: [to],
+      ...(cc.length ? { cc } : {}),
+      subject,
+      text,
+      html,
+    },
   }),
 
-  postmark: (env, to, subject, text, html) => ({
+  postmark: (env, to, subject, text, html, cc) => ({
     url: "https://api.postmarkapp.com/email",
     headers: { "X-Postmark-Server-Token": env.EMAIL_API_KEY ?? "", Accept: "application/json" },
     body: {
       From: env.EMAIL_FROM,
       To: to,
+      ...(cc.length ? { Cc: cc.join(",") } : {}),
       Subject: subject,
       TextBody: text,
       HtmlBody: html,
@@ -374,13 +394,18 @@ const PROVIDERS: Record<
     },
   }),
 
-  sendgrid: (env, to, subject, text, html) => {
+  sendgrid: (env, to, subject, text, html, cc) => {
     const from = fromAddress(env.EMAIL_FROM ?? "");
     return {
       url: "https://api.sendgrid.com/v3/mail/send",
       headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
       body: {
-        personalizations: [{ to: [{ email: to }] }],
+        personalizations: [
+          {
+            to: [{ email: to }],
+            ...(cc.length ? { cc: cc.map((email) => ({ email })) } : {}),
+          },
+        ],
         from: from.name ? { email: from.email, name: from.name } : { email: from.email },
         subject,
         content: [
@@ -391,6 +416,18 @@ const PROVIDERS: Record<
     };
   },
 };
+
+/**
+ * Who is copied, after the copies that would be pointless are dropped.
+ *
+ * Exported alongside the providers so the rule can be tested once rather than three
+ * times: every provider gets the same list.
+ */
+export function copyList(to: string, cc: string[]): string[] {
+  return [...new Set(cc.map((a) => a.trim()).filter(Boolean))].filter(
+    (a) => a.toLowerCase() !== to.trim().toLowerCase(),
+  );
+}
 
 /** The provider named in the environment, or Resend. Unknown names are refused. */
 function providerName(env: Env): string {
@@ -412,9 +449,16 @@ async function deliver(
   subject: string,
   text: string,
   html: string,
+  cc: string[] = [],
 ): Promise<void> {
   const name = providerName(env);
-  const request = PROVIDERS[name](env, to, subject, text, html);
+  /*
+   * Nobody is copied on their own message. A person who is both the recipient and on
+   * the copy list would otherwise receive it twice, and some providers refuse an
+   * address that appears in both.
+   */
+  const copies = copyList(to, cc);
+  const request = PROVIDERS[name](env, to, subject, text, html, copies);
 
   const response = await fetch(request.url, {
     method: "POST",
@@ -452,6 +496,12 @@ export async function sendToPerson(
     linkLabel: string;
     firmName: string;
     reason: string;
+    /**
+     * Copied in, visibly, and never blind. A reminder that somebody is behind is a
+     * message the person chasing them should be able to point at later, and the person
+     * being chased is entitled to see who else read it.
+     */
+    cc?: string[];
   },
 ): Promise<{ sent: boolean; error?: string }> {
   if (!emailConfigured(env)) {
@@ -471,7 +521,7 @@ export async function sendToPerson(
       },
       recipient,
     );
-    await deliver(env, recipient.email, input.subject, text, html);
+    await deliver(env, recipient.email, input.subject, text, html, input.cc ?? []);
     return { sent: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
