@@ -240,8 +240,13 @@ export function registerStaffEmailRoutes(router: Router<Env>): void {
           `Email address: ${address}` +
           (password ? `\nTemporary password: ${password}` : "") +
           signInAt,
-        link: settings.firm_website || "",
-        linkLabel: `${settings.firm_name} website`,
+        /*
+         * No button. Everything this person needs is in the message, and the firm's
+         * website is not where they go to read their new mailbox - a prominent button
+         * pointing somewhere irrelevant is worse than none.
+         */
+        link: "",
+        linkLabel: "",
         firmName: settings.firm_name,
         reason: `a work email address has been created for you at ${settings.firm_name}`,
       });

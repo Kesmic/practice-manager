@@ -240,7 +240,12 @@ interface Message {
   headline: string;
   /** Optional detail, such as the comment itself or the reviewer's note. */
   detail?: string | null;
-  /** Where to go to deal with it. */
+  /**
+   * Where to go to deal with it. Empty for a message with nowhere to send anybody -
+   * the work email details being the case in point, where the thing the person needs
+   * is in the message itself and the only button the portal could offer would take
+   * them somewhere irrelevant.
+   */
   link: string;
   linkLabel: string;
   firmName: string;
@@ -256,15 +261,20 @@ interface Message {
  * Both a plain-text and an HTML body. Plain text is not a courtesy: it is what
  * many corporate mail filters score a message on, and a message with only HTML is
  * likelier to be treated as bulk.
+ *
+ * Exported for the tests. What is worth pinning is what a person actually receives,
+ * and the two halves have to say the same things - a button present in one and absent
+ * from the other is a message that reads differently depending on the mail client.
  */
-function render(message: Message, recipient: Recipient) {
+export function render(message: Message, recipient: Recipient) {
   const text = [
     `Hello ${recipient.full_name.split(" ")[0]},`,
     "",
     message.headline,
     ...(message.detail ? ["", message.detail] : []),
-    "",
-    `${message.linkLabel}: ${message.link}`,
+    // No link, no line. "Kesmic Consultancy Hub website: " followed by nothing is
+    // worse than saying nothing at all.
+    ...(message.link ? ["", `${message.linkLabel}: ${message.link}`] : []),
     "",
     `${message.firmName} Practice Manager`,
     `You are receiving this because ${message.reason}.`,
@@ -283,12 +293,21 @@ function render(message: Message, recipient: Recipient) {
           )}</blockquote>`
         : ""
     }
-    <p style="margin:0 0 24px">
+    ${
+      /*
+       * The button only where there is somewhere to go. Rendered unconditionally it
+       * produced `<a href="">`, which looks exactly like a button and does nothing -
+       * and a message whose one prominent control is dead reads as a broken message.
+       */
+      message.link
+        ? `<p style="margin:0 0 24px">
       <a href="${escapeHtml(message.link)}"
          style="display:inline-block;background:#255291;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;font-weight:500">
         ${escapeHtml(message.linkLabel)}
       </a>
-    </p>
+    </p>`
+        : `<div style="margin:0 0 24px"></div>`
+    }
     <hr style="border:0;border-top:1px solid #e2e8f0;margin:0 0 16px">
     <p style="margin:0;font-size:12px;line-height:1.5;color:#64748b">
       ${escapeHtml(message.firmName)} Practice Manager.
