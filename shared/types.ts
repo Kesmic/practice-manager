@@ -905,3 +905,84 @@ export interface RemovalPreview {
   /** The exact words that have to be typed: the person's own name. */
   confirmation: string;
 }
+
+
+// ---------------------------------------------------------------------------
+// Tools and certifications
+// ---------------------------------------------------------------------------
+
+export interface PracticeTool {
+  id: string;
+  name: string;
+  category: string | null;
+  sign_in_url: string | null;
+  position: number;
+}
+
+export interface ToolCertification {
+  id: string;
+  tool_id: string;
+  name: string;
+  course_url: string | null;
+  validity_months: number | null;
+  requires_certificate: number;
+}
+
+export interface ToolCatalogue {
+  tools: PracticeTool[];
+  certifications: ToolCertification[];
+}
+
+export interface StaffToolLogin {
+  tool_id: string;
+  username: string;
+  issued_at: string | null;
+  issued_to: string | null;
+}
+
+/** One person's progress on one certification, as the screens receive it. */
+export interface StaffCertification {
+  id: string;
+  certification_id: string;
+  certification_name: string;
+  tool_name: string;
+  course_url: string | null;
+  validity_months: number | null;
+  requires_certificate: number;
+  progress: "assigned" | "in_progress" | "certified";
+  due_on: string | null;
+  completed_on: string | null;
+  expires_on: string | null;
+  filename: string | null;
+  size_bytes: number | null;
+  uploaded_at: string | null;
+  last_reminded_at: string | null;
+}
+
+export interface TrainingView {
+  tools: PracticeTool[];
+  logins: StaffToolLogin[];
+  certifications: StaffCertification[];
+  /** The server's day, so a screen open past midnight does not disagree with it. */
+  today: string;
+}
+
+export interface TrainingOverview {
+  people: Array<{ id: string; full_name: string; role: Role }>;
+  certifications: Array<{
+    id: string;
+    name: string;
+    tool_name: string;
+    validity_months: number | null;
+  }>;
+  progress: Array<{
+    id: string;
+    user_id: string;
+    certification_id: string;
+    progress: "assigned" | "in_progress" | "certified";
+    due_on: string | null;
+    completed_on: string | null;
+    expires_on: string | null;
+  }>;
+  today: string;
+}

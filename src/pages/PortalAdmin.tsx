@@ -20,6 +20,7 @@ import { useFirm } from "../lib/firm";
 import { useSession } from "../lib/auth";
 import { ContractTermsCard } from "../components/ContractTermsCard";
 import { StaffEmailCard } from "../components/StaffEmailCard";
+import { ToolCatalogueCard } from "../components/ToolCatalogueCard";
 import { EraseAdmin } from "../components/EraseAdmin";
 import { Markdown } from "../components/Markdown";
 import { SignInSecurityAdmin } from "../components/SignInSecurityAdmin";
@@ -46,6 +47,7 @@ type Tab =
   | "appearance"
   | "email"
   | "staff_email"
+  | "tools"
   | "visibility"
   | "signin"
   | "erase";
@@ -57,6 +59,7 @@ const TABS: Array<[Tab, string]> = [
   ["appearance", "Logo and colours"],
   ["email", "Email notifications"],
   ["staff_email", "Staff email"],
+  ["tools", "Tools and certifications"],
   ["visibility", "Who sees what"],
   ["signin", "Sign-in security"],
   ["erase", "Erase data"],
@@ -143,6 +146,8 @@ export function PortalAdmin() {
         <EmailAdmin setError={setError} setNotice={setNotice} />
       ) : tab === "staff_email" ? (
         <StaffEmailCard canEdit={can("partner")} />
+      ) : tab === "tools" ? (
+        <ToolCatalogueCard canEdit={can("partner")} />
       ) : tab === "visibility" ? (
         <VisibilityAdmin setError={setError} setNotice={setNotice} />
       ) : tab === "signin" ? (

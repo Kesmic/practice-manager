@@ -84,6 +84,7 @@ const NAV: NavItem[] = [
     badgeNoun: "document",
   },
   { to: "/my-profile", label: "My details", section: "My portal" },
+  { to: "/my-training", label: "My training", section: "My portal" },
   { to: "/directory", label: "Staff directory", area: "directory", section: "My portal" },
   { to: "/guide", label: "How to use the portal", section: "My portal" },
 
