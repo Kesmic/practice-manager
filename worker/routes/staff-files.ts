@@ -334,14 +334,28 @@ export async function attachmentsFor(
  */
 export async function deleteStaffFiles(env: Env, userId: string): Promise<number> {
   if (!env.FILES) return 0;
-  const { results } = await env.DB.prepare(
-    `SELECT object_key FROM staff_files WHERE user_id = ?`,
-  )
-    .bind(userId)
-    .all<{ object_key: string }>();
-  if (!results.length) return 0;
-  await env.FILES.delete(results.map((r) => r.object_key));
-  return results.length;
+  /*
+   * Both tables, because a person's documents live in two of them: identification and
+   * qualification in `staff_files`, training certificates on their `staff_certifications`
+   * rows. Sweeping only the first would leave certificates in the bucket belonging to
+   * somebody the firm had deleted - the exact failure this function exists to prevent,
+   * just in the table that was added later.
+   */
+  const [own, certificates] = await env.DB.batch([
+    env.DB.prepare(`SELECT object_key FROM staff_files WHERE user_id = ?`).bind(userId),
+    env.DB.prepare(
+      `SELECT object_key FROM staff_certifications
+        WHERE user_id = ? AND object_key IS NOT NULL`,
+    ).bind(userId),
+  ]);
+
+  const keys = [
+    ...(own.results as Array<{ object_key: string }>),
+    ...(certificates.results as Array<{ object_key: string }>),
+  ].map((r) => r.object_key);
+  if (!keys.length) return 0;
+  await env.FILES.delete(keys);
+  return keys.length;
 }
 
 /** Whether a stored column value points at an attachment that really exists. */
