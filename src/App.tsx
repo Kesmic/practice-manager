@@ -32,6 +32,9 @@ import { People } from "./pages/People";
 import { PortalAdmin } from "./pages/PortalAdmin";
 import { Notifications } from "./pages/Notifications";
 import { Reports } from "./pages/Reports";
+import { Subscriptions } from "./pages/Subscriptions";
+import { Invoices } from "./pages/Invoices";
+import { InvoiceDetail } from "./pages/InvoiceDetail";
 import { Setup } from "./pages/Setup";
 import { TaskDetail } from "./pages/TaskDetail";
 import { Tasks } from "./pages/Tasks";
@@ -149,6 +152,30 @@ export function App() {
         <Route path="/my-clients" element={<MyClients />} />
         <Route path="/status-reports" element={<StatusReports />} />
         <Route path="/engagements" element={<Engagements />} />
+        <Route
+          path="/subscriptions"
+          element={
+            <Protected minimum="manager">
+              <Subscriptions />
+            </Protected>
+          }
+        />
+        <Route
+          path="/invoices"
+          element={
+            <Protected minimum="manager">
+              <Invoices />
+            </Protected>
+          }
+        />
+        <Route
+          path="/invoices/:id"
+          element={
+            <Protected minimum="manager">
+              <InvoiceDetail />
+            </Protected>
+          }
+        />
         <Route path="/templates" element={<Templates />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/account" element={<Account />} />

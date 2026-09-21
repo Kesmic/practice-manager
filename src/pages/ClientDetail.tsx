@@ -18,6 +18,7 @@ import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { ClientAllocationsCard } from "../components/ClientAllocationsCard";
 import { ClientFileCard } from "../components/ClientFileCard";
+import { ClientSubscriptionCard } from "../components/ClientSubscriptionCard";
 import { NewTaskModal } from "../components/NewTaskModal";
 import { TaskTable } from "../components/TaskTable";
 import {
@@ -168,6 +169,8 @@ export function ClientDetail() {
             setError={setError}
             setNotice={setNotice}
           />
+
+          <ClientSubscriptionCard clientId={client.id} />
 
           <ClientFileCard
             clientId={id}

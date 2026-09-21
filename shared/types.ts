@@ -1136,6 +1136,9 @@ export interface InvoiceSummary {
   net: number;
   tax_total: number;
   gross: number;
+  /** What the client was asked to pay: the total, less anything withheld on its face. */
+  balance_due: number;
+  withholding_amount: number;
   period_label: string | null;
   reminders_sent: number;
   last_reminder_at: string | null;
@@ -1227,6 +1230,8 @@ export interface ClientInvoiceList {
     net: number;
     tax_total: number;
     gross: number;
+    balance_due: number;
+    withholding_amount: number;
     period_label: string | null;
     standing: Standing;
   }>;
@@ -1244,6 +1249,8 @@ export interface ClientInvoiceDetail {
     net: number;
     tax_total: number;
     gross: number;
+    balance_due: number;
+    withholding_amount: number;
     period_label: string | null;
     note: string | null;
   };

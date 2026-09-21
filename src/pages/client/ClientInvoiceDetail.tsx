@@ -71,6 +71,8 @@ export function ClientInvoiceDetail() {
           net={invoice.net}
           gross={invoice.gross}
           currency={invoice.currency}
+          withheld={invoice.withholding_amount}
+          balanceDue={invoice.balance_due}
         />
       </section>
 

@@ -14,12 +14,19 @@ export function InvoiceTotals({
   net,
   gross,
   currency,
+  withheld = 0,
+  balanceDue,
+  withholdingLabel = "Withholding tax",
 }: {
   lines: InvoiceLineRow[];
   taxes: InvoiceTaxRow[];
   net: number;
   gross: number;
   currency: string;
+  /** Deducted on the face of the invoice, so the client pays the balance. */
+  withheld?: number;
+  balanceDue?: number;
+  withholdingLabel?: string;
 }) {
   return (
     <div className="scroll-x">
@@ -65,13 +72,39 @@ export function InvoiceTotals({
           ))}
 
           <tr>
-            <td colSpan={3} className="text-right text-base font-semibold">
+            <td colSpan={3} className="text-right font-semibold">
               Total
             </td>
-            <td className="text-right text-base font-semibold tabular-nums">
+            <td className="text-right font-semibold tabular-nums">
               {formatMoneyExact(gross, currency)}
             </td>
           </tr>
+
+          {/*
+            Shown whenever the invoice anticipates a deduction, because the figure the
+            client was asked for is the balance, not the total - and a Partner reading
+            this needs to be looking at the same number the client is.
+          */}
+          {withheld > 0 && (
+            <>
+              <tr>
+                <td colSpan={3} className="text-right text-rose-700">
+                  {withholdingLabel} withheld
+                </td>
+                <td className="text-right tabular-nums text-rose-700">
+                  -{formatMoneyExact(withheld, currency)}
+                </td>
+              </tr>
+              <tr>
+                <td colSpan={3} className="text-right text-base font-semibold">
+                  Balance due
+                </td>
+                <td className="text-right text-base font-semibold tabular-nums">
+                  {formatMoneyExact(balanceDue ?? gross - withheld, currency)}
+                </td>
+              </tr>
+            </>
+          )}
         </tbody>
       </table>
     </div>

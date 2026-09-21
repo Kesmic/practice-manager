@@ -19,3 +19,9 @@ ALTER TABLE invoices ADD COLUMN withholding_amount REAL NOT NULL DEFAULT 0;
 -- the invoice. Stored rather than computed so that every screen, every reminder and
 -- every statement quote the same figure the document quotes.
 ALTER TABLE invoices ADD COLUMN balance_due REAL NOT NULL DEFAULT 0;
+
+-- Every invoice raised before this column existed is asked for in full, so its balance
+-- is its total. Without this backfill they would all carry a balance of zero, and a
+-- zero balance reads as "nothing to pay" - an unpaid invoice would silently vanish from
+-- the outstanding figure and never be chased.
+UPDATE invoices SET balance_due = gross WHERE balance_due = 0;

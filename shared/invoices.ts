@@ -261,7 +261,15 @@ export function standingOf(
    * the withholding deduction has a balance below its total, and reading the total
    * would leave it looking permanently short by exactly the tax the client remitted.
    */
-  const asked = invoice.balance_due ?? invoice.gross;
+  /*
+   * Zero is treated as unset rather than as nothing to pay. The column is NOT NULL with
+   * a default of zero, so any row the backfill misses - or any future write that forgets
+   * it - must fall back to the total rather than make an unpaid invoice disappear from
+   * the outstanding figure. A real balance is never zero while the total is not:
+   * withholding is a fraction of the net, and an invoice for nothing cannot be issued.
+   */
+  const asked =
+    invoice.balance_due && invoice.balance_due > 0 ? invoice.balance_due : invoice.gross;
   const outstanding = isSettled(asked, settled) ? 0 : round2(Math.max(asked - settled, 0));
   const awaiting = round2(
     payments

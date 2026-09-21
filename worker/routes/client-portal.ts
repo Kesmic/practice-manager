@@ -462,7 +462,7 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
     const [invoices, payments] = await env.DB.batch([
       env.DB.prepare(
         `SELECT id, number, state, issued_on, due_on, currency, net, tax_total, gross,
-                period_label
+                balance_due, withholding_amount, period_label
            FROM invoices
           WHERE client_id = ? AND state <> 'draft'
           ORDER BY issued_on DESC, number DESC`,
@@ -518,7 +518,7 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
 
     const invoice = await env.DB.prepare(
       `SELECT id, number, state, issued_on, due_on, currency, net, tax_total, gross,
-              period_label, note
+              balance_due, withholding_amount, period_label, note
          FROM invoices
         WHERE id = ? AND client_id = ? AND state <> 'draft'`,
     )

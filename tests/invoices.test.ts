@@ -473,3 +473,18 @@ test("dates read the way the firm writes them", () => {
   assert.equal(slashDate("2026-08-25"), "25/08/2026");
   assert.equal(slashDate(null), "");
 });
+
+test("an invoice with no balance recorded is asked for in full", () => {
+  // The column is NOT NULL with a default of zero, so a row the backfill missed would
+  // otherwise read as "nothing to pay" - an unpaid invoice vanishing from the
+  // outstanding figure and never being chased.
+  const zeroed = {
+    state: "sent" as const,
+    gross: 5485.5,
+    balance_due: 0,
+    due_on: "2026-10-14",
+  };
+  const s = standingOf(zeroed, [], "2026-10-20");
+  assert.equal(s.outstanding, 5485.5);
+  assert.equal(s.overdue, true, "and it is still chased");
+});

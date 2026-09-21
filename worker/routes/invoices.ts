@@ -78,7 +78,8 @@ import {
  * exactly the tax the client remitted on the firm's behalf.
  */
 function askedFor(invoice: { gross: number; balance_due?: number | null }): number {
-  return invoice.balance_due ?? invoice.gross;
+  // Zero means unset, for the reason standingOf gives.
+  return invoice.balance_due && invoice.balance_due > 0 ? invoice.balance_due : invoice.gross;
 }
 
 /** Today as the portal reckons it. One place, so tests and routes agree. */
@@ -400,7 +401,8 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     const [invoices, payments] = await env.DB.batch([
       env.DB.prepare(
         `SELECT i.id, i.number, i.client_id, i.state, i.issued_on, i.due_on, i.currency,
-                i.net, i.tax_total, i.gross, i.period_label, i.reminders_sent,
+                i.net, i.tax_total, i.gross, i.balance_due, i.withholding_amount,
+                i.period_label, i.reminders_sent,
                 i.last_reminder_at, c.name AS client_name, c.code AS client_code
            FROM invoices i JOIN clients c ON c.id = i.client_id
           WHERE (?1 IS NULL OR i.state = ?1)
@@ -998,8 +1000,8 @@ async function chase(
   automatic: boolean,
 ): Promise<{ sent: boolean; step?: number; why?: string }> {
   const invoice = await env.DB.prepare(
-    `SELECT i.id, i.number, i.state, i.gross, i.due_on, i.currency, i.reminders_sent,
-            i.period_label, c.id AS client_id, c.name AS client_name
+    `SELECT i.id, i.number, i.state, i.gross, i.balance_due, i.due_on, i.currency,
+            i.reminders_sent, i.period_label, c.id AS client_id, c.name AS client_name
        FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ?`,
   )
     .bind(invoiceId)
