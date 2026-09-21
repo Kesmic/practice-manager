@@ -211,8 +211,14 @@ export const ACTION_DONE: Record<SignatureAction, string> = {
  * very little as evidence.
  */
 export const ATTESTATION: Record<SignatureAction, string> = {
+  /*
+   * Says what the person is actually doing now that signing takes an image as well as
+   * a name. The old wording - "typing my full name below constitutes my signature" -
+   * described a signature that no longer exists on its own, and an attestation that
+   * misdescribes the act is the last thing to leave stale.
+   */
   signed:
-    "I confirm that I have read and understood this document in full, that I agree to be bound by its terms, and that typing my full name below constitutes my signature.",
+    "I confirm that I have read and understood this document in full, that I agree to be bound by its terms, and that the signature I have uploaded and the name I type below are mine and are given as my signature.",
   acknowledged:
     "I confirm that I have read and understood this policy, and that I agree to comply with it.",
 };

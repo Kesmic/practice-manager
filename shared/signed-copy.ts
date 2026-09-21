@@ -52,6 +52,37 @@ export interface SignedCopy {
   /** The SHA-256 of the body in this file, worked out as it is produced. */
   current_hash: string;
   firm_name: string;
+  /**
+   * The signature they drew, as a data URI, or null.
+   *
+   * Inlined rather than linked because the whole point of this file is that it opens
+   * anywhere: a signature fetched from the portal would be a broken image in every
+   * copy sent to somebody who cannot sign in, which is most of the people these get
+   * sent to.
+   *
+   * Null covers two cases that read differently and are distinguished below: an
+   * acknowledgement, which never had an image, and a signature whose image has since
+   * been lost. The second is worth saying out loud; the first is not.
+   */
+  signature_image: string | null;
+  /** Whether one was recorded at all, so a missing image can be told from no image. */
+  had_signature_image?: boolean;
+}
+
+/**
+ * Whether a data URI is one this file will put in an `src`.
+ *
+ * The signed copy is a file the firm hands to an employee and an employee hands to a
+ * bank, and the module header already commits to nothing in the portal being able to
+ * put script into it. An `src` is the one place where escaping is not enough on its
+ * own - `javascript:` in an `src` survives HTML escaping intact - so the value is
+ * matched against exactly what it is meant to be rather than merely escaped.
+ *
+ * The three types are the three shared/signatures.ts accepts. SVG is not among them
+ * there and must not creep in here.
+ */
+export function isDrawableDataUri(value: string): boolean {
+  return /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(value);
 }
 
 /** Whether the text in this file is the text that was signed. */
@@ -140,6 +171,19 @@ const STYLE = `
     font: italic 30px/1.2 Georgia, Cambria, serif; color: #17223b;
     border-bottom: 1px solid #b9c1cb; padding-bottom: 8px; margin: 0 0 6px;
   }
+  /*
+   * Sized by height so that a wide scrawl and a compact one both come out looking like
+   * a signature on a page rather than like whatever resolution the phone happened to
+   * produce. Capped in width too, for the signature written across a whole sheet.
+   */
+  .signature-mark {
+    display: block; max-height: 96px; max-width: 320px;
+    margin: 4px 0 10px; object-fit: contain; object-position: left bottom;
+  }
+  .signature-missing {
+    margin: 0 0 12px; padding: 8px 12px; font-size: 12px;
+    background: #fdf6e3; color: #7a5b12; border: 1px solid #efdca8;
+  }
   .signature-note { font-size: 12px; color: #6b7785; margin: 0 0 18px; }
   dl { display: grid; grid-template-columns: 13rem 1fr; gap: 7px 18px; margin: 0; font-size: 13px; }
   dt { color: #6b7785; }
@@ -166,6 +210,29 @@ const STYLE = `
  * to a bank, and it should not be possible for anything in the portal to put script into
  * it.
  */
+/**
+ * The signature as drawn, the note that it has been lost, or nothing at all.
+ *
+ * Three outcomes rather than two. Nothing at all is right for an acknowledgement,
+ * which never had an image and should not imply one is missing. The note is for the
+ * case where an image was recorded and cannot now be produced, which somebody reading
+ * the certificate needs told: the rest of the evidence still stands, and the file
+ * should say which part of it is absent rather than quietly leaving a gap.
+ */
+function signatureMark(copy: SignedCopy): string {
+  if (copy.signature_image && isDrawableDataUri(copy.signature_image)) {
+    return `<img class="signature-mark" alt="Signature of ${escapeHtml(
+      copy.signatory_name,
+    )}" src="${copy.signature_image}" />`;
+  }
+  if (copy.had_signature_image) {
+    return `<p class="signature-missing">A signature image was recorded with this
+      signature but could not be included in this copy. The remaining evidence below is
+      unaffected.</p>`;
+  }
+  return "";
+}
+
 export function renderSignedCopy(copy: SignedCopy): string {
   const intact = textIsIntact(copy);
   const verb = copy.action === "signed" ? "signed" : "acknowledged";
@@ -175,6 +242,14 @@ export function renderSignedCopy(copy: SignedCopy): string {
     ["Version", `Version ${copy.version}`],
     ["Signatory", `${copy.signatory_name} (${copy.signatory_email})`],
     ["Name as typed", copy.typed_name],
+    [
+      "Signature",
+      copy.signature_image
+        ? "Uploaded by the signatory and reproduced above"
+        : copy.had_signature_image
+          ? "Recorded, but the image could not be included in this copy"
+          : "Typed name only",
+    ],
     ["Action", verb === "signed" ? "Signed" : "Acknowledged"],
     ["Date and time", `${formatStamp(copy.signed_at)} (${copy.signed_at})`],
     ...(copy.ip_address ? ([["IP address", copy.ip_address]] as Array<[string, string]>) : []),
@@ -215,10 +290,18 @@ ${renderMarkdownHtml(copy.body)}
   <section class="certificate">
     <p class="head">Electronic signature certificate</p>
     <div class="inner">
+      ${signatureMark(copy)}
       <p class="signature-name">${escapeHtml(copy.typed_name)}</p>
       <p class="signature-note">
-        Typed by the signatory into the ${escapeHtml(copy.firm_name)} staff portal,
-        after confirming they had read the document in full.
+        ${
+          copy.signature_image
+            ? `Signed and typed by the signatory in the ${escapeHtml(
+                copy.firm_name,
+              )} staff portal, after confirming they had read the document in full.`
+            : `Typed by the signatory into the ${escapeHtml(
+                copy.firm_name,
+              )} staff portal, after confirming they had read the document in full.`
+        }
       </p>
 
       <dl>
@@ -237,8 +320,8 @@ ${renderMarkdownHtml(copy.body)}
         The fingerprint is a SHA-256 of the document text as it was agreed to. Anyone
         holding this file can recompute it from the text above and compare, which is what
         makes the record checkable rather than merely asserted. This certificate sets out
-        what ${escapeHtml(copy.firm_name)} recorded; whether a typed name constitutes a
-        signature is a matter for the law that applies to the document.
+        what ${escapeHtml(copy.firm_name)} recorded; whether what it records constitutes
+        a signature is a matter for the law that applies to the document.
       </p>
     </div>
   </section>

@@ -8,6 +8,7 @@ import { TwoFactorCard } from "../components/TwoFactorCard";
 import { ChangePasswordForm } from "../components/ChangePasswordForm";
 import { SecurityQuestionsCard } from "../components/SecurityQuestionsCard";
 import { TrustedDevicesCard } from "../components/TrustedDevicesCard";
+import { MySignatureCard } from "../components/SignatureCard";
 
 export function Account() {
   const { user, refresh } = useSession();
@@ -63,6 +64,13 @@ export function Account() {
           <DetailRow label="Account created">{formatDate(user.created_at)}</DetailRow>
         </dl>
       </div>
+
+      {/*
+        Above the security cards rather than below them: this is the one thing here that
+        somebody is likely to be sent to the page for, having found out mid-contract
+        that they need it.
+      */}
+      <MySignatureCard />
 
       <TwoFactorCard setNotice={setDone} onChanged={bumpFactors} />
 

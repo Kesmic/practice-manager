@@ -32,6 +32,7 @@ import { sendToPerson } from "../email";
 import { readSettings } from "./settings";
 import { startOnboardingProgramme } from "./employees";
 import { deleteStaffFiles } from "./staff-files";
+import { deleteSignatureImages } from "./signatures";
 
 /** Grade required to administer staff records. */
 const MIN_USER_ADMIN: Role = "partner";
@@ -464,6 +465,15 @@ export function registerUserRoutes(router: Router<Env>): void {
      * somebody the firm deleted would sit in the bucket indefinitely.
      */
     await deleteStaffFiles(env, target.id);
+    /*
+     * Signature specimens go the same way, retired ones included.
+     *
+     * Both removals take `document_signatures` with them - a retirement deletes the
+     * documents addressed to the person as well - so nothing is left pointing at these,
+     * and a picture of somebody's signature is the last thing to leave behind in a
+     * bucket after deleting them.
+     */
+    await deleteSignatureImages(env, target.id);
 
     if (removal === "erase") {
       /*
@@ -633,6 +643,7 @@ const PERSONAL_TABLES = [
   "contract_details",
   "status_reports",
   "document_signatures",
+  "staff_signatures",
 ] as const;
 
 /**
