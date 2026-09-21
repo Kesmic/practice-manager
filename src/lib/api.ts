@@ -1093,6 +1093,7 @@ export const api = {
     summary?: string;
     fee: number | null;
     fee_basis: FeeBasis;
+    currency?: Currency;
     service_line?: string;
   }) => request<{ id: string }>("/api/additional-services", { method: "POST", body }),
   editService: (
@@ -1102,6 +1103,7 @@ export const api = {
       summary?: string;
       fee: number | null;
       fee_basis: FeeBasis;
+      currency?: Currency;
       service_line?: string;
       active?: boolean;
     },

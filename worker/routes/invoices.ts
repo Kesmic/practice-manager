@@ -59,6 +59,7 @@ import {
 } from "../../shared/discounts";
 import { activeDiscount, consumeDiscount, releaseDiscount } from "../discounts";
 import { accrueCommission, cancelCommission } from "../commissions";
+import { currencyOf } from "../../shared/money";
 import {
   balanceDue,
   withholdingOn,
@@ -543,6 +544,12 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       serviceId: string | null;
     }> = [];
 
+    /*
+     * What this invoice is in, decided once and before any line is added. The client's
+     * subscription where they have one, otherwise cedis. Every line has to be in it.
+     */
+    const invoiceCurrency = currencyOf(subscription?.currency);
+
     if (period) {
       if (!subscription) {
         throw badRequest("That client has no subscription, so there is no month to bill.");
@@ -572,7 +579,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
 
     if (body.include_services !== false) {
       const { results } = await env.DB.prepare(
-        `SELECT cs.id, cs.name, cs.quoted_fee
+        `SELECT cs.id, cs.name, cs.quoted_fee, cs.currency
            FROM client_services cs
           WHERE cs.client_id = ? AND cs.status = 'delivered' AND cs.quoted_fee IS NOT NULL
             AND NOT EXISTS (
@@ -580,8 +587,20 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
             )`,
       )
         .bind(params.id)
-        .all<{ id: string; name: string; quoted_fee: number }>();
+        .all<{ id: string; name: string; quoted_fee: number; currency: string }>();
       for (const service of results) {
+        /*
+         * An invoice is in one currency. A piece of work quoted in dollars cannot be
+         * added to a cedi invoice as though the figure meant the same thing - nothing
+         * in the portal converts, and putting the number on anyway would bill the
+         * client an amount nobody ever quoted. It is refused, with the two currencies
+         * named, so somebody decides rather than the portal.
+         */
+        if (currencyOf(service.currency) !== currencyOf(invoiceCurrency)) {
+          throw badRequest(
+            `${service.name} is quoted in ${currencyOf(service.currency)} and this invoice is in ${currencyOf(invoiceCurrency)}. Nothing here converts between the two - re-quote that work in ${currencyOf(invoiceCurrency)}, or bill it on its own invoice.`,
+          );
+        }
         lines.push({
           description: service.name,
           quantity: 1,
@@ -621,7 +640,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
           number,
           params.id,
           dueOn,
-          subscription?.currency ?? "GHS",
+          invoiceCurrency,
           period,
           body.note?.trim()?.slice(0, 500) || null,
           withholdingRate || null,

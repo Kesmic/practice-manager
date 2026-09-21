@@ -42,7 +42,6 @@ import {
   TextInput,
   options,
 } from "./ui";
-import { formatMoney } from "../lib/format";
 
 export function SubscriptionAdmin() {
   const [data, setData] = useState<SubscriptionCatalogue | null>(null);
@@ -455,6 +454,7 @@ function ServicesCard({
   const [summary, setSummary] = useState("");
   const [fee, setFee] = useState("");
   const [basis, setBasis] = useState<FeeBasis>("fixed");
+  const [currency, setCurrency] = useState<string>(DEFAULT_CURRENCY);
 
   return (
     <section className="card">
@@ -463,8 +463,13 @@ function ServicesCard({
       </div>
       <div className="space-y-4 p-4">
         <p className="muted">
-          Work sold on its own, outside any tier. A fee can be fixed, a daily rate, or a
-          starting point to be quoted. Clients see these and can ask for them.
+          Work sold on its own, outside any package. A fee can be fixed, a daily rate,
+          or a starting point to be quoted, in either currency. Clients see these and
+          can ask for them.
+        </p>
+        <p className="hint">
+          Nothing converts between the two. A piece of work priced in dollars cannot go
+          on an invoice in cedis - it is re-quoted, or billed on its own invoice.
         </p>
 
         {data.services.length > 0 && (
@@ -484,7 +489,7 @@ function ServicesCard({
                 )}
                 <span className="ml-auto text-sm font-semibold tabular-nums">
                   {describeFee(service.fee, service.fee_basis, (n) =>
-                    formatMoney(n, service.currency),
+                    formatAmount(n, service.currency, { decimals: false }),
                   )}
                 </span>
                 <button
@@ -499,6 +504,7 @@ function ServicesCard({
                           summary: service.summary ?? "",
                           fee: service.fee,
                           fee_basis: service.fee_basis,
+                          currency: currencyOf(service.currency),
                           active: !service.active,
                         }),
                       service.active ? `${service.name} retired.` : `${service.name} restored.`,
@@ -513,7 +519,7 @@ function ServicesCard({
         )}
 
         <form
-          className="grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-[1fr,8rem,10rem,auto]"
+          className="grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-[1fr,7rem,9rem,9rem,auto]"
           onSubmit={(e) => {
             e.preventDefault();
             void guard(
@@ -523,6 +529,7 @@ function ServicesCard({
                   summary,
                   fee: fee.trim() === "" ? null : Number(fee),
                   fee_basis: basis,
+                  currency: currencyOf(currency),
                 }),
               `${name} added.`,
             ).then(() => {
@@ -564,12 +571,23 @@ function ServicesCard({
               </Select>
             )}
           </Field>
+          <Field label="Priced in">
+            {(id) => (
+              <Select
+                id={id}
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+              >
+                {options(CURRENCIES, CURRENCY_LABELS)}
+              </Select>
+            )}
+          </Field>
           <div className="flex items-end">
             <button type="submit" className="btn-secondary" disabled={busy || !name.trim()}>
               Add
             </button>
           </div>
-          <div className="sm:col-span-4">
+          <div className="sm:col-span-5">
             <Field label="What it is" hint="One line, shown to the client.">
               {(id) => (
                 <TextArea

@@ -67,7 +67,7 @@ import {
   type DiscountScope,
 } from "../../shared/discounts";
 import { activeDiscount } from "../discounts";
-import { CURRENCIES, DEFAULT_CURRENCY } from "../../shared/money";
+import { CURRENCIES, DEFAULT_CURRENCY, currencyOf } from "../../shared/money";
 import { sendToPerson } from "../email";
 
 // ---------------------------------------------------------------------------
@@ -433,12 +433,16 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       summary?: string;
       fee?: unknown;
       fee_basis?: unknown;
+      currency?: unknown;
       service_line?: string;
     }>(request);
 
     const name = requireString(body.name, "name", { max: 120 });
     const basis = requireEnum(body.fee_basis ?? "fixed", "fee_basis", FEE_BASES);
     const fee = optionalAmount(body.fee, "The fee");
+    const currency = body.currency
+      ? requireEnum(body.currency, "currency", CURRENCIES)
+      : DEFAULT_CURRENCY;
 
     const clash = await env.DB.prepare(
       `SELECT id FROM additional_services WHERE name = ? COLLATE NOCASE`,
@@ -454,8 +458,9 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     await env.DB.prepare(
       `INSERT INTO additional_services
-         (id, name, summary, fee, fee_basis, service_line, position, created_at, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, name, summary, fee, fee_basis, currency, service_line, position,
+          created_at, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         id,
@@ -463,6 +468,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         body.summary?.trim() ? body.summary.trim().slice(0, 400) : null,
         fee,
         basis,
+        currency,
         body.service_line?.trim() || null,
         position?.n ?? 0,
         nowIso(),
@@ -480,6 +486,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       summary?: string;
       fee?: unknown;
       fee_basis?: unknown;
+      currency?: unknown;
       service_line?: string;
       active?: unknown;
     }>(request);
@@ -487,6 +494,9 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const name = requireString(body.name, "name", { max: 120 });
     const basis = requireEnum(body.fee_basis ?? "fixed", "fee_basis", FEE_BASES);
     const fee = optionalAmount(body.fee, "The fee");
+    const currency = body.currency
+      ? requireEnum(body.currency, "currency", CURRENCIES)
+      : DEFAULT_CURRENCY;
 
     const clash = await env.DB.prepare(
       `SELECT id FROM additional_services WHERE name = ? COLLATE NOCASE AND id <> ?`,
@@ -497,7 +507,8 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     const result = await env.DB.prepare(
       `UPDATE additional_services
-          SET name = ?, summary = ?, fee = ?, fee_basis = ?, service_line = ?, active = ?
+          SET name = ?, summary = ?, fee = ?, fee_basis = ?, currency = ?,
+              service_line = ?, active = ?
         WHERE id = ?`,
     )
       .bind(
@@ -505,6 +516,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         body.summary?.trim() ? body.summary.trim().slice(0, 400) : null,
         fee,
         basis,
+        currency,
         body.service_line?.trim() || null,
         body.active === false || body.active === 0 ? 0 : 1,
         params.id,
@@ -892,16 +904,24 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     let name = body.name?.trim() ?? "";
     let serviceId: string | null = null;
+    /*
+     * What this piece of work is quoted in. The catalogue's currency where it came from
+     * the catalogue, otherwise cedis. It stays on the row because an invoice is in one
+     * currency and nothing converts: a piece of work quoted in dollars cannot join a
+     * cedi invoice, and the invoice route says so rather than adding the figure anyway.
+     */
+    let quotedIn = DEFAULT_CURRENCY as string;
     if (body.service_id) {
       const service = await env.DB.prepare(
-        `SELECT id, name FROM additional_services WHERE id = ?`,
+        `SELECT id, name, currency FROM additional_services WHERE id = ?`,
       )
         .bind(body.service_id)
-        .first<{ id: string; name: string }>();
+        .first<{ id: string; name: string; currency: string }>();
       if (!service) throw notFound("There is no such service.");
       serviceId = service.id;
       // Copied, so the record survives the catalogue being reorganised.
       name = service.name;
+      quotedIn = currencyOf(service.currency);
     }
     if (!name) throw badRequest("Say which service this is.");
 
@@ -913,9 +933,9 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     await env.DB.prepare(
       `INSERT INTO client_services
-         (id, client_id, service_id, name, status, quoted_fee, note,
+         (id, client_id, service_id, name, status, quoted_fee, currency, note,
           quoted_at, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         id,
@@ -924,6 +944,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         name.slice(0, 120),
         status,
         optionalAmount(body.quoted_fee, "The fee"),
+        quotedIn,
         body.note?.trim()?.slice(0, 500) || null,
         timestamp,
         actor.id,
