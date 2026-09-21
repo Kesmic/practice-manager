@@ -1248,6 +1248,47 @@ export const api = {
   partnerChangePassword: (current: string, password: string) =>
     request<void>("/api/partner/password", { method: "POST", body: { current, password } }),
 
+  partnerAgreement: () =>
+    request<{
+      agreement: {
+        id: string;
+        title: string;
+        body: string;
+        status: "issued" | "signed" | "superseded";
+        issued_at: string;
+        signed_at: string | null;
+        typed_name: string | null;
+        commission_rate: number;
+        commission_months: number;
+        hold_days: number;
+        has_signature: boolean;
+      } | null;
+      full_name: string;
+    }>("/api/partner/agreement"),
+
+  /* The image itself as the body, the way a staff specimen is uploaded. */
+  uploadPartnerSignature: async (file: File) => {
+    const response = await fetch("/api/partner/agreement/signature", {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file,
+      credentials: "same-origin",
+    });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => ({ error: "Upload failed." }));
+      throw new ApiRequestError(
+        response.status,
+        (problem as { error?: string }).error ?? "Upload failed.",
+      );
+    }
+  },
+
+  signPartnerAgreement: (typedName: string) =>
+    request<{ signed_at: string }>("/api/partner/agreement/sign", {
+      method: "POST",
+      body: { typed_name: typedName },
+    }),
+
   partnerPipeline: () => request<PartnerPipeline>("/api/partner/prospects"),
   partnerStatement: () => request<PartnerStatement>("/api/partner/statement"),
   partnerPackages: () =>

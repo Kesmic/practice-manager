@@ -13,6 +13,7 @@ import { PartnerSessionProvider, usePartnerSession } from "../lib/partner-auth";
 const LINKS = [
   { to: "/partner", label: "My pipeline", end: true },
   { to: "/partner/earnings", label: "What I have earned" },
+  { to: "/partner/engagement", label: "My engagement" },
   { to: "/partner/account", label: "My details" },
 ];
 
@@ -69,6 +70,22 @@ function Shell() {
           </div>
         </div>
       </header>
+
+      {/*
+        Said at the top of every page until it is done, because until it is, registering
+        a business and sending a proposal are both refused - and a refusal somebody meets
+        halfway through typing is a worse way to learn that than a line here.
+      */}
+      {!partner.agreement_signed_at && (
+        <div className="border-b border-amber-200 bg-amber-50">
+          <div className="mx-auto max-w-5xl px-4 py-2.5 text-sm text-amber-900">
+            <NavLink to="/partner/engagement" className="font-semibold underline">
+              Sign your engagement
+            </NavLink>{" "}
+            before registering a business or sending a proposal. It takes a minute.
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto max-w-5xl px-4 py-6">
         <Outlet />

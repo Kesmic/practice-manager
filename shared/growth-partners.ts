@@ -381,3 +381,24 @@ export function whyNotAProspect(input: {
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Signing the engagement
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether the name somebody typed into a signature box is the name on their account.
+ *
+ * Case and spacing are taken out. "ama serwaa" is the same person as "Ama  Serwaa", and
+ * refusing over a capital letter teaches people to distrust the box rather than to read
+ * what is above it. Anything more than that - initials, a middle name dropped, a married
+ * name - is refused, because the point of the box is that the name recorded is the name
+ * the firm holds.
+ *
+ * Here rather than in the Worker so the form can say which name to type before somebody
+ * gets it wrong, and so the two cannot disagree about what counts as a match.
+ */
+export function signatureNameMatches(typed: string, onAccount: string): boolean {
+  const squash = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+  return squash(typed) === squash(onAccount) && squash(typed).length > 0;
+}

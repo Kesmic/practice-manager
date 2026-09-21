@@ -71,6 +71,7 @@ import {
   type ProspectStage,
 } from "../../shared/growth-partners";
 import { readHistory } from "../commissions";
+import { assertSigned } from "./partner-agreement";
 
 /** One sentence for every way a sign-in can fail, for the client portal's reasons. */
 const SIGN_IN_REFUSAL = "That email address and password do not match an account.";
@@ -465,6 +466,9 @@ export function registerPartnerRoutes(router: Router<Env>): void {
       note?: string;
     }>(request);
 
+    // Nothing is sold in the firm's name before the engagement is signed.
+    await assertSigned(env, actor.id);
+
     const businessName = requireString(body.business_name, "business_name", { max: 160 });
     const refusal = whyNotAProspect({
       business_name: businessName,
@@ -722,6 +726,8 @@ export function registerPartnerRoutes(router: Router<Env>): void {
    */
   router.post("/api/partner/proposals/:id/send", async ({ request, env, params }) => {
     const actor = await requirePartner(env, request);
+    await assertSigned(env, actor.id);
+
     const proposal = await env.DB.prepare(
       `SELECT p.id, p.prospect_id, p.reference, p.status, p.prepared_for, p.salutation,
               pr.contact_email, pr.contact_name, pr.business_name, pr.stage

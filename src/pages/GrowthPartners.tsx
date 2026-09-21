@@ -188,6 +188,23 @@ export function GrowthPartners() {
                 {row.commission_rate}% · {row.commission_months} months ·{" "}
                 {row.hold_days}-day hold
               </span>
+              {/*
+                Whether they may sell at all. Registering and proposing are refused until
+                this is signed, so it is worth seeing at a glance rather than in a list
+                of unanswered questions later.
+              */}
+              {row.agreement_signed_at ? (
+                <a
+                  className="link text-xs"
+                  href={`/api/growth-partners/${row.id}/agreement/copy`}
+                >
+                  Engagement signed {formatDate(row.agreement_signed_at)}
+                </a>
+              ) : (
+                <span className="pill bg-amber-50 text-amber-800 ring-amber-200">
+                  Engagement not signed
+                </span>
+              )}
               {!row.has_password && row.status === "active" && (
                 <span className="pill bg-amber-50 text-amber-800 ring-amber-200">
                   Has not set a password

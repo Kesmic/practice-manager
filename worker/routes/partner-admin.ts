@@ -37,6 +37,7 @@ import { MIN_SUPERVISOR_ROLE } from "../../shared/workflow";
 import { MIN_HR_ADMIN_ROLE } from "../../shared/hr";
 import { PARTNER_INVITATION_TTL_DAYS } from "../partner-auth";
 import { issueInvitation } from "./partners";
+import { issueAgreement } from "./partner-agreement";
 import { readSettings } from "./settings";
 import { sendToPerson } from "../email";
 import { renderProposal, type ProposalDocument } from "../../shared/proposal-document";
@@ -110,10 +111,16 @@ export function registerPartnerAdminRoutes(router: Router<Env>): void {
     }>(request);
 
     const partner = await env.DB.prepare(
-      `SELECT id, full_name, email, status FROM growth_partners WHERE id = ?`,
+      `SELECT id, full_name, email, business_name, status FROM growth_partners WHERE id = ?`,
     )
       .bind(params.id)
-      .first<{ id: string; full_name: string; email: string; status: PartnerState }>();
+      .first<{
+        id: string;
+        full_name: string;
+        email: string;
+        business_name: string | null;
+        status: PartnerState;
+      }>();
     if (!partner) throw notFound("There is no such growth partner.");
     if (partner.status === "ended") {
       throw badRequest("That engagement has ended. Start a fresh one rather than reviving it.");
@@ -142,6 +149,24 @@ export function registerPartnerAdminRoutes(router: Router<Env>): void {
     )
       .bind(rate, months, holdDays, timestamp, actor.id, timestamp, params.id)
       .run();
+
+    /*
+     * Their engagement is cut now, with these terms written into it. Before the link
+     * goes out, so that the first thing waiting for them when they sign in is the
+     * document they have to sign before selling anything.
+     */
+    await issueAgreement(
+      env,
+      {
+        id: params.id,
+        full_name: partner.full_name,
+        business_name: partner.business_name,
+        commission_rate: rate,
+        commission_months: months,
+        hold_days: holdDays,
+      },
+      actor.id,
+    );
 
     const link = await issueInvitation(
       env,
@@ -209,14 +234,44 @@ export function registerPartnerAdminRoutes(router: Router<Env>): void {
   router.post("/api/growth-partners/:id/invite", async ({ request, env, params }) => {
     await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const partner = await env.DB.prepare(
-      `SELECT id, full_name, email, status FROM growth_partners WHERE id = ?`,
+      `SELECT id, full_name, email, business_name, status, commission_rate,
+              commission_months, hold_days
+         FROM growth_partners WHERE id = ?`,
     )
       .bind(params.id)
-      .first<{ id: string; full_name: string; email: string; status: PartnerState }>();
+      .first<{
+        id: string;
+        full_name: string;
+        email: string;
+        business_name: string | null;
+        status: PartnerState;
+        commission_rate: number;
+        commission_months: number;
+        hold_days: number;
+      }>();
     if (!partner) throw notFound("There is no such growth partner.");
     if (partner.status !== "active") {
       throw badRequest("Admit them first. A link is no use to somebody who cannot sign in.");
     }
+
+    /*
+     * Cuts their engagement if they have not got one. A no-op where one already stands,
+     * signed or not, so this cannot replace a signed engagement with a fresh unsigned
+     * one - and it means a partner admitted before engagements existed gets theirs the
+     * next time anybody sends them a link.
+     */
+    await issueAgreement(
+      env,
+      {
+        id: partner.id,
+        full_name: partner.full_name,
+        business_name: partner.business_name,
+        commission_rate: partner.commission_rate,
+        commission_months: partner.commission_months,
+        hold_days: partner.hold_days,
+      },
+      null,
+    );
 
     const link = await issueInvitation(
       env,

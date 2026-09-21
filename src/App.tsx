@@ -25,6 +25,7 @@ import { PartnerInvitation } from "./pages/partner/PartnerInvitation";
 import { PartnerPipeline } from "./pages/partner/PartnerPipeline";
 import { PartnerEarnings } from "./pages/partner/PartnerEarnings";
 import { PartnerAccount } from "./pages/partner/PartnerAccount";
+import { PartnerAgreement } from "./pages/partner/PartnerAgreement";
 import { ProposalView } from "./pages/ProposalView";
 import { GrowthPartners } from "./pages/GrowthPartners";
 import { ClientLogin } from "./pages/client/ClientLogin";
@@ -164,6 +165,7 @@ export function App() {
       <Route path="/partner" element={<PartnerPortal />}>
         <Route index element={<PartnerPipeline />} />
         <Route path="earnings" element={<PartnerEarnings />} />
+        <Route path="engagement" element={<PartnerAgreement />} />
         <Route path="account" element={<PartnerAccount />} />
       </Route>
 

@@ -22,6 +22,7 @@ import {
   holdIsLive,
   mayMoveProspect,
   prospectKey,
+  signatureNameMatches,
   whyNotAProspect,
   type CommissionHistory,
 } from "../shared/growth-partners";
@@ -312,4 +313,25 @@ test("a business with no name in it is refused", () => {
     /email address/,
   );
   assert.equal(whyNotAProspect({ business_name: "Acme Trading Ltd" }), null);
+});
+
+// ---------------------------------------------------------------------------
+// Signing the engagement
+// ---------------------------------------------------------------------------
+
+test("somebody may sign their own name however they space or capitalise it", () => {
+  // Refusing over a capital letter teaches people to distrust the box rather than to
+  // read what is above it.
+  assert.equal(signatureNameMatches("Ama Serwaa", "Ama Serwaa"), true);
+  assert.equal(signatureNameMatches("  ama   serwaa ", "Ama Serwaa"), true);
+  assert.equal(signatureNameMatches("AMA SERWAA", "Ama Serwaa"), true);
+});
+
+test("but not somebody else's, and not initials", () => {
+  // The point of the box is that the name recorded is the name the firm holds.
+  assert.equal(signatureNameMatches("A. Serwaa", "Ama Serwaa"), false);
+  assert.equal(signatureNameMatches("Kwame Owusu", "Ama Serwaa"), false);
+  assert.equal(signatureNameMatches("Ama", "Ama Serwaa"), false);
+  assert.equal(signatureNameMatches("", "Ama Serwaa"), false);
+  assert.equal(signatureNameMatches("   ", "   "), false, "nothing signs nothing");
 });
