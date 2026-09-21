@@ -13,6 +13,7 @@ import type { StaffAttachment, StaffFileKind } from "@shared/staff-files";
 import type { SignatureSpecimen } from "@shared/signatures";
 import type { CriterionUnit, FeeBasis, ServiceState } from "@shared/subscriptions";
 import type { TaxBasis, Totals } from "@shared/invoices";
+import type { DiscountKind, DiscountRun, DiscountScope } from "@shared/discounts";
 import type {
   ClientInvoiceDetail,
   ClientInvoiceList,
@@ -1087,6 +1088,26 @@ export const api = {
       active?: boolean;
     },
   ) => request<void>(`/api/additional-services/${id}`, { method: "PATCH", body }),
+
+  /*
+   * Discounts. Granting one is Partner business and the Worker says so again; this is
+   * only the shape of the request.
+   */
+  grantDiscount: (
+    clientId: string,
+    body: {
+      kind: DiscountKind;
+      value: number;
+      applies_to: DiscountScope;
+      runs: DiscountRun;
+      invoice_count?: number | null;
+      until_on?: string | null;
+      reason?: string;
+    },
+  ) => request<{ id: string }>(`/api/clients/${clientId}/discounts`, { method: "POST", body }),
+
+  endDiscount: (id: string, reason: string) =>
+    request<void>(`/api/discounts/${id}/end`, { method: "POST", body: { reason } }),
 
   subscriptions: () => request<SubscriptionsOverview>("/api/subscriptions"),
   clientSubscription: (clientId: string) =>

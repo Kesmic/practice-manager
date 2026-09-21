@@ -56,6 +56,17 @@ import {
   type Figure,
   type ServiceState,
 } from "../../shared/subscriptions";
+import {
+  DISCOUNT_KINDS,
+  DISCOUNT_RUNS,
+  DISCOUNT_SCOPES,
+  describeDiscount,
+  whyNotADiscount,
+  type DiscountKind,
+  type DiscountRun,
+  type DiscountScope,
+} from "../../shared/discounts";
+import { activeDiscount } from "../discounts";
 import { sendToPerson } from "../email";
 
 // ---------------------------------------------------------------------------
@@ -552,6 +563,26 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       ).bind(params.id),
     ]);
 
+    /*
+     * Read through `activeDiscount` first, which retires one that has stopped applying.
+     * Without that pass the screen would show a discount that ran until March as still
+     * live in April, and the button offering a new one would fail on the index.
+     */
+    await activeDiscount(env, params.id);
+    const discounts = await env.DB.prepare(
+      `SELECT d.id, d.kind, d.value, d.applies_to, d.runs, d.invoice_count, d.until_on,
+              d.used_count, d.reason, d.status, d.created_at, d.ended_at, d.ended_reason,
+              g.full_name AS granted_by_name, e.full_name AS ended_by_name
+         FROM client_discounts d
+         LEFT JOIN users g ON g.id = d.granted_by
+         LEFT JOIN users e ON e.id = d.ended_by
+        WHERE d.client_id = ?
+        ORDER BY d.status = 'active' DESC, d.created_at DESC
+        LIMIT 20`,
+    )
+      .bind(params.id)
+      .all();
+
     return json({
       ...catalogue,
       subscription: subscription
@@ -570,6 +601,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
        */
       client_services: services.results,
       logins: logins.results,
+      discounts: discounts.results,
     });
   });
 
@@ -1053,6 +1085,124 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       .bind(params.id)
       .run();
     if (!result.meta.changes) throw notFound("There is no such login.");
+    return noContent();
+  });
+
+  // -------------------------------------------------------------------------
+  // Discounts
+  // -------------------------------------------------------------------------
+  //
+  // Partner business throughout. A discount is the fee by another name, and the grade
+  // that may change a fee is the grade that may take money off one.
+
+  /**
+   * Puts a client on a discount.
+   *
+   * One at a time, and the database is what holds that: a partial unique index on the
+   * active row, rather than a check here that two people pressing the button at the same
+   * moment could both pass. A Partner who wants different terms ends the current
+   * discount and grants another, and both rows stay readable afterwards.
+   */
+  router.post("/api/clients/:id/discounts", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{
+      kind?: unknown;
+      value?: unknown;
+      applies_to?: unknown;
+      runs?: unknown;
+      invoice_count?: unknown;
+      until_on?: string;
+      reason?: string;
+    }>(request);
+
+    const client = await env.DB.prepare(`SELECT id, name FROM clients WHERE id = ?`)
+      .bind(params.id)
+      .first<{ id: string; name: string }>();
+    if (!client) throw notFound("There is no such client.");
+
+    const kind = requireEnum(body.kind, "kind", DISCOUNT_KINDS) as DiscountKind;
+    const appliesTo = requireEnum(
+      body.applies_to,
+      "applies_to",
+      DISCOUNT_SCOPES,
+    ) as DiscountScope;
+    const runs = requireEnum(body.runs, "runs", DISCOUNT_RUNS) as DiscountRun;
+    const value = Number(body.value);
+    const invoiceCount =
+      runs === "count" ? Math.trunc(Number(body.invoice_count)) : null;
+    const untilOn = runs === "until" ? body.until_on?.trim() || null : null;
+    const now = new Date().toISOString().slice(0, 10);
+
+    const refusal = whyNotADiscount({
+      kind,
+      value,
+      runs,
+      invoice_count: invoiceCount,
+      until_on: untilOn,
+      today: now,
+    });
+    if (refusal) throw badRequest(refusal);
+
+    /*
+     * Retires whatever has stopped applying before asking whether one is live, so a
+     * client whose discount ran out last month is not told they already have one.
+     */
+    const existing = await activeDiscount(env, params.id);
+    if (existing) {
+      throw conflict(
+        `${client.name} is already on a discount - ${describeDiscount(existing, (n) => String(n))}. End that one first.`,
+      );
+    }
+
+    const id = newId();
+    const timestamp = nowIso();
+    await env.DB.prepare(
+      `INSERT INTO client_discounts
+         (id, client_id, kind, value, applies_to, runs, invoice_count, until_on,
+          reason, status, granted_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+    )
+      .bind(
+        id,
+        params.id,
+        kind,
+        value,
+        appliesTo,
+        runs,
+        invoiceCount,
+        untilOn,
+        body.reason?.trim()?.slice(0, 300) || null,
+        actor.id,
+        timestamp,
+        timestamp,
+      )
+      .run();
+
+    return json({ id }, 201);
+  });
+
+  /**
+   * Ends a discount early.
+   *
+   * The row stays, with who ended it and why. Invoices already issued keep the figures
+   * they were issued with: ending a discount is a decision about what happens next, not
+   * a correction to documents the client is already holding.
+   */
+  router.post("/api/discounts/:id/end", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ reason?: string }>(request);
+    const reason = requireString(body.reason, "reason", { max: 300 });
+
+    const result = await env.DB.prepare(
+      `UPDATE client_discounts
+          SET status = 'ended', ended_at = ?, ended_by = ?, ended_reason = ?, updated_at = ?
+        WHERE id = ? AND status = 'active'`,
+    )
+      .bind(nowIso(), actor.id, reason, nowIso(), params.id)
+      .run();
+    if (!result.meta.changes) {
+      throw notFound("There is no discount running under that reference.");
+    }
     return noContent();
   });
 }

@@ -24,6 +24,12 @@ import type {
   DeclineGround,
 } from "./allocations";
 import type { ContractField, ContractTemplate } from "./contract-fields";
+import type {
+  DiscountKind,
+  DiscountRun,
+  DiscountScope,
+  DiscountState,
+} from "./discounts";
 import type { RemovalAdvice, RemovalFootprint } from "./removal";
 import type { ReportDuty, ReportSchedule, ReportState } from "./status-reports";
 import type { Stage, StageProgress } from "./onboarding";
@@ -1099,6 +1105,28 @@ export interface SubscriptionEventRow {
   actor_name: string | null;
 }
 
+/**
+ * A discount as a screen reads it. The live one is the row with status 'active'; the
+ * rest are the trail, which is why they are never deleted.
+ */
+export interface ClientDiscountRow {
+  id: string;
+  kind: DiscountKind;
+  value: number;
+  applies_to: DiscountScope;
+  runs: DiscountRun;
+  invoice_count: number | null;
+  until_on: string | null;
+  used_count: number;
+  reason: string | null;
+  status: DiscountState;
+  created_at: string;
+  ended_at: string | null;
+  ended_reason: string | null;
+  granted_by_name: string | null;
+  ended_by_name: string | null;
+}
+
 export interface ClientSubscriptionDetail extends SubscriptionCatalogue {
   /** What this client has bought, as opposed to the menu on `services`. */
   client_services: ClientServiceRow[];
@@ -1108,6 +1136,8 @@ export interface ClientSubscriptionDetail extends SubscriptionCatalogue {
   assessment: Assessment | null;
   history: SubscriptionEventRow[];
   logins: ClientLoginRow[];
+  /** The live discount first, then the ones that have run their course. */
+  discounts: ClientDiscountRow[];
 }
 
 // --------------------------------------------------------------------- tax
@@ -1139,6 +1169,9 @@ export interface InvoiceSummary {
   /** What the client was asked to pay: the total, less anything withheld on its face. */
   balance_due: number;
   withholding_amount: number;
+  /** Taken off before tax, so `net` is already net of it. Zero when there was none. */
+  discount_amount: number;
+  discount_label: string | null;
   period_label: string | null;
   reminders_sent: number;
   last_reminder_at: string | null;
@@ -1232,6 +1265,8 @@ export interface ClientInvoiceList {
     gross: number;
     balance_due: number;
     withholding_amount: number;
+    discount_amount: number;
+    discount_label: string | null;
     period_label: string | null;
     standing: Standing;
   }>;
@@ -1251,6 +1286,8 @@ export interface ClientInvoiceDetail {
     gross: number;
     balance_due: number;
     withholding_amount: number;
+    discount_amount: number;
+    discount_label: string | null;
     period_label: string | null;
     note: string | null;
   };

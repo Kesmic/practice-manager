@@ -73,6 +73,8 @@ export function ClientInvoiceDetail() {
           currency={invoice.currency}
           withheld={invoice.withholding_amount}
           balanceDue={invoice.balance_due}
+          discount={invoice.discount_amount}
+          discountLabel={invoice.discount_label}
         />
       </section>
 
