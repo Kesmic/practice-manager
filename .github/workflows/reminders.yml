@@ -1,0 +1,60 @@
+name: Invoice reminders
+
+# The portal's nightly chase of overdue invoices.
+#
+# This lives here rather than in the portal because the portal is a Cloudflare **Pages**
+# project, not a Worker, and Pages has no cron triggers. wrangler.toml explains why it is
+# on Pages at all: portal.kesmic.org is registered with Wix, Wix will not delegate
+# nameservers, and only Pages accepts a CNAME from external DNS.
+#
+# So the schedule is here, and it makes one authenticated request a day. That is not a
+# workaround to be embarrassed about - every run is in the Actions log with its outcome,
+# which is more visible than a cron trigger would have been.
+on:
+  schedule:
+    # 07:00 UTC, which is 07:00 in Accra. Early enough that a reminder is waiting when
+    # somebody opens their email, late enough that it is not a 3am timestamp on a letter
+    # about money.
+    - cron: "0 7 * * *"
+  # So a Partner can run the chase by hand without waiting for tomorrow.
+  workflow_dispatch:
+
+concurrency:
+  group: invoice-reminders
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    name: Send today's reminders
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call the portal
+        env:
+          PORTAL_URL: ${{ vars.PORTAL_URL || 'https://portal.kesmic.org' }}
+          REMINDER_SECRET: ${{ secrets.REMINDER_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${REMINDER_SECRET}" ]; then
+            echo "REMINDER_SECRET is not set, so the portal would refuse this anyway."
+            echo "Add it under Settings -> Secrets and variables -> Actions, and set the"
+            echo "same value on the Pages project with:"
+            echo "  wrangler pages secret put REMINDER_SECRET"
+            exit 1
+          fi
+
+          # --fail-with-body so a refusal prints the portal's own message rather than an
+          # exit code nobody can act on.
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 120 \
+            --request POST \
+            --header "X-Reminder-Secret: ${REMINDER_SECRET}" \
+            --header "Content-Length: 0" \
+            "${PORTAL_URL}/api/invoices/run-reminders")
+
+          echo "${response}"
+          echo "### Invoice reminders" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```json' >> "${GITHUB_STEP_SUMMARY}"
+          echo "${response}" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"

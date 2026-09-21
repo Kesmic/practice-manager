@@ -17,6 +17,13 @@ import { StatusReports } from "./pages/StatusReports";
 import { Guide } from "./pages/Guide";
 import { Handbook } from "./pages/Handbook";
 import { Intake } from "./pages/Intake";
+import { ClientPortal, ClientPublic } from "./components/ClientLayout";
+import { ClientLogin } from "./pages/client/ClientLogin";
+import { ClientInvitation } from "./pages/client/ClientInvitation";
+import { ClientSubscription } from "./pages/client/ClientSubscription";
+import { ClientInvoices } from "./pages/client/ClientInvoices";
+import { ClientInvoiceDetail } from "./pages/client/ClientInvoiceDetail";
+import { ClientAccount } from "./pages/client/ClientAccount";
 import { Login } from "./pages/Login";
 import { MyProfile } from "./pages/MyProfile";
 import { Onboarding } from "./pages/Onboarding";
@@ -25,6 +32,9 @@ import { People } from "./pages/People";
 import { PortalAdmin } from "./pages/PortalAdmin";
 import { Notifications } from "./pages/Notifications";
 import { Reports } from "./pages/Reports";
+import { Subscriptions } from "./pages/Subscriptions";
+import { Invoices } from "./pages/Invoices";
+import { InvoiceDetail } from "./pages/InvoiceDetail";
 import { Setup } from "./pages/Setup";
 import { TaskDetail } from "./pages/TaskDetail";
 import { Tasks } from "./pages/Tasks";
@@ -89,6 +99,35 @@ export function App() {
       */}
       <Route path="/request/:kind/:token" element={<Intake />} />
 
+      {/*
+        The client portal. Outside Protected and outside Layout, because a client is not
+        a user of this portal - they have their own session, their own cookie and their
+        own shell. Nothing under /client can reach a staff page, and nothing above can
+        reach these.
+      */}
+      <Route
+        path="/client/login"
+        element={
+          <ClientPublic>
+            <ClientLogin />
+          </ClientPublic>
+        }
+      />
+      <Route
+        path="/client/invitation/:token"
+        element={
+          <ClientPublic>
+            <ClientInvitation />
+          </ClientPublic>
+        }
+      />
+      <Route path="/client" element={<ClientPortal />}>
+        <Route index element={<ClientSubscription />} />
+        <Route path="invoices" element={<ClientInvoices />} />
+        <Route path="invoices/:id" element={<ClientInvoiceDetail />} />
+        <Route path="account" element={<ClientAccount />} />
+      </Route>
+
       <Route
         element={
           <Protected>
@@ -113,6 +152,30 @@ export function App() {
         <Route path="/my-clients" element={<MyClients />} />
         <Route path="/status-reports" element={<StatusReports />} />
         <Route path="/engagements" element={<Engagements />} />
+        <Route
+          path="/subscriptions"
+          element={
+            <Protected minimum="manager">
+              <Subscriptions />
+            </Protected>
+          }
+        />
+        <Route
+          path="/invoices"
+          element={
+            <Protected minimum="manager">
+              <Invoices />
+            </Protected>
+          }
+        />
+        <Route
+          path="/invoices/:id"
+          element={
+            <Protected minimum="manager">
+              <InvoiceDetail />
+            </Protected>
+          }
+        />
         <Route path="/templates" element={<Templates />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/account" element={<Account />} />

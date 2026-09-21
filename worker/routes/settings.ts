@@ -24,6 +24,46 @@ import { emailDiagnosis, sendTestEmail } from "../email";
 const DEFAULTS: Record<string, string> = {
   firm_name: "Kesmic Consulting",
   firm_website: "https://www.kesmic.org",
+
+  /*
+   * The letterhead on an invoice. Empty until a Partner fills them in; an invoice with
+   * no address is still a valid invoice, and inventing one would be worse.
+   */
+  firm_address: "",
+  firm_city: "",
+  firm_phone: "",
+  firm_finance_email: "",
+  firm_tax_id: "",
+
+  /* Where clients are asked to send money. Printed at the foot of every invoice. */
+  bank_account_name: "",
+  bank_account_number: "",
+  bank_name: "",
+  bank_branch: "",
+  bank_swift: "",
+
+  /**
+   * Withholding the firm expects clients to deduct, shown on the face of an invoice.
+   *
+   * Empty or zero means the firm does not anticipate it, and an invoice shows no
+   * deduction - which is right for a client who does not withhold. 7.5 is the rate on
+   * services here, and the invoices the firm already issues use it.
+   */
+  withholding_rate: "",
+  withholding_label: "Withholding tax",
+
+  /**
+   * How an invoice is numbered.
+   *
+   * `{CLIENT}` is the client's code, `{YYYY}` `{MM}` the period, `{SEQ}` a running
+   * number. The firm's own invoices read CPL202608 - client code and month, with no
+   * sequence - so that is the default. A format without {SEQ} can collide if a client
+   * is billed twice in a month, and the portal falls back to appending one.
+   */
+  invoice_number_format: "{CLIENT}{YYYY}{MM}",
+
+  /** Days from issue to due. The firm's own invoices say Net 15. */
+  invoice_terms_days: "15",
   md_name: "",
   md_title: "Managing Director",
   welcome_message: "",

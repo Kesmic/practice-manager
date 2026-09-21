@@ -39,6 +39,8 @@ import {
   options,
 } from "../components/ui";
 import { formatDate } from "../lib/format";
+import { SubscriptionAdmin } from "../components/SubscriptionAdmin";
+import { InvoicingAdmin } from "../components/InvoicingAdmin";
 
 type Tab =
   | "documents"
@@ -48,6 +50,8 @@ type Tab =
   | "email"
   | "staff_email"
   | "tools"
+  | "subscriptions"
+  | "invoicing"
   | "visibility"
   | "signin"
   | "erase";
@@ -60,6 +64,8 @@ const TABS: Array<[Tab, string]> = [
   ["email", "Email notifications"],
   ["staff_email", "Staff email"],
   ["tools", "Tools and certifications"],
+  ["subscriptions", "Subscription tiers"],
+  ["invoicing", "Invoicing and tax"],
   ["visibility", "Who sees what"],
   ["signin", "Sign-in security"],
   ["erase", "Erase data"],
@@ -148,6 +154,10 @@ export function PortalAdmin() {
         <StaffEmailCard canEdit={can("partner")} />
       ) : tab === "tools" ? (
         <ToolCatalogueCard canEdit={can("partner")} />
+      ) : tab === "subscriptions" ? (
+        <SubscriptionAdmin />
+      ) : tab === "invoicing" ? (
+        <InvoicingAdmin />
       ) : tab === "visibility" ? (
         <VisibilityAdmin setError={setError} setNotice={setNotice} />
       ) : tab === "signin" ? (

@@ -59,6 +59,12 @@ const NAV: NavItem[] = [
     badgeNoun: "status report",
   },
   { to: "/engagements", label: "Engagements", area: "engagements", section: "Work" },
+  /*
+   * Manager and above. Both are about money - what clients pay and what they owe - and
+   * the client record already draws that line at Manager for its own fee figures.
+   */
+  { to: "/subscriptions", label: "Subscriptions", section: "Work", minimum: "manager" },
+  { to: "/invoices", label: "Invoices", section: "Work", minimum: "manager" },
   { to: "/templates", label: "Job templates", area: "templates", section: "Work" },
   { to: "/reports", label: "Reports", area: "reports", section: "Work" },
 

@@ -121,6 +121,34 @@ export function formatMoney(
   }
 }
 
+/**
+ * Money to the pesewa, for anything that has to add up in a column.
+ *
+ * `formatMoney` above rounds to whole cedis, which is right for a fee on a card - "GHS
+ * 4,500 a month" - and wrong for an invoice. Rounded, a tax line of 112.50 prints as 113
+ * and a column of them no longer sums to the total printed beneath it. An invoice whose
+ * total does not equal its own column is the one thing an invoice must never do.
+ */
+export function formatMoneyExact(
+  amount: number | null | undefined,
+  currency = "GHS",
+): string {
+  if (amount === null || amount === undefined) return "-";
+  try {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toLocaleString("en-GB", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+}
+
 export function initials(name: string | null | undefined): string {
   if (!name) return "?";
   return name

@@ -16,6 +16,14 @@ export interface Env {
    * refuses to run once any user exists, so this cannot be replayed.
    */
   BOOTSTRAP_SECRET?: string;
+  /**
+   * Authorises the nightly invoice-reminder run.
+   *
+   * This is a Cloudflare Pages project, which has no cron triggers of its own, so the
+   * schedule lives in a GitHub Actions workflow that calls the endpoint once a day with
+   * this value. Unset means nobody may run it, never that anybody may.
+   */
+  REMINDER_SECRET?: string;
   /** Session lifetime in days. Defaults to 7. */
   SESSION_TTL_DAYS?: string;
   /**

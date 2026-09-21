@@ -11,6 +11,20 @@ import type { ErasePreview, EraseScope } from "@shared/erase";
 import type { Visibility } from "@shared/visibility";
 import type { StaffAttachment, StaffFileKind } from "@shared/staff-files";
 import type { SignatureSpecimen } from "@shared/signatures";
+import type { CriterionUnit, FeeBasis, ServiceState } from "@shared/subscriptions";
+import type { TaxBasis, Totals } from "@shared/invoices";
+import type {
+  ClientInvoiceDetail,
+  ClientInvoiceList,
+  ClientPortalSubscription,
+  ClientPortalUser,
+  ClientSubscriptionDetail,
+  InvoiceDetail,
+  InvoiceList,
+  SubscriptionCatalogue,
+  SubscriptionsOverview,
+  TaxLineRow,
+} from "@shared/types";
 import type { StaffEmailPolicy } from "@shared/staff-email";
 import type {
   ToolCatalogue,
@@ -1037,6 +1051,153 @@ export const api = {
   myStaffFileUrl: (kind: StaffFileKind) => `/api/me/files/${kind}`,
   employeeStaffFileUrl: (userId: string, kind: StaffFileKind) =>
     `/api/employees/${userId}/files/${kind}`,
+
+  // ------------------------------------------------- subscriptions (the firm)
+  subscriptionCatalogue: () => request<SubscriptionCatalogue>("/api/subscription-catalogue"),
+
+  addCriterion: (body: { name: string; unit: CriterionUnit; how_measured?: string }) =>
+    request<{ id: string }>("/api/subscription-criteria", { method: "POST", body }),
+  editCriterion: (id: string, body: { name: string; how_measured?: string }) =>
+    request<void>(`/api/subscription-criteria/${id}`, { method: "PATCH", body }),
+  removeCriterion: (id: string, confirm = false) =>
+    request<void>(`/api/subscription-criteria/${id}${confirm ? "?confirm=yes" : ""}`, {
+      method: "DELETE",
+    }),
+
+  saveTier: (
+    tier: ClientTier,
+    body: { monthly_fee: number | null; summary: string; ceilings: Record<string, number | null> },
+  ) => request<void>(`/api/subscription-tiers/${tier}`, { method: "PATCH", body }),
+
+  addService: (body: {
+    name: string;
+    summary?: string;
+    fee: number | null;
+    fee_basis: FeeBasis;
+    service_line?: string;
+  }) => request<{ id: string }>("/api/additional-services", { method: "POST", body }),
+  editService: (
+    id: string,
+    body: {
+      name: string;
+      summary?: string;
+      fee: number | null;
+      fee_basis: FeeBasis;
+      service_line?: string;
+      active?: boolean;
+    },
+  ) => request<void>(`/api/additional-services/${id}`, { method: "PATCH", body }),
+
+  subscriptions: () => request<SubscriptionsOverview>("/api/subscriptions"),
+  clientSubscription: (clientId: string) =>
+    request<ClientSubscriptionDetail>(`/api/clients/${clientId}/subscription`),
+  saveClientSubscription: (
+    clientId: string,
+    body: {
+      tier: ClientTier;
+      monthly_fee: number | null;
+      started_on?: string;
+      note?: string;
+      status?: "active" | "paused" | "ended";
+    },
+  ) => request<{ ok: true }>(`/api/clients/${clientId}/subscription`, { method: "PUT", body }),
+
+  recordFigures: (clientId: string, body: { as_of: string; values: Record<string, number>; note?: string }) =>
+    request<{ recorded: number }>(`/api/clients/${clientId}/figures`, { method: "POST", body }),
+
+  addClientService: (
+    clientId: string,
+    body: { service_id?: string; name?: string; quoted_fee?: number | null; status?: string; note?: string },
+  ) => request<{ id: string }>(`/api/clients/${clientId}/services`, { method: "POST", body }),
+  moveClientService: (
+    id: string,
+    body: { status: ServiceState; quoted_fee?: number | null; note?: string },
+  ) => request<void>(`/api/client-services/${id}`, { method: "PATCH", body }),
+
+  // ------------------------------------------------------------ client logins
+  inviteClientUser: (clientId: string, body: { email: string; full_name: string }) =>
+    request<{ id: string; invitation_url: string }>(`/api/clients/${clientId}/logins`, {
+      method: "POST",
+      body,
+    }),
+  reinviteClientUser: (id: string) =>
+    request<{ invitation_url: string }>(`/api/client-logins/${id}/reinvite`, { method: "POST" }),
+  setClientUserStatus: (id: string, status: "active" | "suspended") =>
+    request<void>(`/api/client-logins/${id}`, { method: "PATCH", body: { status } }),
+  removeClientUser: (id: string) =>
+    request<void>(`/api/client-logins/${id}`, { method: "DELETE" }),
+
+  // ------------------------------------------------------------------ tax
+  taxLines: () => request<{ tax_lines: TaxLineRow[]; example: Totals }>("/api/tax-lines"),
+  addTaxLine: (body: { name: string; rate: number; basis: TaxBasis }) =>
+    request<{ id: string }>("/api/tax-lines", { method: "POST", body }),
+  editTaxLine: (
+    id: string,
+    body: { name: string; rate: number; basis: TaxBasis; position?: number; active?: boolean },
+  ) => request<void>(`/api/tax-lines/${id}`, { method: "PATCH", body }),
+  removeTaxLine: (id: string) => request<void>(`/api/tax-lines/${id}`, { method: "DELETE" }),
+
+  // -------------------------------------------------------------- invoices
+  invoices: (state?: string) =>
+    request<InvoiceList>(`/api/invoices${state ? `?state=${state}` : ""}`),
+  invoice: (id: string) => request<InvoiceDetail>(`/api/invoices/${id}`),
+  raiseInvoice: (
+    clientId: string,
+    body: { period?: string; due_on?: string; include_services?: boolean; note?: string },
+  ) => request<{ id: string; number: string }>(`/api/clients/${clientId}/invoices`, {
+    method: "POST",
+    body,
+  }),
+  sendInvoice: (id: string) =>
+    request<{ sent_to: string[] }>(`/api/invoices/${id}/send`, { method: "POST" }),
+  voidInvoice: (id: string, reason: string) =>
+    request<void>(`/api/invoices/${id}/void`, { method: "POST", body: { reason } }),
+  recordPayment: (
+    id: string,
+    body: {
+      amount: number;
+      withheld: number;
+      paid_on?: string;
+      method?: string;
+      reference?: string;
+      certificate_received?: boolean;
+      certificate_ref?: string;
+      note?: string;
+    },
+  ) => request<{ state: string }>(`/api/invoices/${id}/payments`, { method: "POST", body }),
+  setCertificate: (paymentId: string, body: { certificate_received: boolean; certificate_ref?: string }) =>
+    request<void>(`/api/invoice-payments/${paymentId}`, { method: "PATCH", body }),
+  removePayment: (paymentId: string) =>
+    request<void>(`/api/invoice-payments/${paymentId}`, { method: "DELETE" }),
+  remindInvoice: (id: string) =>
+    request<{ sent: boolean; step?: number }>(`/api/invoices/${id}/remind`, { method: "POST" }),
+
+  // ------------------------------------------------- the client's own portal
+  clientLogin: (email: string, password: string) =>
+    request<{ ok: true }>("/api/client/login", { method: "POST", body: { email, password } }),
+  clientLogout: () => request<{ ok: true }>("/api/client/logout", { method: "POST" }),
+  clientSession: () => request<{ user: ClientPortalUser }>("/api/client/session"),
+  clientInvitation: (token: string) =>
+    request<{ full_name: string; email: string; client_name: string }>(
+      `/api/client/invitation/${encodeURIComponent(token)}`,
+    ),
+  acceptClientInvitation: (token: string, password: string) =>
+    request<{ ok: true }>(`/api/client/invitation/${encodeURIComponent(token)}`, {
+      method: "POST",
+      body: { password },
+    }),
+  changeClientPassword: (current: string, password: string) =>
+    request<void>("/api/client/password", { method: "POST", body: { current, password } }),
+  clientMySubscription: () => request<ClientPortalSubscription>("/api/client/subscription"),
+  clientAskForService: (serviceId: string, note?: string) =>
+    request<{ id: string }>("/api/client/services", {
+      method: "POST",
+      body: { service_id: serviceId, note },
+    }),
+  clientMoveService: (id: string, status: "agreed" | "declined") =>
+    request<void>(`/api/client/services/${id}`, { method: "PATCH", body: { status } }),
+  clientMyInvoices: () => request<ClientInvoiceList>("/api/client/invoices"),
+  clientMyInvoice: (id: string) => request<ClientInvoiceDetail>(`/api/client/invoices/${id}`),
 
   // -------------------------------------------------------------- removals
   /** What removing this person would cost. Changes nothing; safe to call freely. */
