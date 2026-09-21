@@ -49,6 +49,7 @@ import {
   type ServiceState,
 } from "../../shared/subscriptions";
 import { feeFor, readCatalogue } from "./subscriptions";
+import { standingOf, type InvoiceState, type PaymentLike } from "../../shared/invoices";
 
 /**
  * What a client is told when a sign-in fails, whatever the reason.
@@ -438,6 +439,121 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       .run();
 
     return noContent();
+  });
+
+  // -------------------------------------------------------------------------
+  // Their invoices
+  // -------------------------------------------------------------------------
+
+  /**
+   * Every invoice on their account, with what is outstanding on each.
+   *
+   * Drafts are excluded. A draft is the firm thinking about what to charge, and showing
+   * a client a figure nobody has decided to ask them for would be worse than showing
+   * them nothing.
+   *
+   * Outstanding and overdue are worked out by the same function the firm's list uses, so
+   * a client cannot be told one figure while a Partner chases them for another.
+   */
+  router.get("/api/client/invoices", async ({ request, env }) => {
+    const actor = await requireClientUser(env, request);
+
+    const [invoices, payments] = await env.DB.batch([
+      env.DB.prepare(
+        `SELECT id, number, state, issued_on, due_on, currency, net, tax_total, gross,
+                period_label
+           FROM invoices
+          WHERE client_id = ? AND state <> 'draft'
+          ORDER BY issued_on DESC, number DESC`,
+      ).bind(actor.client_id),
+      env.DB.prepare(
+        `SELECT p.invoice_id, p.amount, p.withheld, p.certificate_received, p.paid_on
+           FROM invoice_payments p
+           JOIN invoices i ON i.id = p.invoice_id
+          WHERE i.client_id = ?`,
+      ).bind(actor.client_id),
+    ]);
+
+    const byInvoice = new Map<string, PaymentLike[]>();
+    for (const row of payments.results as unknown as Array<PaymentLike & { invoice_id: string }>) {
+      const list = byInvoice.get(row.invoice_id) ?? [];
+      list.push(row);
+      byInvoice.set(row.invoice_id, list);
+    }
+
+    const now = new Date().toISOString().slice(0, 10);
+    const rows = (invoices.results as unknown as Array<{
+      id: string;
+      state: InvoiceState;
+      gross: number;
+      due_on: string;
+    }>).map((invoice) => ({
+      ...invoice,
+      standing: standingOf(invoice, byInvoice.get(invoice.id) ?? [], now),
+    }));
+
+    /*
+     * The statement figure. Summed from the same standings the rows show, so the total
+     * at the top of the page and the column beneath it cannot disagree.
+     */
+    const outstanding = rows.reduce((sum, r) => sum + r.standing.outstanding, 0);
+    const overdue = rows
+      .filter((r) => r.standing.overdue)
+      .reduce((sum, r) => sum + r.standing.outstanding, 0);
+
+    return json({
+      invoices: rows,
+      statement: {
+        outstanding: Math.round(outstanding * 100) / 100,
+        overdue: Math.round(overdue * 100) / 100,
+        count: rows.length,
+      },
+    });
+  });
+
+  /** One invoice of theirs, in full. Scoped to their own client, so another's is absent. */
+  router.get("/api/client/invoices/:id", async ({ request, env, params }) => {
+    const actor = await requireClientUser(env, request);
+
+    const invoice = await env.DB.prepare(
+      `SELECT id, number, state, issued_on, due_on, currency, net, tax_total, gross,
+              period_label, note
+         FROM invoices
+        WHERE id = ? AND client_id = ? AND state <> 'draft'`,
+    )
+      .bind(params.id, actor.client_id)
+      .first<{ id: string; state: InvoiceState; gross: number; due_on: string }>();
+    if (!invoice) throw notFound("There is no such invoice on your account.");
+
+    const [lines, taxes, payments] = await env.DB.batch([
+      env.DB.prepare(
+        `SELECT description, quantity, unit_amount, amount FROM invoice_lines
+          WHERE invoice_id = ? ORDER BY position`,
+      ).bind(params.id),
+      env.DB.prepare(
+        `SELECT name, rate, amount FROM invoice_taxes WHERE invoice_id = ? ORDER BY position`,
+      ).bind(params.id),
+      /*
+       * What they paid and when. The firm's own note against a payment is not included -
+       * it is the firm's working, and may say things about chasing them.
+       */
+      env.DB.prepare(
+        `SELECT amount, withheld, paid_on, method, reference, certificate_received
+           FROM invoice_payments WHERE invoice_id = ? ORDER BY paid_on`,
+      ).bind(params.id),
+    ]);
+
+    return json({
+      invoice,
+      lines: lines.results,
+      taxes: taxes.results,
+      payments: payments.results,
+      standing: standingOf(
+        invoice,
+        payments.results as unknown as PaymentLike[],
+        new Date().toISOString().slice(0, 10),
+      ),
+    });
   });
 }
 

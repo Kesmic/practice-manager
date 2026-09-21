@@ -84,6 +84,13 @@ PORTAL_URL = "https://portal.kesmic.org"
 #   wrangler pages secret put BOOTSTRAP_SECRET   # authorises /setup; delete after
 #   wrangler pages secret put PASSWORD_PEPPER    # optional; see docs/DEPLOYMENT.md
 #   wrangler pages secret put EMAIL_API_KEY      # the SendGrid key; see docs/EMAIL.md
+#   wrangler pages secret put REMINDER_SECRET    # authorises the nightly invoice chase
+#
+# REMINDER_SECRET is what the scheduled GitHub Actions workflow presents when it asks the
+# portal to send the day's invoice reminders. Pages has no cron triggers - that is the
+# price of being on Pages rather than Workers, for the DNS reason at the top of this file
+# - so the schedule lives in .github/workflows/reminders.yml and the same value has to be
+# set there too, as an Actions secret. Unset, the endpoint refuses everyone.
 #
 # Secrets are unaffected by this file governing the plain-text variables above: they
 # are stored separately and a deploy does not disturb them.
