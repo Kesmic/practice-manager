@@ -14,6 +14,7 @@ import type { SignatureSpecimen } from "@shared/signatures";
 import type { CriterionUnit, FeeBasis, ServiceState } from "@shared/subscriptions";
 import type { TaxBasis, Totals } from "@shared/invoices";
 import type { DiscountKind, DiscountRun, DiscountScope } from "@shared/discounts";
+import type { Currency } from "@shared/money";
 import type {
   ClientInvoiceDetail,
   ClientInvoiceList,
@@ -1067,7 +1068,15 @@ export const api = {
 
   saveTier: (
     tier: ClientTier,
-    body: { monthly_fee: number | null; summary: string; ceilings: Record<string, number | null> },
+    body: {
+      monthly_fee: number | null;
+      currency: Currency;
+      summary: string;
+      ideal_for: string;
+      ceilings: Record<string, number | null>;
+      /** The whole list, in order. Omitted when only the price is being changed. */
+      inclusions?: Array<{ label: string; sub: boolean }>;
+    },
   ) => request<void>(`/api/subscription-tiers/${tier}`, { method: "PATCH", body }),
 
   addService: (body: {
@@ -1117,6 +1126,7 @@ export const api = {
     body: {
       tier: ClientTier;
       monthly_fee: number | null;
+      currency?: Currency;
       started_on?: string;
       note?: string;
       status?: "active" | "paused" | "ended";
@@ -1221,6 +1231,13 @@ export const api = {
     }),
   changeClientPassword: (current: string, password: string) =>
     request<void>("/api/client/password", { method: "POST", body: { current, password } }),
+  /*
+   * A question, not a change. The Worker notifies whoever holds the client and touches
+   * nothing about what they are on.
+   */
+  clientAskAboutPackage: (tier: ClientTier) =>
+    request<void>("/api/client/package-enquiry", { method: "POST", body: { tier } }),
+
   clientMySubscription: () => request<ClientPortalSubscription>("/api/client/subscription"),
   clientAskForService: (serviceId: string, note?: string) =>
     request<{ id: string }>("/api/client/services", {
@@ -1275,9 +1292,14 @@ export const api = {
       `/api/allocations${status ? `?status=${status}` : ""}`,
     ),
 
+  /*
+   * No tier. It is read off the client's subscription by the Worker, because the
+   * package a client is on decides the associate's fee under Schedule 2 and there is
+   * one place that is set.
+   */
   offerClient: (
     clientId: string,
-    input: { user_id: string; tier?: ClientTier | null; note?: string | null },
+    input: { user_id: string; note?: string | null },
   ) =>
     request<{ allocation: ClientAllocation }>(`/api/clients/${clientId}/allocations`, {
       method: "POST",

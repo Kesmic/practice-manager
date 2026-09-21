@@ -321,6 +321,14 @@ export const CONTRACT_FIELDS: ContractField[] = [
     input: "number",
   },
   {
+    token: "FIRM FEE",
+    label: "Firm tier fee",
+    group: "Pay",
+    supplier: "firm",
+    templates: ASSOCIATE,
+    input: "number",
+  },
+  {
     token: "ENTERPRISE FEE",
     label: "Enterprise tier fee",
     group: "Pay",

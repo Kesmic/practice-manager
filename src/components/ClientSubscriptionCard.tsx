@@ -36,6 +36,12 @@ import {
   type DiscountScope,
 } from "@shared/discounts";
 import type { ClientDiscountRow, ClientSubscriptionDetail } from "@shared/types";
+import {
+  CURRENCIES,
+  CURRENCY_LABELS,
+  currencyOf,
+  type Currency,
+} from "@shared/money";
 import { ApiRequestError, api } from "../lib/api";
 import { TierMeters } from "./TierMeters";
 import {
@@ -176,7 +182,7 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
                     Record this month's figures
                   </button>
                 </div>
-                <TierMeters criteria={criteria} assessment={assessment} currency={currency} />
+                <TierMeters criteria={criteria} assessment={assessment} />
                 <p className="hint mt-3">
                   Entered by your staff from the client's own records. The portal does not
                   guess at these, and a criterion nobody updates shows as not recorded
@@ -874,6 +880,7 @@ function MoveTierModal({
   onSave: (body: {
     tier: ClientTier;
     monthly_fee: number | null;
+    currency: Currency;
     started_on?: string;
     status?: "active" | "paused" | "ended";
   }) => Promise<void>;
@@ -882,6 +889,14 @@ function MoveTierModal({
   const [fee, setFee] = useState(current?.monthly_fee?.toString() ?? "");
   const [status, setStatus] = useState(current?.status ?? "active");
   const listed = tiers.find((t) => t.tier === tier);
+  /*
+   * Follows the package when the Partner has not chosen otherwise, because a client put
+   * on a package priced in dollars is almost always being billed in dollars. Nothing
+   * converts - see shared/money.ts - so this is the currency they actually pay in.
+   */
+  const [currency, setCurrency] = useState<Currency>(
+    currencyOf(current?.currency ?? listed?.currency),
+  );
 
   return (
     <Modal
@@ -900,6 +915,7 @@ function MoveTierModal({
               void onSave({
                 tier,
                 monthly_fee: fee.trim() === "" ? null : Number(fee),
+                currency,
                 status: status as "active" | "paused" | "ended",
               })
             }
@@ -933,6 +949,24 @@ function MoveTierModal({
               value={fee}
               onChange={(e) => setFee(e.target.value)}
             />
+          )}
+        </Field>
+        <Field
+          label="Billed in"
+          hint={
+            listed?.currency && currencyOf(listed.currency) !== currency
+              ? `${TIER_LABELS[tier]} is listed in ${CURRENCY_LABELS[currencyOf(listed.currency)]}. Nothing is converted, so this client is billed in what you choose here.`
+              : "Nothing is ever converted between the two."
+          }
+        >
+          {(id) => (
+            <Select
+              id={id}
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value as Currency)}
+            >
+              {options(CURRENCIES, CURRENCY_LABELS)}
+            </Select>
           )}
         </Field>
         <Field label="Standing" hint="Paused stops billing without ending the subscription.">

@@ -67,6 +67,7 @@ import {
   type DiscountScope,
 } from "../../shared/discounts";
 import { activeDiscount } from "../discounts";
+import { CURRENCIES, DEFAULT_CURRENCY } from "../../shared/money";
 import { sendToPerson } from "../email";
 
 // ---------------------------------------------------------------------------
@@ -82,18 +83,24 @@ interface TierRow {
 
 /** The catalogue as every screen wants it: criteria, tiers, ceilings, services. */
 export async function readCatalogue(env: Env) {
-  const [criteria, tiers, ceilings, services] = await env.DB.batch([
+  const [criteria, tiers, ceilings, services, inclusions] = await env.DB.batch([
     env.DB.prepare(
-      `SELECT id, name, unit, how_measured, position
+      `SELECT id, name, unit, how_measured, position, currency
          FROM subscription_criteria ORDER BY position, name`,
     ),
     env.DB.prepare(
-      `SELECT tier, monthly_fee, currency, summary FROM subscription_tiers`,
+      `SELECT tier, monthly_fee, currency, summary, ideal_for, position, active
+         FROM subscription_tiers ORDER BY position`,
     ),
     env.DB.prepare(`SELECT tier, criterion_id, ceiling FROM tier_ceilings`),
     env.DB.prepare(
       `SELECT id, name, summary, fee, fee_basis, currency, service_line, active, position
          FROM additional_services ORDER BY position, name`,
+    ),
+    // What each package includes, which is what a client comparing two of them reads.
+    env.DB.prepare(
+      `SELECT id, tier, label, parent_id, position FROM tier_inclusions
+        ORDER BY tier, position`,
     ),
   ]);
 
@@ -102,6 +109,7 @@ export async function readCatalogue(env: Env) {
     tiers: tiers.results as unknown as TierRow[],
     ceilings: ceilings.results as unknown as Ceiling[],
     services: services.results,
+    inclusions: inclusions.results,
   };
 }
 
@@ -324,25 +332,65 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const tier = requireEnum(params.tier, "tier", CLIENT_TIERS) as ClientTier;
     const body = await readJson<{
       monthly_fee?: unknown;
+      currency?: unknown;
       summary?: string;
+      ideal_for?: string;
       ceilings?: Record<string, unknown>;
+      /** The whole list for this package, in order. Replaces what is there. */
+      inclusions?: Array<{ label?: unknown; sub?: unknown }>;
     }>(request);
 
     const fee = optionalAmount(body.monthly_fee, "The fee");
+    const currency = body.currency
+      ? requireEnum(body.currency, "currency", CURRENCIES)
+      : DEFAULT_CURRENCY;
     const timestamp = nowIso();
     const statements = [
       env.DB.prepare(
         `UPDATE subscription_tiers
-            SET monthly_fee = ?, summary = ?, updated_at = ?, updated_by = ?
+            SET monthly_fee = ?, currency = ?, summary = ?, ideal_for = ?,
+                updated_at = ?, updated_by = ?
           WHERE tier = ?`,
       ).bind(
         fee,
+        currency,
         body.summary?.trim() ? body.summary.trim().slice(0, 400) : null,
+        body.ideal_for?.trim() ? body.ideal_for.trim().slice(0, 300) : null,
         timestamp,
         actor.id,
         tier,
       ),
     ];
+
+    /*
+     * Inclusions are replaced wholesale rather than patched line by line. The screen
+     * edits them as one list and sends the list back, and a partial update would need
+     * every line to carry an id the screen has no other use for.
+     *
+     * Only when the key is present: a caller changing a fee alone must not silently
+     * empty the package.
+     */
+    if (Array.isArray(body.inclusions)) {
+      statements.push(
+        env.DB.prepare(`DELETE FROM tier_inclusions WHERE tier = ?`).bind(tier),
+      );
+      let parent: string | null = null;
+      body.inclusions.forEach((line, index) => {
+        const label = String(line?.label ?? "").trim().slice(0, 120);
+        if (!label) return;
+        const id = newId();
+        // A sub-item hangs off the last top-level line above it, which is how the
+        // proposal reads: "VAT & levies" under "Tax services".
+        const sub = line?.sub === true && parent !== null;
+        if (!sub) parent = id;
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO tier_inclusions (id, tier, label, parent_id, position)
+             VALUES (?, ?, ?, ?, ?)`,
+          ).bind(id, tier, label, sub ? parent : null, index),
+        );
+      });
+    }
 
     for (const [criterionId, raw] of Object.entries(body.ceilings ?? {})) {
       const ceiling = optionalAmount(raw, "A ceiling");
@@ -617,6 +665,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const body = await readJson<{
       tier?: unknown;
       monthly_fee?: unknown;
+      currency?: unknown;
       started_on?: string;
       note?: string;
       status?: unknown;
@@ -632,6 +681,14 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const status = body.status
       ? requireEnum(body.status, "status", ["active", "paused", "ended"] as const)
       : "active";
+    /*
+     * Cedis unless somebody says dollars. Nothing converts between the two - see
+     * shared/money.ts - so this is the currency the client is actually billed in, and it
+     * stays with the subscription rather than being read off the package each time.
+     */
+    const currency = body.currency
+      ? requireEnum(body.currency, "currency", CURRENCIES)
+      : DEFAULT_CURRENCY;
     const timestamp = nowIso();
     const existing = await loadSubscription(env, params.id);
 
@@ -644,12 +701,13 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       statements.push(
         env.DB.prepare(
           `UPDATE client_subscriptions
-              SET tier = ?, monthly_fee = ?, status = ?, note = ?, updated_at = ?,
-                  updated_by = ?, ended_on = ?
+              SET tier = ?, monthly_fee = ?, currency = ?, status = ?, note = ?,
+                  updated_at = ?, updated_by = ?, ended_on = ?
             WHERE client_id = ?`,
         ).bind(
           tier,
           fee,
+          currency,
           status,
           body.note?.trim()?.slice(0, 500) || null,
           timestamp,
@@ -709,11 +767,12 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
           `INSERT INTO client_subscriptions
              (client_id, tier, monthly_fee, currency, started_on, status, note,
               created_at, updated_at, updated_by)
-           VALUES (?, ?, ?, 'GHS', ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           params.id,
           tier,
           fee,
+          currency,
           body.started_on?.trim() || timestamp.slice(0, 10),
           status,
           body.note?.trim()?.slice(0, 500) || null,
@@ -731,6 +790,20 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         }),
       );
     }
+
+    /*
+     * Every live allocation of this client follows the package. Schedule 2 prices an
+     * associate's fee by the client's tier, so a client moved from Growth to Firm is an
+     * associate whose fee for that client moves with them - and the alternative, a
+     * second control setting the same thing, is what put two different answers on one
+     * screen in the first place.
+     */
+    statements.push(
+      env.DB.prepare(
+        `UPDATE client_allocations SET tier = ?
+          WHERE client_id = ? AND status IN ('offered', 'accepted')`,
+      ).bind(tier, params.id),
+    );
 
     await env.DB.batch(statements);
     return json({ ok: true });

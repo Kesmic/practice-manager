@@ -16,6 +16,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 import { CLIENT_SESSION_COOKIE, INVITATION_TTL_DAYS } from "../worker/client-auth";
+import { CLIENT_TIERS } from "../shared/allocations";
 import { SESSION_COOKIE } from "../worker/auth";
 
 function freshDb(): DatabaseSync {
@@ -199,9 +200,13 @@ test("a client has at most one subscription", () => {
   db.close();
 });
 
-test("only the three contractual tiers are storable", () => {
-  // A fourth tier would be one no signed agreement names, and client_allocations would
-  // refuse it anyway.
+test("a client cannot be put on a package that does not exist", () => {
+  /*
+   * The tier columns used to spell the packages into CHECK constraints, which meant
+   * adding the fourth one rebuilt four tables. They are foreign keys onto
+   * `subscription_tiers` now, so the catalogue is the single list - but the refusal has
+   * to survive that change, or a typo would put a client on a package with no price.
+   */
   const db = freshDb();
   seed(db);
   let refused = false;
@@ -209,9 +214,16 @@ test("only the three contractual tiers are storable", () => {
     db.exec(`INSERT INTO client_subscriptions (client_id,tier,started_on,created_at,updated_at)
              VALUES ('c1','platinum','2026-03-12','${NOW}','${NOW}')`);
   } catch (err) {
-    refused = /CHECK/.test(String(err));
+    refused = /FOREIGN KEY/i.test(String(err));
   }
   assert.ok(refused);
+
+  // And every package the code knows about is one the catalogue holds.
+  const stored = new Set(
+    db.prepare("SELECT tier FROM subscription_tiers").all().map((r) => String((r as { tier: unknown }).tier)),
+  );
+  for (const tier of CLIENT_TIERS) assert.ok(stored.has(tier), tier);
+  assert.equal(stored.size, CLIENT_TIERS.length);
   db.close();
 });
 
@@ -292,29 +304,132 @@ test("a request records which client person asked, and survives them leaving", (
   db.close();
 });
 
-test("the seeded ceilings say what the tier descriptions already said", () => {
-  // shared/allocations.ts: Starter is "one to five members of staff", Growth "six to
-  // twenty-five". If those ever disagree with the seeded ceilings, one of them is lying
-  // to somebody.
+test("the ceilings say what the package descriptions say", () => {
+  /*
+   * shared/allocations.ts says Starter is up to 8,000 a month and Growth between 8,000
+   * and 15,000, because the firm's pricing proposal says so. If those ever disagree
+   * with the seeded ceilings, one of them is lying to somebody.
+   *
+   * Firm and Enterprise carry no ceiling deliberately: nothing in the proposal separates
+   * them by a number.
+   */
   const db = freshDb();
-  const staff = Object.fromEntries(
+  const band = Object.fromEntries(
     db
-      .prepare("SELECT tier, ceiling FROM tier_ceilings WHERE criterion_id='crit_staff'")
+      .prepare("SELECT tier, ceiling FROM tier_ceilings WHERE criterion_id='crit_monthly_turnover'")
       .all()
       .map((r) => [String((r as { tier: unknown }).tier), (r as { ceiling: number | null }).ceiling]),
   );
-  assert.equal(staff.starter, 5);
-  assert.equal(staff.growth, 25);
-  assert.equal(staff.enterprise, null, "the top tier has no ceiling, so everybody fits it");
+  assert.equal(band.starter, 8000);
+  assert.equal(band.growth, 15000);
+  assert.equal(band.firm, null);
+  assert.equal(band.enterprise, null, "the top package has no ceiling, so everybody fits it");
   db.close();
 });
 
-test("no fee is invented by the migration", () => {
-  // The firm's prices are the firm's to set. A seeded number would be shown to clients.
+test("no ceiling the firm never set survives", () => {
+  /*
+   * The staff, transaction and annual-turnover ceilings were mine, not the firm's, and
+   * a made-up ceiling is worse than none: it tells a Partner a client has outgrown their
+   * package on a number nobody ever agreed to.
+   */
   const db = freshDb();
-  const priced = db
-    .prepare("SELECT COUNT(*) n FROM subscription_tiers WHERE monthly_fee IS NOT NULL")
+  const invented = db
+    .prepare(
+      `SELECT COUNT(*) n FROM tier_ceilings
+        WHERE ceiling IS NOT NULL AND criterion_id <> 'crit_monthly_turnover'`,
+    )
     .get() as { n: number };
-  assert.equal(priced.n, 0);
+  assert.equal(invented.n, 0);
+  db.close();
+});
+
+test("every package is priced, and priced from the firm's own proposal", () => {
+  /*
+   * The prices were invented when this test was written and are not any more: the firm
+   * attached the proposal it sends clients, and these are the four figures on it. A
+   * package with no price cannot be quoted or invoiced, so a missing one is a bug.
+   */
+  const db = freshDb();
+  const priced = Object.fromEntries(
+    db
+      .prepare("SELECT tier, monthly_fee, currency FROM subscription_tiers")
+      .all()
+      .map((r) => [
+        String((r as { tier: unknown }).tier),
+        [(r as { monthly_fee: number }).monthly_fee, (r as { currency: string }).currency],
+      ]),
+  );
+  assert.deepEqual(priced.starter, [400, "USD"]);
+  assert.deepEqual(priced.growth, [750, "USD"]);
+  assert.deepEqual(priced.firm, [1250, "USD"]);
+  assert.deepEqual(priced.enterprise, [2800, "USD"]);
+  db.close();
+});
+
+test("a price a Partner has already set is never overwritten by the migration", () => {
+  /*
+   * The prices are written by an UPDATE guarded on the fee being unset. A deployment
+   * where somebody had already entered GHS 4,500 for Growth must still say GHS 4,500
+   * afterwards - a migration that replaced a real price with a figure from a document
+   * would change what clients are billed without anybody deciding to.
+   */
+  const db = new DatabaseSync(":memory:");
+  const files = readdirSync("migrations").sort();
+  for (const name of files) {
+    db.exec(readFileSync(`migrations/${name}`, "utf8"));
+    // Between the package tables existing and the packages migration running.
+    if (name.startsWith("0029")) {
+      db.exec(
+        `UPDATE subscription_tiers SET monthly_fee = 4500, currency = 'GHS' WHERE tier = 'growth'`,
+      );
+    }
+  }
+  const growth = db
+    .prepare("SELECT monthly_fee, currency FROM subscription_tiers WHERE tier = 'growth'")
+    .get() as { monthly_fee: number; currency: string };
+  assert.equal(growth.monthly_fee, 4500);
+  assert.equal(growth.currency, "GHS");
+  db.close();
+});
+
+test("every package says who it is for and what is in it", () => {
+  // A package with no inclusions is a column of white space on the proposal.
+  const db = freshDb();
+  for (const tier of CLIENT_TIERS) {
+    const row = db
+      .prepare("SELECT ideal_for, summary FROM subscription_tiers WHERE tier = ?")
+      .get(tier) as { ideal_for: string | null; summary: string | null };
+    assert.ok(row.ideal_for, `${tier} has no "ideal for"`);
+    assert.ok(row.summary, `${tier} has no summary`);
+    const count = db
+      .prepare("SELECT COUNT(*) n FROM tier_inclusions WHERE tier = ?")
+      .get(tier) as { n: number };
+    assert.ok(count.n > 0, `${tier} includes nothing`);
+  }
+  db.close();
+});
+
+test("each package includes everything the one below it does", () => {
+  /*
+   * The proposal is read as a ladder - "everything in Growth, and..." - and a client
+   * comparing two columns is checking exactly that. A package that quietly dropped a
+   * line the cheaper one carries would be a downgrade somebody paid more for.
+   */
+  const db = freshDb();
+  const labels = (tier: string) =>
+    new Set(
+      db
+        .prepare("SELECT label FROM tier_inclusions WHERE tier = ?")
+        .all(tier)
+        .map((r) => String((r as { label: unknown }).label)),
+    );
+  for (let i = 1; i < CLIENT_TIERS.length; i += 1) {
+    const below = labels(CLIENT_TIERS[i - 1]);
+    const above = labels(CLIENT_TIERS[i]);
+    for (const line of below) {
+      assert.ok(above.has(line), `${CLIENT_TIERS[i]} drops "${line}"`);
+    }
+  }
   db.close();
 });

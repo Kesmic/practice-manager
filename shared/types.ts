@@ -1021,6 +1021,19 @@ export interface TierRow {
   monthly_fee: number | null;
   currency: string;
   summary: string | null;
+  /** Who the package is for, in the proposal's own words. */
+  ideal_for: string | null;
+  position: number;
+  active: 0 | 1;
+}
+
+/** One line of what a package includes. Sub-items hang off `parent_id`. */
+export interface TierInclusion {
+  id: string;
+  tier: ClientTier;
+  label: string;
+  parent_id: string | null;
+  position: number;
 }
 
 export interface AdditionalService {
@@ -1040,6 +1053,7 @@ export interface SubscriptionCatalogue {
   tiers: TierRow[];
   ceilings: Ceiling[];
   services: AdditionalService[];
+  inclusions: TierInclusion[];
 }
 
 /** A client's subscription with the fee already resolved against the tier. */
@@ -1245,6 +1259,7 @@ export interface ClientPortalSubscription {
   criteria: SubscriptionCriterion[];
   tiers: TierRow[];
   ceilings: Ceiling[];
+  inclusions: TierInclusion[];
   available: AdditionalService[];
   subscription: ResolvedSubscription | null;
   figures: Array<Figure & { recorded_by_name: string | null }>;

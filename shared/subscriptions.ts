@@ -2,23 +2,25 @@
  * What a client subscribes to, what it costs, and when they have outgrown it.
  *
  * The firm sells one thing: the All-in-One Accounting, Payroll, Tax and Regulatory
- * Subscription Service, at one of three tiers. Schedule 2 of the Associate agreement
- * already names them and prices what the firm pays an associate for servicing a client
- * at each one. What has never existed anywhere is the other side of that: what the
- * client pays. This module is that half, and the arithmetic that decides which tier a
- * client belongs on.
+ * Subscription Service, in one of four packages - Starter, Growth, Firm and Enterprise,
+ * the ones in the firm's own pricing proposal. Schedule 2 of the Associate agreement
+ * prices what the firm pays an associate for servicing a client at each one. What has
+ * never existed anywhere is the other side of that: what the client pays. This module is
+ * that half, and the arithmetic that decides which package a client belongs on.
  *
- * ## Three tiers, fixed. Everything else is data.
+ * ## The names are fixed. Everything else is data.
  *
- * `CLIENT_TIERS` in shared/allocations.ts is not a list this module may extend. The
- * tiers are contractual - they are named in a signed agreement, they set what associates
- * are paid, and `client_allocations.tier` has a CHECK constraint on exactly those three
- * values. A fourth tier added through a settings screen would be a fourth tier the
- * agreement has never heard of.
+ * `CLIENT_TIERS` in shared/allocations.ts is not a list this module may extend at
+ * runtime: the packages are named in a signed agreement, they set what associates are
+ * paid, and every screen is typed against them. The database no longer spells them into
+ * CHECK constraints, though - the tier columns are foreign keys onto `subscription_tiers`
+ * - so adding a fifth package is a row and a line in that list rather than the four
+ * table rebuilds adding the fourth one took.
  *
  * What is data, and fully editable: the **criteria** a client is measured on, the
- * **ceilings** each tier sets on each criterion, and the **fee** each tier charges. Add
- * "bank accounts" or "branches" as a criterion whenever the firm starts pricing on it.
+ * **ceilings** each package sets on each criterion, the **fee** it charges, and what it
+ * **includes**. Add "bank accounts" or "branches" as a criterion whenever the firm
+ * starts pricing on it.
  *
  * ## How a tier is decided
  *
@@ -48,8 +50,13 @@ export type { ClientTier };
  * client is the one they belong on. It is declared here rather than read off a fee
  * column because a firm that temporarily prices Growth above Enterprise during a
  * promotion has not thereby made Enterprise the smaller package.
+ *
+ * Firm sits above Growth and below Enterprise, and neither of the top two carries a
+ * ceiling: nothing in the firm's pricing separates them by a number, so the ladder ends
+ * at Firm and the move to Enterprise is a Partner's judgement about a multinational
+ * client with complex transactions.
  */
-export const TIER_ORDER: ClientTier[] = ["starter", "growth", "enterprise"];
+export const TIER_ORDER: ClientTier[] = ["starter", "growth", "firm", "enterprise"];
 
 /** Where a tier sits in the ladder, for comparing two of them. */
 export function tierRank(tier: ClientTier): number {
@@ -93,6 +100,12 @@ export interface Criterion {
   /** How the firm arrives at the number, shown wherever one is entered or read. */
   how_measured: string | null;
   position: number;
+  /**
+   * What a money criterion is measured in. The firm's own bands are in dollars while
+   * most of its clients are billed in cedis, and a ceiling drawn in the client's
+   * currency was a figure nobody had quoted them. Ignored on a count.
+   */
+  currency?: string;
 }
 
 /** A tier's ceiling on one criterion. Null is no ceiling. */

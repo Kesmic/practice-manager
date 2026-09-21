@@ -41,15 +41,18 @@ import {
   clearAccountFailures,
   recordFailure,
 } from "../throttle";
-import { newId, nowIso, requireEnum, requireString } from "../db";
+import { newId, notificationStatement, nowIso, requireEnum, requireString } from "../db";
 import { newToken } from "../auth";
 import { readSettings } from "./settings";
 import { sendToPerson } from "../email";
 import { Router, badRequest, json, noContent, notFound, readJson, unauthorized } from "../http";
 import {
   SERVICE_STATES,
+  CLIENT_TIERS,
+  TIER_LABELS,
   assess,
   clientMayMove,
+  type ClientTier,
   type ServiceState,
 } from "../../shared/subscriptions";
 import { feeFor, readCatalogue } from "./subscriptions";
@@ -310,7 +313,7 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       .bind(actor.client_id)
       .first<{
         client_id: string;
-        tier: "starter" | "growth" | "enterprise";
+        tier: ClientTier;
         monthly_fee: number | null;
         currency: string;
         started_on: string;
@@ -344,6 +347,8 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       criteria: catalogue.criteria,
       tiers: catalogue.tiers,
       ceilings: catalogue.ceilings,
+      // What each package includes, which is what the cards turn over to show.
+      inclusions: catalogue.inclusions,
       /*
        * Only what the firm is currently offering. A retired service is not something to
        * put in front of a client, and the ones they have already asked for come back on
@@ -418,6 +423,51 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       .run();
 
     return json({ id }, 201);
+  });
+
+  /**
+   * Asks the firm about another package.
+   *
+   * A message, not a move. The portal never re-tiers anybody, so this puts the question
+   * in the inbox of whoever holds the client and changes nothing about what they pay -
+   * the client is told exactly that when they send it.
+   */
+  router.post("/api/client/package-enquiry", async ({ request, env }) => {
+    const actor = await requireClientUser(env, request);
+    const body = await readJson<{ tier?: unknown }>(request);
+    const tier = requireEnum(body.tier, "tier", CLIENT_TIERS) as ClientTier;
+
+    const owners = await env.DB.prepare(
+      `SELECT partner_id, manager_id FROM clients WHERE id = ?`,
+    )
+      .bind(actor.client_id)
+      .first<{ partner_id: string | null; manager_id: string | null }>();
+
+    /*
+     * Both of them, and neither is a failure: a client whose record has nobody on it is
+     * a client whose enquiry would otherwise go nowhere, so it is not an error here and
+     * the request still succeeds. The enquiry is also on the firm's own screens.
+     */
+    const recipients = [owners?.partner_id, owners?.manager_id].filter(
+      (id, index, all): id is string => !!id && all.indexOf(id) === index,
+    );
+    if (recipients.length) {
+      await env.DB.batch(
+        recipients.map((userId) =>
+          notificationStatement(env, {
+            userId,
+            taskId: null,
+            kind: "subscription:enquiry",
+            title: `${actor.client_name} has asked about the ${TIER_LABELS[tier]} package`,
+            body:
+              `${actor.full_name} asked about it from their portal. Nothing has changed ` +
+              `on their account - moving them is a conversation and then a change you make.`,
+          }),
+        ),
+      );
+    }
+
+    return noContent();
   });
 
   /**
