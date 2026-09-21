@@ -310,7 +310,13 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
                           : "Suspended"}
                     </span>
                     <span className="ml-auto flex gap-1">
-                      {login.status === "invited" && (
+                      {/*
+                        Offered once they are active as well as while they are waiting.
+                        The same link is how somebody who has forgotten their password
+                        sets another - without this, a client locked out on a Monday
+                        morning could not be helped at all.
+                      */}
+                      {login.status !== "suspended" && (
                         <button
                           type="button"
                           className="btn-ghost btn-sm"
@@ -319,13 +325,17 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
                             void act(async () => {
                               const { invitation_url } = await api.reinviteClientUser(login.id);
                               window.prompt(
-                                "A fresh link has been emailed. You can also hand it over directly:",
+                                login.status === "invited"
+                                  ? "A fresh invitation has been emailed. You can also hand it over directly:"
+                                  : "A link to set a new password has been emailed. You can also hand it over directly:",
                                 invitation_url,
                               );
-                            }, "A fresh invitation has gone out.")
+                            }, login.status === "invited"
+                              ? "A fresh invitation has gone out."
+                              : "A link to set a new password has gone out. Their old one still works until they use it.")
                           }
                         >
-                          Send a fresh link
+                          {login.status === "invited" ? "Send a fresh link" : "Send a reset link"}
                         </button>
                       )}
                       {login.status === "active" && (

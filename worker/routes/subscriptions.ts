@@ -956,13 +956,26 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
   router.post("/api/client-logins/:id/reinvite", async ({ request, env, params }) => {
     await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const row = await env.DB.prepare(
-      `SELECT cu.id, cu.email, cu.full_name, c.name AS client_name
+      `SELECT cu.id, cu.email, cu.full_name, cu.status, c.name AS client_name
          FROM client_users cu JOIN clients c ON c.id = cu.client_id
         WHERE cu.id = ?`,
     )
       .bind(params.id)
-      .first<{ id: string; email: string; full_name: string; client_name: string }>();
+      .first<{
+        id: string;
+        email: string;
+        full_name: string;
+        status: string;
+        client_name: string;
+      }>();
     if (!row) throw notFound("There is no such login.");
+    /*
+     * A suspended account gets nothing. Sending a reset link to somebody the firm has
+     * deliberately shut out would be handing back the key.
+     */
+    if (row.status === "suspended") {
+      throw badRequest("That login is suspended. Restore it first if they should have access.");
+    }
 
     const token = newToken();
     const timestamp = nowIso();
@@ -981,17 +994,30 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     const settings = await readSettings(env);
     const link = `${new URL(request.url).origin}/client/invitation/${encodeURIComponent(token)}`;
+    /*
+     * The same endpoint serves two occasions - somebody who has never signed in, and
+     * somebody who has forgotten their password - and the wording has to match, or one
+     * of them is told to set a password they already have.
+     */
+    const first = row.status === "invited";
     await sendToPerson(env, {
       to: { email: row.email, full_name: row.full_name },
-      subject: `Your ${settings.firm_name} account`,
-      headline: `Here is a fresh link for the ${row.client_name} account.`,
+      subject: first
+        ? `Your ${settings.firm_name} account`
+        : `Setting a new password for your ${settings.firm_name} account`,
+      headline: first
+        ? `Here is a fresh link for the ${row.client_name} account.`
+        : `Here is a link to set a new password for the ${row.client_name} account.`,
       detail:
-        `Any earlier link has stopped working. This one works once and expires in ` +
-        `${INVITATION_TTL_DAYS} days.`,
+        (first
+          ? "Any earlier link has stopped working. "
+          : "Your current password keeps working until you use this. Using it signs you out on every other device. ") +
+        `This link works once and expires in ${INVITATION_TTL_DAYS} days.` +
+        (first ? "" : " If you did not ask for this, tell us - and do not use the link."),
       link,
-      linkLabel: "Set my password",
+      linkLabel: first ? "Set my password" : "Set a new password",
       firmName: settings.firm_name,
-      reason: `you asked ${settings.firm_name} for a new link to the ${row.client_name} account`,
+      reason: `${settings.firm_name} sent you a link for the ${row.client_name} account`,
     });
 
     return json({ invitation_url: link });

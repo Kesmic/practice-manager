@@ -219,6 +219,18 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       env.DB.prepare(
         `DELETE FROM client_invitations WHERE client_user_id = ? AND used_at IS NULL`,
       ).bind(invitation.client_user_id),
+      /*
+       * And every session they already had.
+       *
+       * This endpoint is how a client who has forgotten their password gets a new one,
+       * not only how a new one starts - a Partner sends a fresh link and they set
+       * another password here. Somebody doing that because they think a device is
+       * compromised expects that device to be signed out, and a reset that left it
+       * signed in would be doing nothing.
+       */
+      env.DB.prepare(`DELETE FROM client_sessions WHERE client_user_id = ?`).bind(
+        invitation.client_user_id,
+      ),
     ]);
 
     await clearAccountFailures(env, keys);

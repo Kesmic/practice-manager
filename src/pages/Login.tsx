@@ -517,6 +517,21 @@ export function Login() {
             Accounts are issued by the firm - there is nothing to sign up for. If you are
             new and have not been given one, speak to whoever is handling your onboarding.
           </p>
+
+          {/*
+            This page is where a client lands if they bookmark the portal's address, and
+            without this line there is nothing here telling them they are in the wrong
+            place. It names no client and confirms nothing about who the firm acts for -
+            only that a separate door exists - so it holds the line the intake page
+            draws.
+          */}
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">
+            Are you a client of the firm?{" "}
+            <a className="link" href="/client/login">
+              Sign in to your own account
+            </a>
+            .
+          </p>
         </div>
       </main>
     </div>
