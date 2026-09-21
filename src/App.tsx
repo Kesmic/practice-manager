@@ -17,6 +17,13 @@ import { StatusReports } from "./pages/StatusReports";
 import { Guide } from "./pages/Guide";
 import { Handbook } from "./pages/Handbook";
 import { Intake } from "./pages/Intake";
+import { ClientPortal, ClientPublic } from "./components/ClientLayout";
+import { ClientLogin } from "./pages/client/ClientLogin";
+import { ClientInvitation } from "./pages/client/ClientInvitation";
+import { ClientSubscription } from "./pages/client/ClientSubscription";
+import { ClientInvoices } from "./pages/client/ClientInvoices";
+import { ClientInvoiceDetail } from "./pages/client/ClientInvoiceDetail";
+import { ClientAccount } from "./pages/client/ClientAccount";
 import { Login } from "./pages/Login";
 import { MyProfile } from "./pages/MyProfile";
 import { Onboarding } from "./pages/Onboarding";
@@ -88,6 +95,35 @@ export function App() {
         sign-in, and the Worker is what checks it.
       */}
       <Route path="/request/:kind/:token" element={<Intake />} />
+
+      {/*
+        The client portal. Outside Protected and outside Layout, because a client is not
+        a user of this portal - they have their own session, their own cookie and their
+        own shell. Nothing under /client can reach a staff page, and nothing above can
+        reach these.
+      */}
+      <Route
+        path="/client/login"
+        element={
+          <ClientPublic>
+            <ClientLogin />
+          </ClientPublic>
+        }
+      />
+      <Route
+        path="/client/invitation/:token"
+        element={
+          <ClientPublic>
+            <ClientInvitation />
+          </ClientPublic>
+        }
+      />
+      <Route path="/client" element={<ClientPortal />}>
+        <Route index element={<ClientSubscription />} />
+        <Route path="invoices" element={<ClientInvoices />} />
+        <Route path="invoices/:id" element={<ClientInvoiceDetail />} />
+        <Route path="account" element={<ClientAccount />} />
+      </Route>
 
       <Route
         element={

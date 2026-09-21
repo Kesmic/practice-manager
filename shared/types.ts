@@ -995,3 +995,263 @@ export interface TrainingOverview {
   }>;
   today: string;
 }
+
+// ---------------------------------------------------------------------------
+// Subscriptions, invoices, and the client's own portal
+// ---------------------------------------------------------------------------
+
+import type {
+  Assessment,
+  Ceiling,
+  Criterion as SubscriptionCriterion,
+  FeeBasis,
+  Figure,
+  ServiceState,
+} from "./subscriptions";
+import type { InvoiceState, Standing, TaxBasis, Totals } from "./invoices";
+
+export interface TierRow {
+  tier: ClientTier;
+  monthly_fee: number | null;
+  currency: string;
+  summary: string | null;
+}
+
+export interface AdditionalService {
+  id: string;
+  name: string;
+  summary: string | null;
+  fee: number | null;
+  fee_basis: FeeBasis;
+  currency: string;
+  service_line: string | null;
+  active: 0 | 1;
+  position: number;
+}
+
+export interface SubscriptionCatalogue {
+  criteria: SubscriptionCriterion[];
+  tiers: TierRow[];
+  ceilings: Ceiling[];
+  services: AdditionalService[];
+}
+
+/** A client's subscription with the fee already resolved against the tier. */
+export interface ResolvedSubscription {
+  client_id: string;
+  tier: ClientTier;
+  monthly_fee: number | null;
+  currency: string;
+  started_on: string;
+  status: "active" | "paused" | "ended";
+  ended_on?: string | null;
+  note?: string | null;
+  /** What they actually pay: their own rate if set, otherwise the tier's. */
+  fee: number | null;
+  negotiated: boolean;
+}
+
+export interface SubscriptionRow extends ResolvedSubscription {
+  client_name: string;
+  client_code: string;
+  partner_name: string | null;
+  figures: Figure[];
+  assessment: Assessment;
+}
+
+export interface SubscriptionsOverview extends SubscriptionCatalogue {
+  subscriptions: SubscriptionRow[];
+}
+
+export interface ClientServiceRow {
+  id: string;
+  name: string;
+  status: ServiceState;
+  quoted_fee: number | null;
+  currency: string;
+  note: string | null;
+  requested_at: string | null;
+  quoted_at: string | null;
+  decided_at: string | null;
+  delivered_at: string | null;
+  requested_by_name?: string | null;
+}
+
+export interface ClientLoginRow {
+  id: string;
+  email: string;
+  full_name: string;
+  status: "invited" | "active" | "suspended";
+  invited_at: string | null;
+  accepted_at: string | null;
+  last_login_at: string | null;
+}
+
+export interface SubscriptionEventRow {
+  id: string;
+  kind: string;
+  from_tier: ClientTier | null;
+  to_tier: ClientTier | null;
+  from_fee: number | null;
+  to_fee: number | null;
+  detail: string | null;
+  created_at: string;
+  actor_name: string | null;
+}
+
+export interface ClientSubscriptionDetail extends SubscriptionCatalogue {
+  /** What this client has bought, as opposed to the menu on `services`. */
+  client_services: ClientServiceRow[];
+  subscription: ResolvedSubscription | null;
+  figures: Figure[];
+  figure_history: Array<Figure & { recorded_by_name: string | null }>;
+  assessment: Assessment | null;
+  history: SubscriptionEventRow[];
+  logins: ClientLoginRow[];
+}
+
+// --------------------------------------------------------------------- tax
+
+export interface TaxLineRow {
+  id: string;
+  name: string;
+  rate: number;
+  basis: TaxBasis;
+  position: number;
+  active: 0 | 1;
+}
+
+// ----------------------------------------------------------------- invoices
+
+export interface InvoiceSummary {
+  id: string;
+  number: string;
+  client_id: string;
+  client_name: string;
+  client_code: string;
+  state: InvoiceState;
+  issued_on: string | null;
+  due_on: string;
+  currency: string;
+  net: number;
+  tax_total: number;
+  gross: number;
+  period_label: string | null;
+  reminders_sent: number;
+  last_reminder_at: string | null;
+  standing: Standing;
+}
+
+export interface InvoiceList {
+  invoices: InvoiceSummary[];
+  totals: { outstanding: number; overdue: number; awaiting_certificate: number };
+}
+
+export interface InvoiceLineRow {
+  id: string;
+  description: string;
+  quantity: number;
+  unit_amount: number;
+  amount: number;
+  source: "subscription" | "service" | "manual";
+  subscription_period: string | null;
+}
+
+export interface InvoiceTaxRow {
+  name: string;
+  rate: number;
+  basis?: TaxBasis;
+  amount: number;
+}
+
+export interface InvoicePaymentRow {
+  id: string;
+  amount: number;
+  withheld: number;
+  paid_on: string;
+  method: string | null;
+  reference: string | null;
+  note?: string | null;
+  certificate_received: 0 | 1;
+  certificate_ref: string | null;
+  recorded_by_name?: string | null;
+}
+
+export interface InvoiceReminderRow {
+  step: number;
+  days_late: number;
+  sent_to: string;
+  automatic: 0 | 1;
+  sent_at: string;
+}
+
+export interface InvoiceDetail {
+  invoice: InvoiceSummary & { note: string | null };
+  lines: InvoiceLineRow[];
+  taxes: InvoiceTaxRow[];
+  payments: InvoicePaymentRow[];
+  reminders: InvoiceReminderRow[];
+  standing: Standing;
+}
+
+// -------------------------------------------------------- the client portal
+
+export interface ClientPortalUser {
+  id: string;
+  email: string;
+  full_name: string;
+  client_name: string;
+  client_code: string;
+}
+
+export interface ClientPortalSubscription {
+  client: { name: string; code: string };
+  criteria: SubscriptionCriterion[];
+  tiers: TierRow[];
+  ceilings: Ceiling[];
+  available: AdditionalService[];
+  subscription: ResolvedSubscription | null;
+  figures: Array<Figure & { recorded_by_name: string | null }>;
+  assessment: Assessment | null;
+  services: ClientServiceRow[];
+}
+
+export interface ClientInvoiceList {
+  invoices: Array<{
+    id: string;
+    number: string;
+    state: InvoiceState;
+    issued_on: string | null;
+    due_on: string;
+    currency: string;
+    net: number;
+    tax_total: number;
+    gross: number;
+    period_label: string | null;
+    standing: Standing;
+  }>;
+  statement: { outstanding: number; overdue: number; count: number };
+}
+
+export interface ClientInvoiceDetail {
+  invoice: {
+    id: string;
+    number: string;
+    state: InvoiceState;
+    issued_on: string | null;
+    due_on: string;
+    currency: string;
+    net: number;
+    tax_total: number;
+    gross: number;
+    period_label: string | null;
+    note: string | null;
+  };
+  lines: InvoiceLineRow[];
+  taxes: InvoiceTaxRow[];
+  payments: InvoicePaymentRow[];
+  standing: Standing;
+}
+
+/** Re-exported so screens import one place for the shapes they render. */
+export type { Totals };

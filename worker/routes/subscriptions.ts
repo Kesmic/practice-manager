@@ -563,7 +563,12 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         ? assess(subscription.tier, catalogue.criteria, catalogue.ceilings, figures)
         : null,
       history: history.results,
-      services: services.results,
+      /*
+       * Named apart from the catalogue's `services`, which this response also carries.
+       * Spreading the catalogue and then adding `services` clobbered the menu, so the
+       * screen offering "add a service to this client" had nothing to offer.
+       */
+      client_services: services.results,
       logins: logins.results,
     });
   });
