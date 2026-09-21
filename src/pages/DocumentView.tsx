@@ -13,6 +13,7 @@ import {
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { Markdown } from "../components/Markdown";
+import { SignatureCard } from "../components/SignatureCard";
 import {
   ErrorBanner,
   Field,
@@ -21,6 +22,7 @@ import {
   TextInput,
 } from "../components/ui";
 import { formatDate, formatDateTime } from "../lib/format";
+import { needsSignatureImage, type SignatureSpecimen } from "@shared/signatures";
 
 /**
  * Reads a single portal document and, where required, captures the employee's
@@ -38,6 +40,8 @@ export function DocumentView() {
   const [data, setData] = useState<{
     document: PortalDocumentDetail;
     my_signature: DocumentSignature | null;
+    /** What they have on file to sign with; null for an acknowledgement. */
+    my_signature_specimen: SignatureSpecimen | null;
     signatures?: DocumentSignature[];
     outstanding?: Array<{ user_id: string; full_name: string }>;
   } | null>(null);
@@ -46,12 +50,15 @@ export function DocumentView() {
   const [typedName, setTypedName] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [readToEnd, setReadToEnd] = useState(false);
+  const [specimen, setSpecimen] = useState<SignatureSpecimen | null>(null);
   const [busy, setBusy] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     try {
-      setData(await api.document(id));
+      const fresh = await api.document(id);
+      setData(fresh);
+      setSpecimen(fresh.my_signature_specimen);
     } catch (err) {
       setError(
         err instanceof ApiRequestError ? err.message : "Could not load the document.",
@@ -154,6 +161,17 @@ export function DocumentView() {
             Recorded against version {mine.version}, signed as “{mine.typed_name}”.
           </p>
           {/*
+            On white whatever the theme: it was written in ink on paper, and a dark
+            background turns it into a smudge.
+          */}
+          {mine.signature_id && (
+            <img
+              src={api.signatureImageUrl(mine.signature_id)}
+              alt="Your signature"
+              className="mt-2 max-h-16 max-w-[14rem] rounded bg-white object-contain object-left-bottom p-1"
+            />
+          )}
+          {/*
             A plain link rather than a button that fetches. The response carries
             Content-Disposition, so following it downloads the file under the name the
             server chose; pulling it into a blob would throw that name away.
@@ -195,6 +213,36 @@ export function DocumentView() {
             <span>{ATTESTATION[action]}</span>
           </label>
 
+          {/*
+           * A contract carries the person's signature; a policy acknowledgement does
+           * not. Offered here rather than only on the account page because this is
+           * where somebody finds out they need one, and sending them away to another
+           * screen mid-contract is how a signature does not get given today.
+           */}
+          {needsSignatureImage(doc) && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/40">
+              <p className="mb-1 text-sm font-medium text-slate-800 dark:text-slate-200">
+                Your signature
+              </p>
+              <p className="mb-3 text-xs text-slate-500">
+                {/*
+                  "this document" rather than "this contract": a contract is the
+                  common case but not the only one - an annual declaration is signed
+                  too, and telling somebody it is a contract is worse than saying
+                  nothing about what it is.
+                */}
+                {specimen
+                  ? "This is what will appear on the signed copy."
+                  : "Upload an image of your signature. It will appear on the signed copy above your typed name."}
+              </p>
+              <SignatureCard
+                signature={specimen}
+                onChanged={setSpecimen}
+                framed={false}
+              />
+            </div>
+          )}
+
           <Field
             label="Type your full name to sign"
             required
@@ -205,7 +253,7 @@ export function DocumentView() {
                 id={fieldId}
                 required
                 autoComplete="off"
-                disabled={!confirmed}
+                disabled={!confirmed || (needsSignatureImage(doc) && !specimen)}
                 value={typedName}
                 onChange={(event) => setTypedName(event.target.value)}
                 placeholder={user.full_name}
@@ -216,12 +264,17 @@ export function DocumentView() {
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-slate-500">
               The date, time and a fingerprint of this exact text are recorded with your
-              signature.
+              {needsSignatureImage(doc) ? " signature and the image of it" : " signature"}.
             </p>
             <button
               type="submit"
               className="btn-primary shrink-0"
-              disabled={busy || !confirmed || !typedName.trim()}
+              disabled={
+                busy ||
+                !confirmed ||
+                !typedName.trim() ||
+                (needsSignatureImage(doc) && !specimen)
+              }
             >
               {busy ? "Recording…" : ACTION_VERB[action]}
             </button>
@@ -290,7 +343,16 @@ export function DocumentView() {
                           </span>
                         )}
                       </td>
-                      <td className="text-xs">{signature.typed_name}</td>
+                      <td className="text-xs">
+                        {signature.typed_name}
+                        {signature.signature_id && (
+                          <img
+                            src={api.signatureImageUrl(signature.signature_id)}
+                            alt={`Signature of ${signature.user_name ?? "this person"}`}
+                            className="mt-1 max-h-10 max-w-[9rem] rounded bg-white object-contain object-left-bottom p-0.5"
+                          />
+                        )}
+                      </td>
                       <td className="whitespace-nowrap text-xs">
                         {formatDateTime(signature.signed_at)}
                       </td>

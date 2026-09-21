@@ -10,6 +10,7 @@
 import type { ErasePreview, EraseScope } from "@shared/erase";
 import type { Visibility } from "@shared/visibility";
 import type { StaffAttachment, StaffFileKind } from "@shared/staff-files";
+import type { SignatureSpecimen } from "@shared/signatures";
 import type { StaffEmailPolicy } from "@shared/staff-email";
 import type {
   ToolCatalogue,
@@ -992,6 +993,46 @@ export const api = {
   removeStaffFile: (kind: StaffFileKind) =>
     request<void>(`/api/me/files/${kind}`, { method: "DELETE" }),
 
+  // ------------------------------------------------------------- signatures
+  /** What the person has on file to sign with, if anything. */
+  mySignature: () =>
+    request<{ signature: SignatureSpecimen | null }>("/api/me/signature"),
+
+  /** Uploads a new specimen. The old one is retired, never overwritten. */
+  uploadSignature: async (file: File) => {
+    let response: Response;
+    try {
+      response = await fetch("/api/me/signature", {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+        credentials: "same-origin",
+      });
+    } catch {
+      throw new ApiRequestError(0, "Could not reach the server. Check your connection.");
+    }
+    const text = await response.text();
+    const payload = text ? (JSON.parse(text) as { error?: string; detail?: string }) : null;
+    if (!response.ok) {
+      throw new ApiRequestError(
+        response.status,
+        payload?.error ?? `Could not upload that image (${response.status}).`,
+        payload?.detail,
+      );
+    }
+    return payload as { signature: SignatureSpecimen; replaced: boolean };
+  },
+
+  removeSignature: () => request<void>("/api/me/signature", { method: "DELETE" }),
+
+  /**
+   * The image itself, put straight into an `img` rather than fetched.
+   *
+   * By specimen id, because a signed document shows the signature that was used on it
+   * and not whatever the person has uploaded since.
+   */
+  signatureImageUrl: (signatureId: string) => `/api/signatures/${signatureId}`,
+
   /** Opened in a new tab rather than fetched: the response is a download. */
   myStaffFileUrl: (kind: StaffFileKind) => `/api/me/files/${kind}`,
   employeeStaffFileUrl: (userId: string, kind: StaffFileKind) =>
@@ -1242,6 +1283,8 @@ export const api = {
     request<{
       document: PortalDocumentDetail;
       my_signature: DocumentSignature | null;
+      /** What they have on file to sign with; null where none is needed. */
+      my_signature_specimen: SignatureSpecimen | null;
       signatures?: DocumentSignature[];
       outstanding?: Array<{ user_id: string; full_name: string }>;
     }>(`/api/documents/${id}`),

@@ -32,6 +32,12 @@ import {
 } from "../../shared/hr";
 import { fieldFor, fillContract } from "../../shared/contract-fields";
 import {
+  NO_SIGNATURE_ON_FILE,
+  isSignatureType,
+  needsSignatureImage,
+} from "../../shared/signatures";
+import { currentSignature } from "./signatures";
+import {
   renderSignedCopy,
   signedCopyFilename,
   type SignedCopy,
@@ -100,6 +106,56 @@ export const OUTSTANDING_DOCUMENTS_SQL = `
      )
    ORDER BY CASE d.kind WHEN 'contract' THEN 0 ELSE 1 END, d.position, d.title
 `;
+
+/**
+ * A specimen as the browser sees it: enough to show it and say when it was uploaded,
+ * without the object key. Nothing outside the Worker has any use for where a thing
+ * lives in the bucket.
+ */
+/**
+ * The signature image inlined into the signed copy, or null.
+ *
+ * Inlined rather than linked because a signed copy has to open on a machine that has
+ * never heard of the portal - that is what it is for. A missing object returns null
+ * rather than failing: the rest of the evidence is intact and worth handing over, and
+ * the certificate says the image could not be included.
+ */
+async function signatureDataUri(
+  env: Env,
+  row: Record<string, unknown>,
+): Promise<string | null> {
+  const key = row.signature_key as string | null | undefined;
+  const type = row.signature_type as string | null | undefined;
+  if (!key || !type || !env.FILES) return null;
+  if (!isSignatureType(type)) return null;
+
+  const object = await env.FILES.get(key);
+  if (!object) return null;
+
+  const bytes = new Uint8Array(await object.arrayBuffer());
+  /*
+   * Chunked. `String.fromCharCode(...bytes)` on a two-megabyte image spreads two
+   * million arguments across the stack and throws; a chunk at a time does not.
+   */
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return `data:${type.split(";")[0].trim().toLowerCase()};base64,${btoa(binary)}`;
+}
+
+function describeSpecimen(
+  row: { id: string; content_type: string; size_bytes: number; uploaded_at: string } | null,
+) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    content_type: row.content_type,
+    size_bytes: row.size_bytes,
+    uploaded_at: row.uploaded_at,
+  };
+}
 
 export function registerDocumentRoutes(router: Router<Env>): void {
   // -------------------------------------------------------------------------
@@ -187,6 +243,15 @@ export function registerDocumentRoutes(router: Router<Env>): void {
     const payload: Record<string, unknown> = {
       document: { ...doc, assigned_user_name: null },
       my_signature: mine ?? null,
+      /*
+       * Whether they have a signature to sign with, so the form can say so before they
+       * have read three pages rather than after. Only for documents that need one: an
+       * acknowledgement never asks for an image, and offering the upload there would
+       * suggest otherwise.
+       */
+      my_signature_specimen: needsSignatureImage(doc)
+        ? describeSpecimen(await currentSignature(env, actor.id))
+        : null,
     };
 
     // HR administrators also get the firm-wide compliance picture.
@@ -252,6 +317,23 @@ export function registerDocumentRoutes(router: Router<Env>): void {
       );
     }
 
+    /*
+     * A contract needs the person's signature on it, not only their name typed into a
+     * box. shared/signatures.ts sets out why that is asked for signing and not for
+     * acknowledging: a policy acknowledgement records that somebody read something,
+     * and an upload for each of a dozen policies buys nothing the click does not
+     * already prove.
+     *
+     * Checked here as well as in the form, because the form is a courtesy and anything
+     * can post to this endpoint.
+     */
+    const specimen = needsSignatureImage(doc)
+      ? await currentSignature(env, actor.id)
+      : null;
+    if (needsSignatureImage(doc) && !specimen) {
+      throw badRequest(NO_SIGNATURE_ON_FILE);
+    }
+
     const existing = await env.DB.prepare(
       `SELECT id FROM document_signatures
         WHERE document_id = ? AND version = ? AND user_id = ?`,
@@ -272,10 +354,15 @@ export function registerDocumentRoutes(router: Router<Env>): void {
 
     const statements = [
       env.DB.prepare(
+        /*
+         * The specimen is recorded by id, fixing which signature was used. Uploading a
+         * different one later adds a row rather than replacing this one, so what is on
+         * this contract stays what was on it.
+         */
         `INSERT INTO document_signatures
            (id, document_id, version, user_id, action, typed_name, content_hash,
-            signed_at, ip_address, user_agent)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            signed_at, ip_address, user_agent, signature_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         newId(),
         doc.id,
@@ -287,6 +374,7 @@ export function registerDocumentRoutes(router: Router<Env>): void {
         timestamp,
         ip,
         request.headers.get("User-Agent")?.slice(0, 300) ?? null,
+        specimen?.id ?? null,
       ),
       hrEventStatement(env, {
         subjectId: actor.id,
@@ -409,12 +497,20 @@ export function registerDocumentRoutes(router: Router<Env>): void {
     }
 
     const row = await env.DB.prepare(
+      /*
+       * Left join to the specimen: the signature record is the thing that must be
+       * found, and an image that has since been lost must not make the whole signed
+       * copy unobtainable. The certificate says which case it is.
+       */
       `SELECT d.title, d.body, d.kind, s.version, s.action, s.typed_name,
               s.content_hash, s.signed_at, s.ip_address, s.user_agent,
+              s.signature_id,
+              sig.object_key AS signature_key, sig.content_type AS signature_type,
               u.full_name AS signatory_name, u.email AS signatory_email
          FROM document_signatures s
          JOIN documents d ON d.id = s.document_id
          JOIN users u ON u.id = s.user_id
+         LEFT JOIN staff_signatures sig ON sig.id = s.signature_id
         WHERE s.document_id = ? AND s.user_id = ?
         ORDER BY s.version DESC
         LIMIT 1`,
@@ -446,6 +542,8 @@ export function registerDocumentRoutes(router: Router<Env>): void {
       ip_address: (row.ip_address as string | null) ?? null,
       user_agent: (row.user_agent as string | null) ?? null,
       content_hash: String(row.content_hash),
+      signature_image: await signatureDataUri(env, row),
+      had_signature_image: Boolean(row.signature_id),
       // Worked out here rather than trusted, which is what lets the certificate say
       // whether the text in the file is the text that was signed.
       current_hash: await sha256Hex(body),

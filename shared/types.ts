@@ -558,6 +558,15 @@ export interface DocumentSignature {
   typed_name: string;
   content_hash: string;
   signed_at: string;
+  /**
+   * The specimen signature used, if one was.
+   *
+   * Null for everything signed before signatures were held, and for every
+   * acknowledgement - a handbook policy is acknowledged rather than signed. Null also
+   * where the specimen has since been deleted: the signature record survives losing
+   * its picture, because the evidence around it stands on its own.
+   */
+  signature_id?: string | null;
 }
 
 export interface OnboardingItem {
