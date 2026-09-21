@@ -25,6 +25,8 @@ export function ClientLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [forgot, setForgot] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
 
   if (loading) return <Spinner label="Checking your session" />;
   if (user) {
@@ -48,6 +50,90 @@ export function ClientLogin() {
       setBusy(false);
     }
   };
+
+  /*
+   * The answer is deliberately the same whether or not the address has an account, and
+   * the screen shows that answer rather than checking anything - a form that behaved
+   * differently for a real address would undo what the endpoint is careful about.
+   */
+  const askForLink = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const { message } = await api.clientForgotPassword(email);
+      setSent(message);
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError ? err.message : "Could not send that just now.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (forgot) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-page px-4 py-10">
+        <div className="w-full max-w-sm">
+          <h1 className="section-title">Set a new password</h1>
+          <p className="muted mb-5 mt-1">
+            Tell us the address you sign in with and we will send you a link.
+          </p>
+
+          {sent ? (
+            <div className="card space-y-4 p-5">
+              <p className="text-sm text-slate-700">{sent}</p>
+              <p className="hint">
+                Nothing has changed yet - your current password still works until you use
+                the link.
+              </p>
+              <button
+                type="button"
+                className="btn-secondary w-full"
+                onClick={() => {
+                  setForgot(false);
+                  setSent(null);
+                }}
+              >
+                Back to sign in
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={askForLink} className="card space-y-4 p-5">
+              {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
+              <Field label="Email" required>
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    type="email"
+                    required
+                    autoComplete="username"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                )}
+              </Field>
+              <button
+                type="submit"
+                className="btn-primary w-full"
+                disabled={busy || !email.trim()}
+              >
+                {busy ? "Sending..." : "Send me a link"}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost w-full"
+                onClick={() => setForgot(false)}
+              >
+                Back to sign in
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-page px-4 py-10">
@@ -95,9 +181,17 @@ export function ClientLogin() {
             {busy ? "Signing in..." : "Sign in"}
           </button>
 
-          <p className="hint text-center">
-            Forgotten your password, or never set one? Ask us and we will send you a fresh
-            link.
+          <p className="text-center text-xs text-slate-500">
+            <button
+              type="button"
+              className="link"
+              onClick={() => {
+                setForgot(true);
+                setError(null);
+              }}
+            >
+              Forgotten your password?
+            </button>
           </p>
         </form>
       </div>

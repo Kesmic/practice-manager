@@ -1176,6 +1176,18 @@ export const api = {
   clientLogin: (email: string, password: string) =>
     request<{ ok: true }>("/api/client/login", { method: "POST", body: { email, password } }),
   clientLogout: () => request<{ ok: true }>("/api/client/logout", { method: "POST" }),
+
+  /**
+   * Asks for a reset link.
+   *
+   * The answer is the same sentence whether or not that address has an account, so the
+   * caller cannot learn anything from it - and must not try to.
+   */
+  clientForgotPassword: (email: string) =>
+    request<{ ok: true; message: string }>("/api/client/forgot-password", {
+      method: "POST",
+      body: { email },
+    }),
   clientSession: () => request<{ user: ClientPortalUser }>("/api/client/session"),
   clientInvitation: (token: string) =>
     request<{ full_name: string; email: string; client_name: string }>(
