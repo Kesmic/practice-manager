@@ -254,6 +254,21 @@ export function generateTemporaryPassword(): string {
 // Sessions
 // ---------------------------------------------------------------------------
 
+/**
+ * A fresh session or invitation token, and the digest stored in its place.
+ *
+ * Exported because client logins (worker/client-auth.ts) hold their own sessions in
+ * their own table and must mint tokens exactly the way staff sessions do. Two
+ * implementations of this would be two chances to store a raw token by mistake.
+ */
+export function newToken(): string {
+  return toBase64(randomBytes(32));
+}
+
+export async function tokenDigest(token: string): Promise<string> {
+  return await digest(token);
+}
+
 async function digest(token: string): Promise<string> {
   const buf = await crypto.subtle.digest(
     "SHA-256",
@@ -262,7 +277,7 @@ async function digest(token: string): Promise<string> {
   return toHex(buf);
 }
 
-function ttlDays(env: Env): number {
+export function ttlDays(env: Env): number {
   const parsed = Number.parseInt(env.SESSION_TTL_DAYS ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TTL_DAYS;
 }
@@ -315,7 +330,7 @@ export async function createSession(
 
 export const clearedCookie = `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 
-function readCookie(request: Request, name: string): string | null {
+export function readCookie(request: Request, name: string): string | null {
   const header = request.headers.get("Cookie");
   if (!header) return null;
   for (const part of header.split(";")) {
