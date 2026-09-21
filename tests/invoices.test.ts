@@ -416,3 +416,60 @@ test("deleting a client takes their invoices, lines and payments", () => {
   }
   db.close();
 });
+
+// ---------------------------------------------------------------------------
+// Withholding on the face of the invoice
+// ---------------------------------------------------------------------------
+
+import { balanceDue, withholdingOn } from "../shared/invoices";
+import { describeTerms, slashDate } from "../shared/invoice-document";
+
+test("withholding is charged on the amount before tax", () => {
+  // The firm's own invoice: a fee of 3,508.10 carries 263.10 at 7.5%, and the balance
+  // due is 3,245.00. If this were charged on the tax-inclusive total it would be wrong
+  // by the tax, every time.
+  assert.equal(withholdingOn(3508.1, 7.5), 263.11);
+  assert.equal(withholdingOn(4500, 7.5), 337.5);
+  assert.equal(balanceDue(5485.5, 337.5), 5148);
+});
+
+test("no rate means no deduction at all", () => {
+  // A client who does not withhold must see an invoice with no deduction line, not one
+  // showing zero.
+  assert.equal(withholdingOn(4500, 0), 0);
+  assert.equal(withholdingOn(4500, Number.NaN), 0);
+  assert.equal(balanceDue(5485.5, 0), 5485.5);
+});
+
+test("an invoice that anticipates withholding is settled by its balance, not its total", () => {
+  // The failure this prevents: every invoice permanently short by exactly the tax the
+  // client remitted on the firm's behalf, and a reminder chasing them for it.
+  const invoice = {
+    state: "sent" as const,
+    gross: 5485.5,
+    balance_due: 5148,
+    due_on: "2026-10-14",
+  };
+  const paid = [{ amount: 5148, withheld: 0 }];
+  const s = standingOf(invoice, paid, "2026-10-20");
+  assert.equal(s.outstanding, 0);
+  assert.equal(s.overdue, false);
+  assert.equal(stateAfterPayments("sent", invoice.balance_due, paid), "paid");
+});
+
+test("an older invoice with no balance recorded falls back to its total", () => {
+  // Invoices raised before withholding could be shown on the face of one.
+  const invoice = { state: "sent" as const, gross: 5485.5, due_on: "2026-10-14" };
+  assert.equal(standingOf(invoice, [], "2026-10-01").outstanding, 5485.5);
+});
+
+test("terms are read off the two dates", () => {
+  assert.equal(describeTerms("2026-08-25", "2026-09-09"), "Net 15");
+  assert.equal(describeTerms("2026-09-21", "2026-10-06"), "Net 15");
+  assert.equal(describeTerms("2026-09-21", "2026-09-21"), "Due on receipt");
+});
+
+test("dates read the way the firm writes them", () => {
+  assert.equal(slashDate("2026-08-25"), "25/08/2026");
+  assert.equal(slashDate(null), "");
+});

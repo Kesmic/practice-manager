@@ -49,6 +49,7 @@ import {
   type ServiceState,
 } from "../../shared/subscriptions";
 import { feeFor, readCatalogue } from "./subscriptions";
+import { serveDocument } from "./invoices";
 import { standingOf, type InvoiceState, type PaymentLike } from "../../shared/invoices";
 
 /**
@@ -555,7 +556,19 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       ),
     });
   });
+  /** Their own invoice as a printable document. Scoped, so another's is simply absent. */
+  router.get("/api/client/invoices/:id/document", async ({ request, env, params }) => {
+    const actor = await requireClientUser(env, request);
+    const mine = await env.DB.prepare(
+      `SELECT id FROM invoices WHERE id = ? AND client_id = ? AND state <> 'draft'`,
+    )
+      .bind(params.id, actor.client_id)
+      .first();
+    if (!mine) throw notFound("There is no such invoice on your account.");
+    return await serveDocument(env, params.id);
+  });
 }
+
 
 /** Referenced so the cookie's name is exported from exactly one place. */
 export { CLIENT_SESSION_COOKIE };

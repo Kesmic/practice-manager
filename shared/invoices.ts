@@ -146,6 +146,32 @@ export function computeTotals(net: number, lines: TaxLine[]): Totals {
 }
 
 // ---------------------------------------------------------------------------
+// Withholding shown on the face of the invoice
+// ---------------------------------------------------------------------------
+
+/**
+ * Tax the client will deduct and remit to the revenue authority, shown as a deduction
+ * on the invoice so that what they are asked to pay is what they should pay.
+ *
+ * Charged on the amount before tax, which is how withholding on services works here and
+ * what the firm's own invoices do: a fee of 3,508.10 carries 263.10 at 7.5%, and the
+ * balance due is 3,245.00.
+ *
+ * This is not the same thing as `invoice_payments.withheld`. That records a deduction
+ * the firm did not anticipate - a fact about a payment. This is the firm saying in
+ * advance that it expects one.
+ */
+export function withholdingOn(net: number, rate: number): number {
+  if (!Number.isFinite(rate) || rate <= 0) return 0;
+  return round2((round2(net) * rate) / 100);
+}
+
+/** What the client is asked to pay: the total, less anything withheld on its face. */
+export function balanceDue(gross: number, withheld: number): number {
+  return round2(gross - round2(withheld));
+}
+
+// ---------------------------------------------------------------------------
 // What state an invoice is in
 // ---------------------------------------------------------------------------
 
@@ -214,17 +240,29 @@ export function daysBetween(today: string, due: string): number {
  * email to the wrong person when it is not.
  */
 export function standingOf(
-  invoice: { state: InvoiceState; gross: number; due_on: string },
+  invoice: {
+    state: InvoiceState;
+    gross: number;
+    due_on: string;
+    /**
+     * What the client was actually asked to pay. Absent on invoices raised before
+     * withholding could be shown on the face of one, where it is the gross.
+     */
+    balance_due?: number | null;
+  },
   payments: PaymentLike[],
   today: string,
 ): Standing {
   const settled = round2(
     payments.reduce((sum, p) => sum + p.amount + p.withheld, 0),
   );
-  // Through the same tolerance the status uses, so the two cannot disagree.
-  const outstanding = isSettled(invoice.gross, settled)
-    ? 0
-    : round2(Math.max(invoice.gross - settled, 0));
+  /*
+   * Measured against what the client was asked to pay. An invoice that already shows
+   * the withholding deduction has a balance below its total, and reading the total
+   * would leave it looking permanently short by exactly the tax the client remitted.
+   */
+  const asked = invoice.balance_due ?? invoice.gross;
+  const outstanding = isSettled(asked, settled) ? 0 : round2(Math.max(asked - settled, 0));
   const awaiting = round2(
     payments
       .filter((p) => !(p.certificate_received === 1 || p.certificate_received === true))
@@ -251,13 +289,18 @@ export function standingOf(
  */
 export function stateAfterPayments(
   current: InvoiceState,
-  gross: number,
+  /**
+   * What the client was asked to pay - the balance due, which on an invoice that shows
+   * a withholding deduction is below its total. Passing the total here would leave such
+   * an invoice permanently "part paid" by exactly the tax the client remitted.
+   */
+  asked: number,
   payments: PaymentLike[],
 ): InvoiceState {
   if (current === "void" || current === "draft") return current;
   const settled = round2(payments.reduce((sum, p) => sum + p.amount + p.withheld, 0));
   if (settled <= 0) return "sent";
-  if (isSettled(gross, settled)) return "paid";
+  if (isSettled(asked, settled)) return "paid";
   return "part_paid";
 }
 

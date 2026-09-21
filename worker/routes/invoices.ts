@@ -46,6 +46,14 @@ import { readSettings } from "./settings";
 import { sendToPerson } from "../email";
 import { feeFor, readCatalogue } from "./subscriptions";
 import {
+  describeTerms,
+  invoiceFilename,
+  renderInvoice,
+  type InvoiceDocument,
+} from "../../shared/invoice-document";
+import {
+  balanceDue,
+  withholdingOn,
   DEFAULT_REMINDER_DAYS,
 
   TAX_BASES,
@@ -62,6 +70,17 @@ import {
   type TaxLine,
 } from "../../shared/invoices";
 
+/**
+ * What the client was asked to pay.
+ *
+ * The balance due when the invoice shows a withholding deduction, otherwise the total.
+ * One function so no caller reaches for `gross` and leaves an invoice looking short by
+ * exactly the tax the client remitted on the firm's behalf.
+ */
+function askedFor(invoice: { gross: number; balance_due?: number | null }): number {
+  return invoice.balance_due ?? invoice.gross;
+}
+
 /** Today as the portal reckons it. One place, so tests and routes agree. */
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -74,12 +93,39 @@ function today(): string {
  * itself is continuous across years: a gap is a question somebody can answer, whereas
  * restarting at one every January would give two documents the same name.
  */
-async function nextInvoiceNumber(env: Env): Promise<string> {
+async function nextInvoiceNumber(
+  env: Env,
+  clientCode: string,
+  period: string | null,
+): Promise<string> {
   const row = await env.DB.prepare(
     `UPDATE counters SET value = value + 1 WHERE name = 'invoice' RETURNING value`,
   ).first<{ value: number }>();
   if (!row) throw new Error("The invoice counter is missing.");
-  return `INV-${new Date().getUTCFullYear()}-${String(row.value).padStart(4, "0")}`;
+
+  const settings = await readSettings(env);
+  const when = period ? `${period}-01` : today();
+  const format = settings.invoice_number_format || "INV-{YYYY}-{SEQ}";
+
+  /*
+   * The firm's own invoices read CPL202608 - client code and month, no sequence. That
+   * format is unique per client per month, which is exactly what a subscription invoice
+   * is, but it collides the moment a client is billed twice in one month. So a format
+   * with no {SEQ} gets the sequence appended when the number it produces is taken,
+   * rather than failing on the unique index and losing the draft.
+   */
+  const base = format
+    .replace(/\{CLIENT\}/g, clientCode.replace(/[^A-Za-z0-9]/g, "").toUpperCase())
+    .replace(/\{YYYY\}/g, when.slice(0, 4))
+    .replace(/\{MM\}/g, when.slice(5, 7))
+    .replace(/\{SEQ\}/g, String(row.value).padStart(4, "0"));
+
+  if (format.includes("{SEQ}")) return base;
+
+  const taken = await env.DB.prepare(`SELECT id FROM invoices WHERE number = ?`)
+    .bind(base)
+    .first();
+  return taken ? `${base}-${String(row.value).padStart(3, "0")}` : base;
 }
 
 async function activeTaxLines(env: Env): Promise<TaxLine[]> {
@@ -135,11 +181,36 @@ async function recomputeDraft(env: Env, invoiceId: string): Promise<void> {
   const net = netOf(lines.results as unknown as Array<{ quantity: number; unit_amount: number }>);
   const totals = computeTotals(net, taxes);
 
+  /*
+   * Withholding is charged on the amount before tax, which is how it works on services
+   * here and what the firm's own invoices do. It is held on the invoice rather than read
+   * from the setting at print time, for the reason the tax lines are frozen: a rate
+   * change must not alter a document already in a client's hands.
+   */
+  const current = await env.DB.prepare(
+    `SELECT withholding_rate FROM invoices WHERE id = ?`,
+  )
+    .bind(invoiceId)
+    .first<{ withholding_rate: number | null }>();
+  const rate = current?.withholding_rate ?? 0;
+  const withheld = withholdingOn(totals.net, rate);
+
   const statements = [
     env.DB.prepare(`DELETE FROM invoice_taxes WHERE invoice_id = ?`).bind(invoiceId),
     env.DB.prepare(
-      `UPDATE invoices SET net = ?, tax_total = ?, gross = ?, updated_at = ? WHERE id = ?`,
-    ).bind(totals.net, totals.tax_total, totals.gross, nowIso(), invoiceId),
+      `UPDATE invoices
+          SET net = ?, tax_total = ?, gross = ?, withholding_amount = ?, balance_due = ?,
+              updated_at = ?
+        WHERE id = ?`,
+    ).bind(
+      totals.net,
+      totals.tax_total,
+      totals.gross,
+      withheld,
+      balanceDue(totals.gross, withheld),
+      nowIso(),
+      invoiceId,
+    ),
   ];
   totals.taxes.forEach((tax, index) => {
     statements.push(
@@ -392,9 +463,9 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       note?: string;
     }>(request);
 
-    const client = await env.DB.prepare(`SELECT id, name FROM clients WHERE id = ?`)
+    const client = await env.DB.prepare(`SELECT id, name, code FROM clients WHERE id = ?`)
       .bind(params.id)
-      .first<{ id: string; name: string }>();
+      .first<{ id: string; name: string; code: string }>();
     if (!client) throw notFound("There is no such client.");
 
     const period = body.period?.trim() || null;
@@ -480,17 +551,24 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     }
 
     const id = newId();
-    const number = await nextInvoiceNumber(env);
+    const number = await nextInvoiceNumber(env, client.code, period);
     const timestamp = nowIso();
-    const dueOn = body.due_on?.trim() || addDays(today(), 14);
+    const settings = await readSettings(env);
+    const termDays = Number(settings.invoice_terms_days) || 15;
+    const dueOn = body.due_on?.trim() || addDays(today(), termDays);
+    /*
+     * Copied onto the invoice now, not read at print time. The rate the firm expects
+     * today is the rate this document says, whatever the setting becomes later.
+     */
+    const withholdingRate = Number(settings.withholding_rate) || 0;
 
     try {
       await env.DB.batch([
         env.DB.prepare(
           `INSERT INTO invoices
              (id, number, client_id, state, due_on, currency, period_label, note,
-              created_by, created_at, updated_at)
-           VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`,
+              withholding_rate, created_by, created_at, updated_at)
+           VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           id,
           number,
@@ -499,6 +577,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
           subscription?.currency ?? "GHS",
           period,
           body.note?.trim()?.slice(0, 500) || null,
+          withholdingRate || null,
           actor.id,
           timestamp,
           timestamp,
@@ -664,7 +743,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       .run();
 
     const after = await paymentsFor(env, params.id);
-    const state = stateAfterPayments(invoice.state, invoice.gross, after);
+    const state = stateAfterPayments(invoice.state, askedFor(invoice), after);
     await env.DB.prepare(`UPDATE invoices SET state = ?, updated_at = ? WHERE id = ?`)
       .bind(state, timestamp, params.id)
       .run();
@@ -712,7 +791,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       const after = await paymentsFor(env, payment.invoice_id);
       await env.DB.prepare(`UPDATE invoices SET state = ?, updated_at = ? WHERE id = ?`)
         .bind(
-          stateAfterPayments(invoice.state, invoice.gross, after),
+          stateAfterPayments(invoice.state, askedFor(invoice), after),
           nowIso(),
           payment.invoice_id,
         )
@@ -727,6 +806,18 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     const sent = await chase(env, params.id, false);
     if (!sent.sent) throw badRequest(sent.why ?? "There is nothing to chase.");
     return json(sent);
+  });
+
+  /**
+   * The invoice as a document: letterhead, lines, deduction, balance due, bank block.
+   *
+   * Handed back as a file rather than a page, so following the link downloads something
+   * the firm can print, attach or file. A Partner may fetch any client's; a client can
+   * only ever reach their own, through the client route below.
+   */
+  router.get("/api/invoices/:id/document", async ({ request, env, params }) => {
+    await requireRole(env, request, MIN_SUPERVISOR_ROLE);
+    return await serveDocument(env, params.id);
   });
 
   // -------------------------------------------------------------------------
@@ -762,6 +853,136 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     }
 
     return json({ considered: results.length, sent: sent.length, skipped: skipped.length });
+  });
+}
+
+/**
+ * Builds and serves one invoice as a printable document.
+ *
+ * Exported so the client's own route can hand a client their own invoice without
+ * duplicating the assembly - two builders would be two invoices that disagree.
+ */
+export async function serveDocument(env: Env, invoiceId: string): Promise<Response> {
+  const row = await env.DB.prepare(
+    `SELECT i.*, c.name AS client_name, c.code AS client_code, c.address AS client_address,
+            c.tax_id AS client_tax_id
+       FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ?`,
+  )
+    .bind(invoiceId)
+    .first<
+      InvoiceRow & {
+        client_name: string;
+        client_code: string;
+        client_address: string | null;
+        client_tax_id: string | null;
+        withholding_rate: number | null;
+        withholding_amount: number;
+        balance_due: number;
+        note: string | null;
+      }
+    >();
+  if (!row) throw notFound("There is no such invoice.");
+
+  const [lines, taxes, payments] = await env.DB.batch([
+    env.DB.prepare(
+      `SELECT description, quantity, unit_amount, amount, source, subscription_period
+         FROM invoice_lines WHERE invoice_id = ? ORDER BY position`,
+    ).bind(invoiceId),
+    env.DB.prepare(
+      `SELECT name, rate, amount FROM invoice_taxes WHERE invoice_id = ? ORDER BY position`,
+    ).bind(invoiceId),
+    env.DB.prepare(
+      `SELECT amount, withheld FROM invoice_payments WHERE invoice_id = ?`,
+    ).bind(invoiceId),
+  ]);
+
+  const settings = await readSettings(env);
+  const issued = row.issued_on ?? today();
+
+  const doc: InvoiceDocument = {
+    firm: {
+      name: settings.firm_name,
+      address_lines: (settings.firm_address || "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean),
+      city: settings.firm_city,
+      phone: settings.firm_phone,
+      email: settings.firm_finance_email,
+      website: (settings.firm_website || "").replace(/^https?:\/\//, ""),
+      logo: settings.logo_data_url,
+      tax_id: settings.firm_tax_id,
+    },
+    client: {
+      name: row.client_name,
+      address_lines: (row.client_address || "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean),
+      tax_id: row.client_tax_id ?? "",
+    },
+    number: row.number,
+    issued_on: issued,
+    due_on: row.due_on,
+    terms: describeTerms(issued, row.due_on),
+    currency: row.currency,
+    lines: (lines.results as unknown as Array<{
+      description: string;
+      quantity: number;
+      unit_amount: number;
+      amount: number;
+      source: string;
+      subscription_period: string | null;
+    }>).map((line) => ({
+      date: issued,
+      // The firm's own invoices carry a short "activity" beside the description.
+      activity:
+        line.source === "subscription"
+          ? "Consultancy services"
+          : line.source === "service"
+            ? "Professional services"
+            : "Services",
+      description: line.description,
+      quantity: line.quantity,
+      unit_amount: line.unit_amount,
+      amount: line.amount,
+    })),
+    taxes: taxes.results as unknown as Array<{ name: string; rate: number; amount: number }>,
+    net: row.net,
+    tax_total: row.tax_total,
+    gross: row.gross,
+    withholding:
+      row.withholding_rate && row.withholding_amount > 0
+        ? {
+            label: settings.withholding_label || "Withholding tax",
+            rate: row.withholding_rate,
+            amount: row.withholding_amount,
+          }
+        : null,
+    balance_due: row.balance_due || row.gross,
+    paid: round2(
+      (payments.results as unknown as Array<{ amount: number; withheld: number }>).reduce(
+        (sum, p) => sum + p.amount + p.withheld,
+        0,
+      ),
+    ),
+    note: row.note,
+    bank: {
+      account_name: settings.bank_account_name,
+      account_number: settings.bank_account_number,
+      bank: settings.bank_name,
+      branch: settings.bank_branch,
+      swift: settings.bank_swift,
+    },
+  };
+
+  return new Response(renderInvoice(doc), {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${invoiceFilename(doc)}"`,
+      // Somebody's bill. Nothing should cache it.
+      "Cache-Control": "private, no-store",
+    },
   });
 }
 
