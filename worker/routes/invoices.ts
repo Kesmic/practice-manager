@@ -58,6 +58,7 @@ import {
   discountableBase,
 } from "../../shared/discounts";
 import { activeDiscount, consumeDiscount, releaseDiscount } from "../discounts";
+import { accrueCommission, cancelCommission } from "../commissions";
 import {
   balanceDue,
   withholdingOn,
@@ -690,6 +691,13 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     // discount that only covers so many invoices.
     await consumeDiscount(env, invoice);
 
+    /*
+     * And what it earns the growth partner who sold this client, if one did. Also here
+     * rather than at draft time: a draft is not a bill, and a cancelled one that had
+     * already earned somebody a commission would have to be unpicked by hand.
+     */
+    await accrueCommission(env, params.id);
+
     for (const contact of contacts) {
       await sendToPerson(env, {
         to: contact,
@@ -756,6 +764,15 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
      * an extra discounted invoice every time somebody cancelled a draft.
      */
     if (cancelled.state !== "draft") await releaseDiscount(env, cancelled);
+
+    /*
+     * And so does the commission it earned. A cancelled invoice was never paid, so it
+     * never earned anybody anything - and the billed month goes back into the partner's
+     * six, to be earned on the invoice that replaces this one.
+     */
+    if (cancelled.state !== "draft") {
+      await cancelCommission(env, params.id, `Invoice cancelled: ${reason}`);
+    }
 
     return noContent();
   });

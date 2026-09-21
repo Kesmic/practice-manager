@@ -65,6 +65,12 @@ const NAV: NavItem[] = [
    */
   { to: "/subscriptions", label: "Subscriptions", section: "Work", minimum: "manager" },
   { to: "/invoices", label: "Invoices", section: "Work", minimum: "manager" },
+  {
+    to: "/growth-partners",
+    label: "Growth partners",
+    section: "Work",
+    minimum: "manager",
+  },
   { to: "/templates", label: "Job templates", area: "templates", section: "Work" },
   { to: "/reports", label: "Reports", area: "reports", section: "Work" },
 

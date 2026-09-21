@@ -25,6 +25,12 @@ import type {
 } from "./allocations";
 import type { ContractField, ContractTemplate } from "./contract-fields";
 import type {
+  CommissionKind,
+  CommissionState,
+  PartnerState,
+  ProspectStage,
+} from "./growth-partners";
+import type {
   DiscountKind,
   DiscountRun,
   DiscountScope,
@@ -1314,3 +1320,119 @@ export interface ClientInvoiceDetail {
 
 /** Re-exported so screens import one place for the shapes they render. */
 export type { Totals };
+
+
+// ------------------------------------------------- growth partners
+
+/** A growth partner as their own portal knows them. */
+export interface PartnerSelf {
+  id: string;
+  email: string;
+  full_name: string;
+  business_name: string | null;
+  /** Their own terms, not the firm's current standard ones. */
+  commission_rate: number;
+  commission_months: number;
+  hold_days: number;
+  agreement_signed_at: string | null;
+}
+
+export interface ProspectRow {
+  id: string;
+  business_name: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  sector: string | null;
+  note: string | null;
+  stage: ProspectStage;
+  registered_on: string;
+  hold_until: string;
+  hold_extension_note: string | null;
+  client_id: string | null;
+  won_on: string | null;
+  lost_reason: string | null;
+}
+
+export interface ProposalRow {
+  id: string;
+  prospect_id: string;
+  reference: string;
+  status: "draft" | "sent" | "accepted" | "declined" | "withdrawn";
+  tier: ClientTier | null;
+  currency: string;
+  monthly_fee: number | null;
+  discount: number;
+  sent_at: string | null;
+  viewed_at: string | null;
+  decided_at: string | null;
+}
+
+export interface CommissionRow {
+  id: string;
+  client_id: string | null;
+  prospect_id?: string | null;
+  kind: CommissionKind;
+  month_index: number | null;
+  reference: string | null;
+  basis: number;
+  rate: number;
+  currency: string;
+  amount: number;
+  status: CommissionState;
+  created_at: string;
+  approved_at?: string | null;
+  paid_at: string | null;
+  paid_reference?: string | null;
+  cancelled_reason?: string | null;
+  client_name?: string | null;
+  invoice_number?: string | null;
+  issued_on?: string | null;
+}
+
+export interface PartnerPipeline {
+  prospects: ProspectRow[];
+  proposals: ProposalRow[];
+  commissions: CommissionRow[];
+  terms: { rate: number; months: number; hold_days: number };
+  today: string;
+}
+
+export interface PartnerStatement {
+  commissions: CommissionRow[];
+  totals: Record<string, { earned: number; approved: number; paid: number }>;
+  entitlements: Array<{
+    client_id: string;
+    client_name: string;
+    months_earned: number;
+    ever_subscribed: boolean;
+    description: string;
+  }>;
+  terms: { rate: number; months: number };
+}
+
+/** A growth partner as the firm sees them. */
+export interface GrowthPartnerRow {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  business_name: string | null;
+  status: PartnerState;
+  note: string | null;
+  commission_rate: number;
+  commission_months: number;
+  hold_days: number;
+  agreement_signed_at: string | null;
+  applied_at: string;
+  approved_at: string | null;
+  last_login_at: string | null;
+  has_password: 0 | 1;
+}
+
+export interface GrowthPartnerOverview {
+  partners: GrowthPartnerRow[];
+  prospects: Array<ProspectRow & { partner_id: string; client_name: string | null }>;
+  commissions: Array<CommissionRow & { partner_id: string }>;
+  today: string;
+}

@@ -64,6 +64,24 @@ const DEFAULTS: Record<string, string> = {
 
   /** Days from issue to due. The firm's own invoices say Net 15. */
   invoice_terms_days: "15",
+
+  /**
+   * The About Us paragraph a proposal opens with.
+   *
+   * Seeded from the firm's own pricing proposal, because a proposal that goes out with
+   * an empty About Us is worse than one carrying words the firm has already approved -
+   * and it is a settings field, so it is one screen to change.
+   */
+  firm_about:
+    "KESMIC is a trusted business consultancy hub dedicated to empowering organisations of all sizes to navigate the complexities of today's business environment with confidence. We offer tailored, all-in-one service packages that simplify operations by providing seamless solutions in bookkeeping, tax management, payroll processing, and regulatory compliance. Our client-centric approach ensures that our services are not only comprehensive but also cost-effective, allowing businesses to achieve their goals without stretching their budgets. With a team of experienced professionals, we build long-term partnerships that drive success and foster innovation across various industries, including technology, retail, manufacturing, hospitality, and non-governmental organisations.",
+
+  /** The core services a proposal lists, one per line. */
+  firm_core_services:
+    "Accounting and bookkeeping services\nPayroll administration\nTax services\nRegulatory services\nGeneral business advisory",
+
+  /** The terms at the foot of a proposal, one paragraph per line. */
+  proposal_terms:
+    "The selected package is based on our understanding of your current needs and the corresponding scope of work. We reserve the right to revisit and adjust the package accordingly should the scope expand or the volume of work increase.\nAdditionally, we may recover any out-of-pocket expenses incurred on your behalf that are not covered under the selected package. Such reimbursements will be supported by appropriate justifications and, where available, receipts.",
   md_name: "",
   md_title: "Managing Director",
   welcome_message: "",

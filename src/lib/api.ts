@@ -15,17 +15,26 @@ import type { CriterionUnit, FeeBasis, ServiceState } from "@shared/subscription
 import type { TaxBasis, Totals } from "@shared/invoices";
 import type { DiscountKind, DiscountRun, DiscountScope } from "@shared/discounts";
 import type { Currency } from "@shared/money";
+import type { ProspectStage, PartnerState } from "@shared/growth-partners";
+import type { ProposalDocument } from "@shared/proposal-document";
 import type {
+  AdditionalService,
   ClientInvoiceDetail,
   ClientInvoiceList,
   ClientPortalSubscription,
   ClientPortalUser,
   ClientSubscriptionDetail,
+  GrowthPartnerOverview,
   InvoiceDetail,
   InvoiceList,
+  PartnerPipeline,
+  PartnerSelf,
+  PartnerStatement,
   SubscriptionCatalogue,
   SubscriptionsOverview,
   TaxLineRow,
+  TierInclusion,
+  TierRow,
 } from "@shared/types";
 import type { StaffEmailPolicy } from "@shared/staff-email";
 import type {
@@ -1204,6 +1213,136 @@ export const api = {
     request<{ sent: boolean; step?: number }>(`/api/invoices/${id}/remind`, { method: "POST" }),
 
   // ------------------------------------------------- the client's own portal
+  // ------------------------------------------------------- growth partners
+  //
+  // A third set of calls, against a third session. Nothing here touches the staff or
+  // client endpoints, and nothing there touches these.
+
+  partnerApply: (body: {
+    full_name: string;
+    email: string;
+    phone?: string;
+    business_name?: string;
+    note?: string;
+  }) => request<{ ok: true; message: string }>("/api/partner/apply", { method: "POST", body }),
+
+  partnerLogin: (email: string, password: string) =>
+    request<{ ok: true }>("/api/partner/login", { method: "POST", body: { email, password } }),
+  partnerLogout: () => request<{ ok: true }>("/api/partner/logout", { method: "POST" }),
+  partnerSession: () => request<{ partner: PartnerSelf }>("/api/partner/session"),
+
+  partnerForgotPassword: (email: string) =>
+    request<{ ok: true; message: string }>("/api/partner/forgot-password", {
+      method: "POST",
+      body: { email },
+    }),
+  partnerInvitation: (token: string) =>
+    request<{ full_name: string; email: string }>(
+      `/api/partner/invitation/${encodeURIComponent(token)}`,
+    ),
+  acceptPartnerInvitation: (token: string, password: string) =>
+    request<{ ok: true }>(`/api/partner/invitation/${encodeURIComponent(token)}`, {
+      method: "POST",
+      body: { password },
+    }),
+  partnerChangePassword: (current: string, password: string) =>
+    request<void>("/api/partner/password", { method: "POST", body: { current, password } }),
+
+  partnerPipeline: () => request<PartnerPipeline>("/api/partner/prospects"),
+  partnerStatement: () => request<PartnerStatement>("/api/partner/statement"),
+  partnerPackages: () =>
+    request<{
+      tiers: TierRow[];
+      inclusions: TierInclusion[];
+      services: AdditionalService[];
+    }>("/api/partner/packages"),
+
+  registerProspect: (body: {
+    business_name: string;
+    contact_name?: string;
+    contact_email?: string;
+    contact_phone?: string;
+    sector?: string;
+    note?: string;
+  }) => request<{ id: string }>("/api/partner/prospects", { method: "POST", body }),
+
+  moveProspect: (
+    id: string,
+    body: { stage?: ProspectStage; note?: string; lost_reason?: string },
+  ) => request<void>(`/api/partner/prospects/${id}`, { method: "PATCH", body }),
+
+  createProposal: (
+    prospectId: string,
+    body: {
+      tier: ClientTier | null;
+      currency: Currency;
+      monthly_fee: number | null;
+      discount: number;
+      prepared_for?: string;
+      address?: string;
+      salutation?: string;
+      note?: string;
+      lines?: Array<{ description: string; frequency: string; amount: number }>;
+    },
+  ) =>
+    request<{ id: string; reference: string }>(
+      `/api/partner/prospects/${prospectId}/proposals`,
+      { method: "POST", body },
+    ),
+  sendProposal: (id: string) =>
+    request<{ link: string }>(`/api/partner/proposals/${id}/send`, { method: "POST" }),
+  withdrawProposal: (id: string) =>
+    request<void>(`/api/partner/proposals/${id}/withdraw`, { method: "POST" }),
+
+  // ------------------------------------------- the firm's side of partners
+
+  growthPartners: () => request<GrowthPartnerOverview>("/api/growth-partners"),
+  approvePartner: (
+    id: string,
+    body: { commission_rate: number; commission_months: number; hold_days: number },
+  ) =>
+    request<{ invitation_url: string }>(`/api/growth-partners/${id}/approve`, {
+      method: "POST",
+      body,
+    }),
+  setPartnerStatus: (id: string, status: PartnerState, reason?: string) =>
+    request<void>(`/api/growth-partners/${id}/status`, {
+      method: "POST",
+      body: { status, reason },
+    }),
+  invitePartner: (id: string) =>
+    request<{ invitation_url: string }>(`/api/growth-partners/${id}/invite`, {
+      method: "POST",
+    }),
+  extendHold: (prospectId: string, days: number, reason: string) =>
+    request<{ hold_until: string }>(`/api/prospects/${prospectId}/extend-hold`, {
+      method: "POST",
+      body: { days, reason },
+    }),
+  markProspectWon: (prospectId: string, clientId: string, wonOn?: string) =>
+    request<{ ok: true }>(`/api/prospects/${prospectId}/won`, {
+      method: "POST",
+      body: { client_id: clientId, won_on: wonOn },
+    }),
+  approveCommission: (id: string) =>
+    request<void>(`/api/commissions/${id}/approve`, { method: "POST" }),
+  cancelCommission: (id: string, reason: string) =>
+    request<void>(`/api/commissions/${id}/cancel`, { method: "POST", body: { reason } }),
+  payCommission: (id: string, reference?: string) =>
+    request<void>(`/api/commissions/${id}/paid`, { method: "POST", body: { reference } }),
+
+  // --------------------------------------------- what a prospect can reach
+
+  readProposal: (token: string) =>
+    request<{ id: string; reference: string; status: string; document: ProposalDocument }>(
+      `/api/proposals/${encodeURIComponent(token)}`,
+    ),
+  decideProposal: (token: string, decision: "accepted" | "declined", reason?: string) =>
+    request<void>(`/api/proposals/${encodeURIComponent(token)}/decide`, {
+      method: "POST",
+      body: { decision, reason },
+    }),
+
   clientLogin: (email: string, password: string) =>
     request<{ ok: true }>("/api/client/login", { method: "POST", body: { email, password } }),
   clientLogout: () => request<{ ok: true }>("/api/client/logout", { method: "POST" }),

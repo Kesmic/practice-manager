@@ -74,11 +74,26 @@ import { sendToPerson } from "../email";
 // Reading the catalogue
 // ---------------------------------------------------------------------------
 
+/*
+ * The same shape shared/types.ts declares for the screens, kept here so the Worker's
+ * own callers are typed too. One package, described the same way at both ends.
+ */
 interface TierRow {
   tier: ClientTier;
   monthly_fee: number | null;
   currency: string;
   summary: string | null;
+  ideal_for: string | null;
+  position: number;
+  active: 0 | 1;
+}
+
+interface InclusionRow {
+  id: string;
+  tier: ClientTier;
+  label: string;
+  parent_id: string | null;
+  position: number;
 }
 
 /** The catalogue as every screen wants it: criteria, tiers, ceilings, services. */
@@ -109,7 +124,7 @@ export async function readCatalogue(env: Env) {
     tiers: tiers.results as unknown as TierRow[],
     ceilings: ceilings.results as unknown as Ceiling[],
     services: services.results,
-    inclusions: inclusions.results,
+    inclusions: inclusions.results as unknown as InclusionRow[],
   };
 }
 
