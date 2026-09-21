@@ -11,6 +11,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ApiRequestError, api } from "../../lib/api";
 import { usePartnerSession } from "../../lib/partner-auth";
 import { ErrorBanner, Field, Spinner, TextInput } from "../../components/ui";
+import { AuthShell } from "../../components/AuthShell";
 
 export function PartnerInvitation() {
   const { token = "" } = useParams();
@@ -42,12 +43,12 @@ export function PartnerInvitation() {
 
   if (dead) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-page px-4">
-        <div className="w-full max-w-sm text-center">
-          <h1 className="section-title">That link has expired</h1>
-          <p className="muted mt-2">{dead}</p>
-        </div>
-      </div>
+      <AuthShell kicker="Growth partners">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+          That link has expired
+        </h1>
+        <p className="muted mt-2">{dead}</p>
+      </AuthShell>
     );
   }
 
@@ -75,14 +76,15 @@ export function PartnerInvitation() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-page px-4 py-10">
-      <div className="w-full max-w-sm">
-        <h1 className="section-title">Choose a password</h1>
-        <p className="muted mb-5 mt-1">
-          Welcome, {who.full_name}. Nobody here will ever see what you type.
-        </p>
+    <AuthShell kicker="Growth partners">
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+        Choose a password
+      </h1>
+      <p className="muted mb-5 mt-1">
+        Welcome, {who.full_name}. Nobody here will ever see what you type.
+      </p>
 
-        <form onSubmit={submit} className="card space-y-4 p-5">
+      <form onSubmit={submit} className="space-y-4">
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
 
           <Field label="New password" required>
@@ -113,11 +115,8 @@ export function PartnerInvitation() {
           <button type="submit" className="btn-primary w-full" disabled={busy || !password}>
             {busy ? "Setting it..." : "Set my password and sign in"}
           </button>
-          <p className="hint">
-            This link works once. Afterwards, use the sign-in page.
-          </p>
-        </form>
-      </div>
-    </div>
+        <p className="hint">This link works once. Afterwards, use the sign-in page.</p>
+      </form>
+    </AuthShell>
   );
 }

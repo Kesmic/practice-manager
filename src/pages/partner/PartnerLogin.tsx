@@ -20,6 +20,7 @@ import {
   SuccessBanner,
   TextInput,
 } from "../../components/ui";
+import { AuthShell } from "../../components/AuthShell";
 
 export function PartnerLogin() {
   const { partner, loading, refresh } = usePartnerSession();
@@ -75,77 +76,75 @@ export function PartnerLogin() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-page px-4 py-10">
-      <div className="w-full max-w-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-link">
-          Growth partners
-        </p>
-        <h1 className="section-title mt-1">
-          {forgot ? "Set a new password" : "Sign in"}
-        </h1>
-        <p className="muted mb-5 mt-1">
-          {forgot
-            ? "Tell us the address you use with us and we will send a link."
-            : "The portal for the businesses you are selling to on our behalf."}
-        </p>
-
-        {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-        {sent && <SuccessBanner message={sent} />}
-
-        <form onSubmit={forgot ? askForLink : submit} className="card space-y-4 p-5">
-          <Field label="Email address">
-            {(id) => (
-              <TextInput
-                id={id}
-                type="email"
-                autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            )}
-          </Field>
-
-          {!forgot && (
-            <Field label="Password">
-              {(id) => (
-                <TextInput
-                  id={id}
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              )}
-            </Field>
-          )}
-
-          <button type="submit" className="btn-primary w-full" disabled={busy}>
-            {busy ? "One moment..." : forgot ? "Send me a link" : "Sign in"}
-          </button>
-
-          <button
-            type="button"
-            className="btn-ghost btn-sm w-full"
-            onClick={() => {
-              setForgot(!forgot);
-              setSent(null);
-              setError(null);
-            }}
-          >
-            {forgot ? "Back to signing in" : "Forgotten your password?"}
-          </button>
-        </form>
-
-        <p className="muted mt-5 text-center">
+    <AuthShell
+      kicker="Growth partners"
+      footer={
+        <>
           Not working with us yet?{" "}
           <Link className="link" to="/partner/apply">
             Apply to become a growth partner
           </Link>
           .
-        </p>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+        {forgot ? "Set a new password" : "Sign in"}
+      </h1>
+      <p className="muted mb-5 mt-1">
+        {forgot
+          ? "Tell us the address you use with us and we will send a link."
+          : "Your pipeline, your proposals and what you have earned."}
+      </p>
+
+      {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
+      {sent && <SuccessBanner message={sent} />}
+
+      <form onSubmit={forgot ? askForLink : submit} className="space-y-4">
+        <Field label="Email address">
+          {(id) => (
+            <TextInput
+              id={id}
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          )}
+        </Field>
+
+        {!forgot && (
+          <Field label="Password">
+            {(id) => (
+              <TextInput
+                id={id}
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            )}
+          </Field>
+        )}
+
+        <button type="submit" className="btn-primary w-full py-2.5" disabled={busy}>
+          {busy ? "One moment..." : forgot ? "Send me a link" : "Sign in"}
+        </button>
+
+        <button
+          type="button"
+          className="btn-ghost btn-sm w-full"
+          onClick={() => {
+            setForgot(!forgot);
+            setSent(null);
+            setError(null);
+          }}
+        >
+          {forgot ? "Back to signing in" : "Forgotten your password?"}
+        </button>
+      </form>
+    </AuthShell>
   );
 }

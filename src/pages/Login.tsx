@@ -1,11 +1,17 @@
 /**
  * Sign in.
  *
- * A two-panel layout: the firm's own side on the left, the form on the right.
- * The left panel exists to answer "am I in the right place?" before anyone types
+ * A two-panel layout on a wide screen: the firm's own side on the left, the form on the
+ * right. That panel exists to answer "am I in the right place?" before anyone types
  * anything - the firm's logo and name at a size you cannot mistake, and a plain
  * statement of what the portal is. It collapses away below large screens, where a
- * decorative panel would only push the form under the fold.
+ * decorative panel would only push the form under the fold; there, AuthShell's branded
+ * band says the same thing in the space a phone has.
+ *
+ * Everything outside the form itself - the band, the card, the appearance control, the
+ * small print at the foot - belongs to AuthShell, which the client's and the growth
+ * partner's sign-ins use too. Five pages that each framed themselves was five chances
+ * to frame one of them badly, and the one that was framed badly was the phone.
  *
  * Deliberate details, each of which earns its place:
  *
@@ -28,8 +34,8 @@ type SecondStep = "totp" | "questions" | "recovery";
 import { IDLE_SIGNED_OUT_MESSAGE } from "@shared/session-policy";
 import { useSession } from "../lib/auth";
 import { FirmLogo, FirmName, useFirm } from "../lib/firm";
-import { ThemeToggle } from "../components/ThemeToggle";
 import { ErrorBanner, Field, Spinner, TextInput } from "../components/ui";
+import { AuthShell } from "../components/AuthShell";
 
 /** What the portal is for, said once, without salesmanship. */
 const ASSURANCES = [
@@ -109,7 +115,9 @@ export function Login() {
       navigate("/", { replace: true });
     } catch (err) {
       setError(
-        err instanceof ApiRequestError ? err.message : "Sign-in failed. Please try again.",
+        err instanceof ApiRequestError
+          ? err.message
+          : "Sign-in failed. Please try again.",
       );
     } finally {
       setBusy(false);
@@ -144,14 +152,19 @@ export function Login() {
       navigate("/", { replace: true });
     } catch (err) {
       const message =
-        err instanceof ApiRequestError ? err.message : "That did not work. Try again.";
+        err instanceof ApiRequestError
+          ? err.message
+          : "That did not work. Try again.";
       setError(message);
       setCode("");
       // The answers are cleared too: leaving them filled in invites the same wrong set
       // to be resubmitted against a challenge that only allows five tries.
       setAnswers({});
       // Too many attempts, or an expired challenge: back to the password.
-      if (err instanceof ApiRequestError && /email and password again/.test(message)) {
+      if (
+        err instanceof ApiRequestError &&
+        /email and password again/.test(message)
+      ) {
         setChallenge(null);
         setPassword("");
       }
@@ -170,266 +183,311 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-page lg:grid lg:grid-cols-[1.05fr_1fr]">
-      {/* ------------------------------------------------------- the firm's side */}
-      <aside className="relative hidden overflow-hidden bg-brand-900 lg:flex lg:min-h-screen lg:flex-col lg:justify-between lg:p-12">
-        {/*
+    <AuthShell
+      kicker="Practice Manager"
+      footer={
+        <>
+          <p>
+            Accounts are issued by the firm - there is nothing to sign up for.
+            If you are new and have not been given one, speak to whoever is
+            handling your onboarding.
+          </p>
+          {/*
+            This page is where a client lands if they bookmark the portal's address, and
+            without this line there is nothing here telling them they are in the wrong
+            place. It names no client and confirms nothing about who the firm acts for -
+            only that a separate door exists - so it holds the line the intake page
+            draws.
+          */}
+          <p className="mt-3">
+            Are you a client of the firm?{" "}
+            <a className="link" href="/client/login">
+              Sign in to your own account
+            </a>
+            . A growth partner?{" "}
+            <a className="link" href="/partner/login">
+              Sign in here
+            </a>
+            .
+          </p>
+        </>
+      }
+      /* The firm's own side, on a wide screen only. The shell's band says the same
+         thing on a phone, where this would only push the form under the fold. */
+      aside={
+        <aside className="relative hidden overflow-hidden bg-brand-900 lg:flex lg:min-h-screen lg:flex-col lg:justify-between lg:p-12">
+          {/*
           Two soft washes of the firm's own colours. Kept very low contrast: this
           panel sits behind a logo and text, and a busy background would fight
           both. Pointer-events off so it can never intercept a click.
         */}
-        <div aria-hidden className="pointer-events-none absolute inset-0">
-          <div className="absolute -left-24 -top-24 h-96 w-96 rounded-full bg-brand-500/25 blur-3xl" />
-          <div className="absolute -bottom-32 right-[-10%] h-[28rem] w-[28rem] rounded-full bg-accent-500/20 blur-3xl" />
-        </div>
+          <div aria-hidden className="pointer-events-none absolute inset-0">
+            <div className="absolute -left-24 -top-24 h-96 w-96 rounded-full bg-brand-500/25 blur-3xl" />
+            <div className="absolute -bottom-32 right-[-10%] h-[28rem] w-[28rem] rounded-full bg-accent-500/20 blur-3xl" />
+          </div>
 
-        <div className="relative flex flex-col gap-2.5">
-          <FirmLogo maxWidth="max-w-[16rem]" maxHeight="max-h-20" onDark labelled />
-          <FirmName className="text-base font-semibold text-white" />
-          <p className="text-xs uppercase tracking-[0.18em] text-white/50">
-            Practice Manager
-          </p>
-        </div>
-
-        <div className="relative max-w-lg">
-          <h2 className="text-3xl font-semibold leading-tight tracking-tight text-white">
-            The firm's work, its records and its people - behind one sign-in.
-          </h2>
-          <ul className="mt-8 space-y-5">
-            {ASSURANCES.map((item) => (
-              <li key={item.title} className="flex gap-3">
-                <span
-                  aria-hidden
-                  className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10"
-                >
-                  <svg
-                    viewBox="0 0 20 20"
-                    className="h-3.5 w-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="m5 10.5 3.5 3.5L15 6" className="text-emerald-400" />
-                  </svg>
-                </span>
-                <div>
-                  <p className="text-sm font-medium text-white">{item.title}</p>
-                  <p className="mt-0.5 text-sm leading-relaxed text-white/60">{item.body}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <p className="relative text-xs text-white/40">
-          {branding.firm_name}
-          {branding.firm_name && " · "}
-          Staff access only. Activity in the portal is recorded.
-        </p>
-      </aside>
-
-      {/* ------------------------------------------------------------- the form */}
-      <main className="flex min-h-screen flex-col px-5 py-8 sm:px-10 lg:justify-center lg:px-14">
-        <div className="mb-8 flex w-full items-start justify-between gap-3 lg:absolute lg:right-8 lg:top-6 lg:mb-0 lg:w-auto">
-          {/* On small screens the logo has no left panel to live in. */}
-          <div className="flex min-w-0 flex-col gap-1 lg:hidden">
-            <FirmLogo maxWidth="max-w-[11rem]" maxHeight="max-h-14" labelled />
-            <FirmName className="truncate text-sm font-semibold text-slate-900" />
-            <p className="text-[11px] uppercase tracking-wider text-slate-500">
+          <div className="relative flex flex-col gap-2.5">
+            <FirmLogo
+              maxWidth="max-w-[16rem]"
+              maxHeight="max-h-20"
+              onDark
+              labelled
+            />
+            <FirmName className="text-base font-semibold text-white" />
+            <p className="text-xs uppercase tracking-[0.18em] text-white/50">
               Practice Manager
             </p>
           </div>
-          <ThemeToggle compact />
-        </div>
 
-        <div className="mx-auto w-full max-w-sm">
-          {challenge ? (
-            <>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                One more step
-              </h1>
-              <p className="muted mt-1">
-                {method === "recovery"
-                  ? "Getting back in with a recovery code. Enter one of the codes you saved when you set this up."
-                  : method === "questions"
-                    ? "Getting back in with your security questions. Answer every one of them, as you saved it - capitals, accents and punctuation do not matter."
-                    : "Enter the six-digit code from your authenticator app."}
-              </p>
-
-              <form onSubmit={submitCode} className="mt-7 space-y-4" noValidate>
-                <ErrorBanner error={error} onDismiss={() => setError(null)} />
-
-                {method === "questions" ? (
-                  <div className="space-y-4">
-                    {challenge.questions.map((item, index) => (
-                      <Field key={item.id} label={item.question} required>
-                        {(id) => (
-                          <TextInput
-                            id={id}
-                            autoFocus={index === 0}
-                            required
-                            spellCheck={false}
-                            autoComplete="off"
-                            autoCapitalize="none"
-                            value={answers[item.id] ?? ""}
-                            onChange={(e) =>
-                              setAnswers((prev) => ({ ...prev, [item.id]: e.target.value }))
-                            }
-                          />
-                        )}
-                      </Field>
-                    ))}
-                  </div>
-                ) : (
-                  <Field
-                    label={method === "recovery" ? "Recovery code" : "Six-digit code"}
-                    required
-                    hint={
-                      method === "recovery"
-                        ? "Each one works once. Case and the hyphen do not matter."
-                        : "The code changes every thirty seconds."
-                    }
+          <div className="relative max-w-lg">
+            <h2 className="text-3xl font-semibold leading-tight tracking-tight text-white">
+              The firm's work, its records and its people - behind one sign-in.
+            </h2>
+            <ul className="mt-8 space-y-5">
+              {ASSURANCES.map((item) => (
+                <li key={item.title} className="flex gap-3">
+                  <span
+                    aria-hidden
+                    className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10"
                   >
+                    <svg
+                      viewBox="0 0 20 20"
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path
+                        d="m5 10.5 3.5 3.5L15 6"
+                        className="text-emerald-400"
+                      />
+                    </svg>
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-white">
+                      {item.title}
+                    </p>
+                    <p className="mt-0.5 text-sm leading-relaxed text-white/60">
+                      {item.body}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <p className="relative text-xs text-white/40">
+            {branding.firm_name}
+            {branding.firm_name && " · "}
+            Staff access only. Activity in the portal is recorded.
+          </p>
+        </aside>
+      }
+    >
+      {challenge ? (
+        <>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+            One more step
+          </h1>
+          <p className="muted mt-1">
+            {method === "recovery"
+              ? "Getting back in with a recovery code. Enter one of the codes you saved when you set this up."
+              : method === "questions"
+                ? "Getting back in with your security questions. Answer every one of them, as you saved it - capitals, accents and punctuation do not matter."
+                : "Enter the six-digit code from your authenticator app."}
+          </p>
+
+          <form onSubmit={submitCode} className="mt-7 space-y-4" noValidate>
+            <ErrorBanner error={error} onDismiss={() => setError(null)} />
+
+            {method === "questions" ? (
+              <div className="space-y-4">
+                {challenge.questions.map((item, index) => (
+                  <Field key={item.id} label={item.question} required>
                     {(id) => (
                       <TextInput
                         id={id}
-                        // A numeric keypad for the app code, plain text for a recovery
-                        // code, which has letters in it.
-                        inputMode={method === "recovery" ? "text" : "numeric"}
-                        autoComplete={method === "recovery" ? "off" : "one-time-code"}
-                        autoFocus
+                        autoFocus={index === 0}
                         required
                         spellCheck={false}
-                        value={code}
-                        onChange={(e) => setCode(e.target.value)}
-                        placeholder={method === "recovery" ? "ABCDE-FGHJK" : "123456"}
-                        className="input text-center text-lg tracking-[0.3em]"
+                        autoComplete="off"
+                        autoCapitalize="none"
+                        value={answers[item.id] ?? ""}
+                        onChange={(e) =>
+                          setAnswers((prev) => ({
+                            ...prev,
+                            [item.id]: e.target.value,
+                          }))
+                        }
                       />
                     )}
                   </Field>
+                ))}
+              </div>
+            ) : (
+              <Field
+                label={
+                  method === "recovery" ? "Recovery code" : "Six-digit code"
+                }
+                required
+                hint={
+                  method === "recovery"
+                    ? "Each one works once. Case and the hyphen do not matter."
+                    : "The code changes every thirty seconds."
+                }
+              >
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    // A numeric keypad for the app code, plain text for a recovery
+                    // code, which has letters in it.
+                    inputMode={method === "recovery" ? "text" : "numeric"}
+                    autoComplete={
+                      method === "recovery" ? "off" : "one-time-code"
+                    }
+                    autoFocus
+                    required
+                    spellCheck={false}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder={
+                      method === "recovery" ? "ABCDE-FGHJK" : "123456"
+                    }
+                    className="input text-center text-lg tracking-[0.3em]"
+                  />
                 )}
+              </Field>
+            )}
 
-                {/*
+            {/*
                   Offered only on the app path. The two recovery routes cannot remember a
                   device - the server refuses regardless - so showing the box there would
                   be an offer the system does not honour.
                 */}
-                {challenge.device_trust.offered && method === "totp" && (
-                  <label className="flex cursor-pointer items-start gap-2 text-xs text-slate-600">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={rememberDevice}
-                      onChange={(e) => setRememberDevice(e.target.checked)}
-                    />
-                    <span>
-                      Remember this device for {challenge.device_trust.days} days, so this
-                      step is not asked for again here.
-                      <span className="mt-0.5 block text-slate-500">
-                        Only on a device that is yours alone. You will still be asked for
-                        your password every time.
-                      </span>
-                    </span>
-                  </label>
-                )}
+            {challenge.device_trust.offered && method === "totp" && (
+              <label className="flex cursor-pointer items-start gap-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={rememberDevice}
+                  onChange={(e) => setRememberDevice(e.target.checked)}
+                />
+                <span>
+                  Remember this device for {challenge.device_trust.days} days,
+                  so this step is not asked for again here.
+                  <span className="mt-0.5 block text-slate-500">
+                    Only on a device that is yours alone. You will still be
+                    asked for your password every time.
+                  </span>
+                </span>
+              </label>
+            )}
 
-                <button type="submit" className="btn-primary w-full py-2.5" disabled={busy}>
-                  {busy ? "Checking..." : "Sign in"}
-                </button>
+            <button
+              type="submit"
+              className="btn-primary w-full py-2.5"
+              disabled={busy}
+            >
+              {busy ? "Checking..." : "Sign in"}
+            </button>
 
-                <div className="space-y-2 text-center text-xs text-slate-500">
-                  {/*
+            <div className="space-y-2 text-center text-xs text-slate-500">
+              {/*
                     The app on one side, the ways back in on the other, and never as a
                     flat list of three peers. Somebody who can reach their phone should
                     reach for it; the rest is for when they cannot.
                   */}
-                  {method === "totp" ? (
-                    challenge.recovery_methods.length > 0 ? (
-                      <>
-                        <p className="text-slate-500">Cannot use your app?</p>
-                        {challenge.recovery_methods.map((option) => (
-                          <button
-                            key={option}
-                            type="button"
-                            className="link block w-full"
-                            onClick={() => {
-                              setMethod(option);
-                              setCode("");
-                              setAnswers({});
-                              setError(null);
-                            }}
-                          >
-                            {option === "questions"
-                              ? "Answer my security questions"
-                              : "Use a recovery code"}
-                          </button>
-                        ))}
-                      </>
-                    ) : (
-                      <p>
-                        You have no recovery codes left. If you cannot produce a code, a
-                        Partner can reset your two-step sign-in.
-                      </p>
-                    )
-                  ) : (
-                    <>
+              {method === "totp" ? (
+                challenge.recovery_methods.length > 0 ? (
+                  <>
+                    <p className="text-slate-500">Cannot use your app?</p>
+                    {challenge.recovery_methods.map((option) => (
                       <button
+                        key={option}
                         type="button"
                         className="link block w-full"
                         onClick={() => {
-                          setMethod("totp");
+                          setMethod(option);
                           setCode("");
                           setAnswers({});
                           setError(null);
                         }}
                       >
-                        Use the code from my app instead
+                        {option === "questions"
+                          ? "Answer my security questions"
+                          : "Use a recovery code"}
                       </button>
-                      {challenge.recovery_methods
-                        .filter((option) => option !== method)
-                        .map((option) => (
-                          <button
-                            key={option}
-                            type="button"
-                            className="link block w-full"
-                            onClick={() => {
-                              setMethod(option);
-                              setCode("");
-                              setAnswers({});
-                              setError(null);
-                            }}
-                          >
-                            {option === "questions"
-                              ? "Answer my security questions instead"
-                              : "Use a recovery code instead"}
-                          </button>
-                        ))}
-                    </>
-                  )}
-                  {method === "recovery" && challenge.recovery_remaining > 0 && (
-                    <p>
-                      {challenge.recovery_remaining} recovery code(s) left. Each one works
-                      once.
-                    </p>
-                  )}
-                  {method !== "totp" && challenge.device_trust.offered && (
-                    <p>
-                      This device will not be remembered - only a code from your app can
-                      do that.
-                    </p>
-                  )}
-                  <button type="button" className="link" onClick={startOver}>
-                    Start again
+                    ))}
+                  </>
+                ) : (
+                  <p>
+                    You have no recovery codes left. If you cannot produce a
+                    code, a Partner can reset your two-step sign-in.
+                  </p>
+                )
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="link block w-full"
+                    onClick={() => {
+                      setMethod("totp");
+                      setCode("");
+                      setAnswers({});
+                      setError(null);
+                    }}
+                  >
+                    Use the code from my app instead
                   </button>
-                </div>
-              </form>
-            </>
-          ) : (
-            <>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Sign in</h1>
-          <p className="muted mt-1">Use the work email address the firm set up for you.</p>
+                  {challenge.recovery_methods
+                    .filter((option) => option !== method)
+                    .map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className="link block w-full"
+                        onClick={() => {
+                          setMethod(option);
+                          setCode("");
+                          setAnswers({});
+                          setError(null);
+                        }}
+                      >
+                        {option === "questions"
+                          ? "Answer my security questions instead"
+                          : "Use a recovery code instead"}
+                      </button>
+                    ))}
+                </>
+              )}
+              {method === "recovery" && challenge.recovery_remaining > 0 && (
+                <p>
+                  {challenge.recovery_remaining} recovery code(s) left. Each one
+                  works once.
+                </p>
+              )}
+              {method !== "totp" && challenge.device_trust.offered && (
+                <p>
+                  This device will not be remembered - only a code from your app
+                  can do that.
+                </p>
+              )}
+              <button type="button" className="link" onClick={startOver}>
+                Start again
+              </button>
+            </div>
+          </form>
+        </>
+      ) : (
+        <>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+            Sign in
+          </h1>
+          <p className="muted mt-1">
+            Use the work email address the firm set up for you.
+          </p>
 
           <form onSubmit={submit} className="mt-7 space-y-4" noValidate>
             <ErrorBanner error={error} onDismiss={() => setError(null)} />
@@ -488,7 +546,11 @@ export function Login() {
               </p>
             )}
 
-            <button type="submit" className="btn-primary w-full py-2.5" disabled={busy}>
+            <button
+              type="submit"
+              className="btn-primary w-full py-2.5"
+              disabled={busy}
+            >
               {busy ? "Signing in…" : "Sign in"}
             </button>
 
@@ -503,37 +565,15 @@ export function Login() {
               </button>
               {showReset && (
                 <p className="mt-2 rounded-md bg-slate-100 p-3 text-left leading-relaxed">
-                  Ask an administrator to reset it. They can issue you a new temporary
-                  password, which you will be asked to replace with one of your own the
-                  first time you sign in.
+                  Ask an administrator to reset it. They can issue you a new
+                  temporary password, which you will be asked to replace with
+                  one of your own the first time you sign in.
                 </p>
               )}
             </div>
           </form>
-            </>
-          )}
-
-          <p className="mt-10 border-t border-slate-200 pt-5 text-xs leading-relaxed text-slate-500">
-            Accounts are issued by the firm - there is nothing to sign up for. If you are
-            new and have not been given one, speak to whoever is handling your onboarding.
-          </p>
-
-          {/*
-            This page is where a client lands if they bookmark the portal's address, and
-            without this line there is nothing here telling them they are in the wrong
-            place. It names no client and confirms nothing about who the firm acts for -
-            only that a separate door exists - so it holds the line the intake page
-            draws.
-          */}
-          <p className="mt-3 text-xs leading-relaxed text-slate-500">
-            Are you a client of the firm?{" "}
-            <a className="link" href="/client/login">
-              Sign in to your own account
-            </a>
-            .
-          </p>
-        </div>
-      </main>
-    </div>
+        </>
+      )}
+    </AuthShell>
   );
 }
