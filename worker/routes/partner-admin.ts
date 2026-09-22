@@ -23,7 +23,7 @@
 import type { Env } from "../env";
 import { requireRole } from "../auth";
 import { tokenDigest } from "../auth";
-import { nowIso, requireEnum, requireString } from "../db";
+import { newId, nowIso, requireEnum, requireString } from "../db";
 import {
   Router,
   badRequest,
@@ -66,7 +66,7 @@ export function registerPartnerAdminRoutes(router: Router<Env>): void {
                 commission_rate, commission_months, hold_days,
                 agreement_signed_at, applied_at, approved_at, last_login_at,
                 password_hash IS NOT NULL AS has_password
-           FROM growth_partners ORDER BY status <> 'applied', full_name`,
+           FROM growth_partners ORDER BY full_name`,
       ),
       env.DB.prepare(
         `SELECT p.id, p.partner_id, p.business_name, p.contact_name, p.contact_email,
@@ -96,36 +96,35 @@ export function registerPartnerAdminRoutes(router: Router<Env>): void {
   });
 
   /**
-   * Admits somebody, and sends them the link that lets them set a password.
+   * Adds somebody as a growth partner, and sends them the link that lets them set a
+   * password.
    *
-   * The terms are written onto the partner here rather than read from a constant later,
-   * so that a deal struck with somebody today survives the firm changing its standard
-   * terms next year.
+   * This is the only way a partner comes to exist. There is no application form: the
+   * firm decides who sells for it, names them here, and the terms - the rate, the
+   * months, the hold - are written onto that partner at the same time, so a deal
+   * struck with somebody today survives the firm changing its standard terms next year.
+   *
+   * The row goes in `active` straight away. What stops them doing anything is not a
+   * state but two absences: no password until they use the link, and no signature on
+   * the engagement until they sign it in the portal.
    */
-  router.post("/api/growth-partners/:id/approve", async ({ request, env, params }) => {
+  router.post("/api/growth-partners", async ({ request, env }) => {
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const body = await readJson<{
+      full_name?: unknown;
+      email?: unknown;
+      phone?: string;
+      business_name?: string;
       commission_rate?: unknown;
       commission_months?: unknown;
       hold_days?: unknown;
     }>(request);
 
-    const partner = await env.DB.prepare(
-      `SELECT id, full_name, email, business_name, status FROM growth_partners WHERE id = ?`,
-    )
-      .bind(params.id)
-      .first<{
-        id: string;
-        full_name: string;
-        email: string;
-        business_name: string | null;
-        status: PartnerState;
-      }>();
-    if (!partner) throw notFound("There is no such growth partner.");
-    if (partner.status === "ended") {
-      throw badRequest("That engagement has ended. Start a fresh one rather than reviving it.");
+    const fullName = requireString(body.full_name, "full_name", { max: 120 });
+    const email = requireString(body.email, "email", { max: 200 }).trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) {
+      throw badRequest("That does not look like an email address.");
     }
-
     const rate = Number(body.commission_rate ?? 25);
     const months = Math.trunc(Number(body.commission_months ?? 6));
     const holdDays = Math.trunc(Number(body.hold_days ?? 90));
@@ -139,15 +138,45 @@ export function registerPartnerAdminRoutes(router: Router<Env>): void {
       throw badRequest("Give the hold in days, between 1 and 730.");
     }
 
+    /*
+     * Said plainly when the address is already on the list. This is a member of staff
+     * with the role to see that list, not a stranger at a public form, so there is
+     * nothing to hide.
+     */
+    const existing = await env.DB.prepare(
+      `SELECT full_name FROM growth_partners WHERE email = ? COLLATE NOCASE`,
+    )
+      .bind(email)
+      .first<{ full_name: string }>();
+    if (existing) {
+      throw conflict(`${existing.full_name} is already a growth partner with that address.`);
+    }
+
+    const id = newId();
+    const businessName = body.business_name?.trim()?.slice(0, 160) || null;
     const timestamp = nowIso();
     await env.DB.prepare(
-      `UPDATE growth_partners
-          SET status = 'active', commission_rate = ?, commission_months = ?,
-              hold_days = ?, approved_at = COALESCE(approved_at, ?), approved_by = ?,
-              updated_at = ?
-        WHERE id = ?`,
+      `INSERT INTO growth_partners
+         (id, full_name, email, phone, business_name, status,
+          commission_rate, commission_months, hold_days,
+          applied_at, approved_at, approved_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(rate, months, holdDays, timestamp, actor.id, timestamp, params.id)
+      .bind(
+        id,
+        fullName,
+        email,
+        body.phone?.trim()?.slice(0, 40) || null,
+        businessName,
+        rate,
+        months,
+        holdDays,
+        timestamp,
+        timestamp,
+        actor.id,
+        timestamp,
+        timestamp,
+      )
       .run();
 
     /*
@@ -158,9 +187,9 @@ export function registerPartnerAdminRoutes(router: Router<Env>): void {
     await issueAgreement(
       env,
       {
-        id: params.id,
-        full_name: partner.full_name,
-        business_name: partner.business_name,
+        id,
+        full_name: fullName,
+        business_name: businessName,
         commission_rate: rate,
         commission_months: months,
         hold_days: holdDays,
@@ -168,16 +197,12 @@ export function registerPartnerAdminRoutes(router: Router<Env>): void {
       actor.id,
     );
 
-    const link = await issueInvitation(
-      env,
-      params.id,
-      PARTNER_INVITATION_TTL_DAYS * 24 * 60,
-    );
+    const link = await issueInvitation(env, id, PARTNER_INVITATION_TTL_DAYS * 24 * 60);
     const settings = await readSettings(env);
     await sendToPerson(env, {
-      to: { email: partner.email, full_name: partner.full_name },
+      to: { email, full_name: fullName },
       subject: `Your growth partner account with ${settings.firm_name}`,
-      headline: `${settings.firm_name} has approved your application to work with us as a growth partner.`,
+      headline: `${settings.firm_name} has set you up as a growth partner.`,
       detail:
         `Set a password and your portal is ready: register the businesses you are working on, ` +
         `build a proposal from our packages, and follow what you have earned. The link works once ` +
@@ -185,10 +210,10 @@ export function registerPartnerAdminRoutes(router: Router<Env>): void {
       link,
       linkLabel: "Set your password",
       firmName: settings.firm_name,
-      reason: `you applied to be a growth partner of ${settings.firm_name}`,
+      reason: `${settings.firm_name} has added you as a growth partner`,
     });
 
-    return json({ invitation_url: link });
+    return json({ id, invitation_url: link });
   });
 
   /** Suspends, restores or ends somebody. */
@@ -196,8 +221,10 @@ export function registerPartnerAdminRoutes(router: Router<Env>): void {
     await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const body = await readJson<{ status?: unknown; reason?: string }>(request);
     const status = requireEnum(body.status, "status", PARTNER_STATES) as PartnerState;
+    // Nothing writes this state any more; the column still allows it for rows that
+    // predate the firm inviting rather than admitting.
     if (status === "applied") {
-      throw badRequest("An application cannot be un-decided.");
+      throw badRequest("A partner cannot be put back to waiting.");
     }
 
     const timestamp = nowIso();

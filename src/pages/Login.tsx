@@ -180,10 +180,6 @@ export function Login() {
             <a className="link" href="/client/login">
               Sign in to your own account
             </a>
-            . A growth partner?{" "}
-            <a className="link" href="/partner/login">
-              Sign in here
-            </a>
             .
           </p>
           <p className="mt-3">Staff access only. Activity in the portal is recorded.</p>

@@ -20,7 +20,6 @@ import { Intake } from "./pages/Intake";
 import { ClientPortal, ClientPublic } from "./components/ClientLayout";
 import { PartnerPortal, PartnerPublic } from "./components/PartnerLayout";
 import { PartnerLogin } from "./pages/partner/PartnerLogin";
-import { PartnerApply } from "./pages/partner/PartnerApply";
 import { PartnerInvitation } from "./pages/partner/PartnerInvitation";
 import { PartnerPipeline } from "./pages/partner/PartnerPipeline";
 import { PartnerEarnings } from "./pages/partner/PartnerEarnings";
@@ -143,7 +142,7 @@ export function App() {
         of the above for the same reason they are outside each other: nothing under
         /partner can reach a staff or client page, and nothing there can reach these.
 
-        /partner/apply is open to anybody. What it writes cannot sign in.
+        There is no public way in: a partner exists because the firm added them.
       */}
       <Route
         path="/partner/login"
@@ -153,7 +152,6 @@ export function App() {
           </PartnerPublic>
         }
       />
-      <Route path="/partner/apply" element={<PartnerApply />} />
       <Route
         path="/partner/invitation/:token"
         element={
