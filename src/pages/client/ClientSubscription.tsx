@@ -24,6 +24,8 @@ import {
 import type { ClientPortalSubscription } from "@shared/types";
 import { ApiRequestError, api } from "../../lib/api";
 import { TierMeters } from "../../components/TierMeters";
+import { PackageCards } from "../../components/PackageCards";
+import { formatAmount } from "@shared/money";
 import { ErrorBanner, Spinner, SuccessBanner } from "../../components/ui";
 import { formatDate, formatMoney } from "../../lib/format";
 
@@ -70,6 +72,26 @@ export function ClientSubscription() {
     }
   };
 
+  /*
+   * Asking about a package is a message, not a move. The portal never re-tiers anybody
+   * - see shared/subscriptions.ts - so this raises the question with the firm and says
+   * so plainly rather than appearing to change what they pay.
+   */
+  const askAboutPackage = async (tier: ClientTier) => {
+    setBusy(tier);
+    setError(null);
+    try {
+      await api.clientAskAboutPackage(tier);
+      setNotice(
+        `We have your question about ${TIER_LABELS[tier]}. Nothing has changed on your account - somebody will come back to you.`,
+      );
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : "Could not send that.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const decide = async (id: string, status: "agreed" | "declined") => {
     setBusy(id);
     setError(null);
@@ -99,8 +121,8 @@ export function ClientSubscription() {
         <div className="card p-5">
           <h2 className="card-title">Nothing is set up yet</h2>
           <p className="muted mt-1">
-            We have not put your account on a subscription tier. Ask us and we will sort
-            it out.
+            We have not put your account on a package yet. Have a look at what we offer
+            below, and ask us about any of them.
           </p>
         </div>
       ) : (
@@ -109,7 +131,7 @@ export function ClientSubscription() {
             <div className="flex flex-wrap items-start gap-4">
               <div>
                 <span className="pill bg-brand-50 text-link ring-brand-200">
-                  Your tier since {formatDate(subscription.started_on)}
+                  Your package since {formatDate(subscription.started_on)}
                 </span>
                 <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
                   {TIER_LABELS[subscription.tier]}
@@ -139,7 +161,7 @@ export function ClientSubscription() {
 
           {assessment && criteria.length > 0 && (
             <section className="card p-5">
-              <h2 className="card-title">Where you sit against this tier</h2>
+              <h2 className="card-title">Where you sit against this package</h2>
               {data.figures.length > 0 && data.figures[0].as_of && (
                 <p className="muted mb-4 mt-1">
                   Taken from your records to {formatDate(data.figures[0].as_of)}
@@ -149,11 +171,7 @@ export function ClientSubscription() {
                   .
                 </p>
               )}
-              <TierMeters
-                criteria={criteria}
-                assessment={assessment}
-                currency={currency}
-              />
+              <TierMeters criteria={criteria} assessment={assessment} />
 
               {assessment.should_move && nextTier && (
                 <div className="mt-5 rounded-md bg-amber-50 p-4 ring-1 ring-inset ring-amber-200">
@@ -163,7 +181,7 @@ export function ClientSubscription() {
                   <p className="mt-1 text-sm text-amber-900">
                     {nextTier.monthly_fee === null
                       ? "We will talk to you about what that would mean."
-                      : `That tier is ${formatMoney(nextTier.monthly_fee, nextTier.currency)} a month.`}
+                      : `That package is ${formatAmount(nextTier.monthly_fee, nextTier.currency)} a month.`}
                   </p>
                   <p className="mt-2 text-sm text-amber-900">
                     <strong>Nothing changes on its own.</strong> Crossing a ceiling starts
@@ -175,15 +193,50 @@ export function ClientSubscription() {
 
               {!assessment.should_move && next && nextTier && (
                 <p className="hint mt-4">
-                  The tier above is {TIER_LABELS[next]}
+                  The package above is {TIER_LABELS[next]}
                   {nextTier.monthly_fee !== null &&
-                    `, at ${formatMoney(nextTier.monthly_fee, nextTier.currency)} a month`}
+                    `, at ${formatAmount(nextTier.monthly_fee, nextTier.currency)} a month`}
                   . You would move only after a conversation with us.
                 </p>
               )}
             </section>
           )}
         </>
+      )}
+
+      {/*
+        All four, not just theirs and the one above. A client who can see what the other
+        packages are for is a client who can tell whether they are on the right one, and
+        the question they come back with is a better question than "what am I paying
+        for".
+      */}
+      {tiers.length > 0 && (
+        <section className="card p-5">
+          <div className="mb-4">
+            <h2 className="card-title">Our packages</h2>
+            <p className="muted mt-1">
+              Point at one, or tap it, to see everything it includes.{" "}
+              {subscription
+                ? "Nothing moves on its own - if another one suits you better, ask us and we will talk it through."
+                : "Ask us about any of them."}
+            </p>
+          </div>
+          <PackageCards
+            tiers={tiers}
+            inclusions={data.inclusions}
+            current={subscription?.tier ?? null}
+            /*
+              Only where the figures point upwards. Most criteria have no ceiling, so
+              the cheapest package covers nearly everybody, and marking Starter as
+              "fits your figures" would be telling every client they are overpaying.
+              Whether they are is the firm's conversation to start, not a pill.
+            */
+            suggested={assessment?.should_move ? assessment.suggested : null}
+            onAsk={(tier) => void askAboutPackage(tier)}
+            askLabel="Ask us about this"
+            busyTier={busy as ClientTier | null}
+          />
+        </section>
       )}
 
       {available.length > 0 && (

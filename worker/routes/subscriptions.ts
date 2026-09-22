@@ -56,33 +56,66 @@ import {
   type Figure,
   type ServiceState,
 } from "../../shared/subscriptions";
+import {
+  DISCOUNT_KINDS,
+  DISCOUNT_RUNS,
+  DISCOUNT_SCOPES,
+  describeDiscount,
+  whyNotADiscount,
+  type DiscountKind,
+  type DiscountRun,
+  type DiscountScope,
+} from "../../shared/discounts";
+import { activeDiscount } from "../discounts";
+import { CURRENCIES, DEFAULT_CURRENCY, currencyOf } from "../../shared/money";
 import { sendToPerson } from "../email";
 
 // ---------------------------------------------------------------------------
 // Reading the catalogue
 // ---------------------------------------------------------------------------
 
+/*
+ * The same shape shared/types.ts declares for the screens, kept here so the Worker's
+ * own callers are typed too. One package, described the same way at both ends.
+ */
 interface TierRow {
   tier: ClientTier;
   monthly_fee: number | null;
   currency: string;
   summary: string | null;
+  ideal_for: string | null;
+  position: number;
+  active: 0 | 1;
+}
+
+interface InclusionRow {
+  id: string;
+  tier: ClientTier;
+  label: string;
+  parent_id: string | null;
+  position: number;
 }
 
 /** The catalogue as every screen wants it: criteria, tiers, ceilings, services. */
 export async function readCatalogue(env: Env) {
-  const [criteria, tiers, ceilings, services] = await env.DB.batch([
+  const [criteria, tiers, ceilings, services, inclusions] = await env.DB.batch([
     env.DB.prepare(
-      `SELECT id, name, unit, how_measured, position
+      `SELECT id, name, unit, how_measured, position, currency
          FROM subscription_criteria ORDER BY position, name`,
     ),
     env.DB.prepare(
-      `SELECT tier, monthly_fee, currency, summary FROM subscription_tiers`,
+      `SELECT tier, monthly_fee, currency, summary, ideal_for, position, active
+         FROM subscription_tiers ORDER BY position`,
     ),
     env.DB.prepare(`SELECT tier, criterion_id, ceiling FROM tier_ceilings`),
     env.DB.prepare(
       `SELECT id, name, summary, fee, fee_basis, currency, service_line, active, position
          FROM additional_services ORDER BY position, name`,
+    ),
+    // What each package includes, which is what a client comparing two of them reads.
+    env.DB.prepare(
+      `SELECT id, tier, label, parent_id, position FROM tier_inclusions
+        ORDER BY tier, position`,
     ),
   ]);
 
@@ -91,6 +124,7 @@ export async function readCatalogue(env: Env) {
     tiers: tiers.results as unknown as TierRow[],
     ceilings: ceilings.results as unknown as Ceiling[],
     services: services.results,
+    inclusions: inclusions.results as unknown as InclusionRow[],
   };
 }
 
@@ -313,25 +347,65 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const tier = requireEnum(params.tier, "tier", CLIENT_TIERS) as ClientTier;
     const body = await readJson<{
       monthly_fee?: unknown;
+      currency?: unknown;
       summary?: string;
+      ideal_for?: string;
       ceilings?: Record<string, unknown>;
+      /** The whole list for this package, in order. Replaces what is there. */
+      inclusions?: Array<{ label?: unknown; sub?: unknown }>;
     }>(request);
 
     const fee = optionalAmount(body.monthly_fee, "The fee");
+    const currency = body.currency
+      ? requireEnum(body.currency, "currency", CURRENCIES)
+      : DEFAULT_CURRENCY;
     const timestamp = nowIso();
     const statements = [
       env.DB.prepare(
         `UPDATE subscription_tiers
-            SET monthly_fee = ?, summary = ?, updated_at = ?, updated_by = ?
+            SET monthly_fee = ?, currency = ?, summary = ?, ideal_for = ?,
+                updated_at = ?, updated_by = ?
           WHERE tier = ?`,
       ).bind(
         fee,
+        currency,
         body.summary?.trim() ? body.summary.trim().slice(0, 400) : null,
+        body.ideal_for?.trim() ? body.ideal_for.trim().slice(0, 300) : null,
         timestamp,
         actor.id,
         tier,
       ),
     ];
+
+    /*
+     * Inclusions are replaced wholesale rather than patched line by line. The screen
+     * edits them as one list and sends the list back, and a partial update would need
+     * every line to carry an id the screen has no other use for.
+     *
+     * Only when the key is present: a caller changing a fee alone must not silently
+     * empty the package.
+     */
+    if (Array.isArray(body.inclusions)) {
+      statements.push(
+        env.DB.prepare(`DELETE FROM tier_inclusions WHERE tier = ?`).bind(tier),
+      );
+      let parent: string | null = null;
+      body.inclusions.forEach((line, index) => {
+        const label = String(line?.label ?? "").trim().slice(0, 120);
+        if (!label) return;
+        const id = newId();
+        // A sub-item hangs off the last top-level line above it, which is how the
+        // proposal reads: "VAT & levies" under "Tax services".
+        const sub = line?.sub === true && parent !== null;
+        if (!sub) parent = id;
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO tier_inclusions (id, tier, label, parent_id, position)
+             VALUES (?, ?, ?, ?, ?)`,
+          ).bind(id, tier, label, sub ? parent : null, index),
+        );
+      });
+    }
 
     for (const [criterionId, raw] of Object.entries(body.ceilings ?? {})) {
       const ceiling = optionalAmount(raw, "A ceiling");
@@ -359,12 +433,16 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       summary?: string;
       fee?: unknown;
       fee_basis?: unknown;
+      currency?: unknown;
       service_line?: string;
     }>(request);
 
     const name = requireString(body.name, "name", { max: 120 });
     const basis = requireEnum(body.fee_basis ?? "fixed", "fee_basis", FEE_BASES);
     const fee = optionalAmount(body.fee, "The fee");
+    const currency = body.currency
+      ? requireEnum(body.currency, "currency", CURRENCIES)
+      : DEFAULT_CURRENCY;
 
     const clash = await env.DB.prepare(
       `SELECT id FROM additional_services WHERE name = ? COLLATE NOCASE`,
@@ -380,8 +458,9 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     await env.DB.prepare(
       `INSERT INTO additional_services
-         (id, name, summary, fee, fee_basis, service_line, position, created_at, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, name, summary, fee, fee_basis, currency, service_line, position,
+          created_at, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         id,
@@ -389,6 +468,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         body.summary?.trim() ? body.summary.trim().slice(0, 400) : null,
         fee,
         basis,
+        currency,
         body.service_line?.trim() || null,
         position?.n ?? 0,
         nowIso(),
@@ -406,6 +486,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       summary?: string;
       fee?: unknown;
       fee_basis?: unknown;
+      currency?: unknown;
       service_line?: string;
       active?: unknown;
     }>(request);
@@ -413,6 +494,9 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const name = requireString(body.name, "name", { max: 120 });
     const basis = requireEnum(body.fee_basis ?? "fixed", "fee_basis", FEE_BASES);
     const fee = optionalAmount(body.fee, "The fee");
+    const currency = body.currency
+      ? requireEnum(body.currency, "currency", CURRENCIES)
+      : DEFAULT_CURRENCY;
 
     const clash = await env.DB.prepare(
       `SELECT id FROM additional_services WHERE name = ? COLLATE NOCASE AND id <> ?`,
@@ -423,7 +507,8 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     const result = await env.DB.prepare(
       `UPDATE additional_services
-          SET name = ?, summary = ?, fee = ?, fee_basis = ?, service_line = ?, active = ?
+          SET name = ?, summary = ?, fee = ?, fee_basis = ?, currency = ?,
+              service_line = ?, active = ?
         WHERE id = ?`,
     )
       .bind(
@@ -431,6 +516,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         body.summary?.trim() ? body.summary.trim().slice(0, 400) : null,
         fee,
         basis,
+        currency,
         body.service_line?.trim() || null,
         body.active === false || body.active === 0 ? 0 : 1,
         params.id,
@@ -552,6 +638,26 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       ).bind(params.id),
     ]);
 
+    /*
+     * Read through `activeDiscount` first, which retires one that has stopped applying.
+     * Without that pass the screen would show a discount that ran until March as still
+     * live in April, and the button offering a new one would fail on the index.
+     */
+    await activeDiscount(env, params.id);
+    const discounts = await env.DB.prepare(
+      `SELECT d.id, d.kind, d.value, d.applies_to, d.runs, d.invoice_count, d.until_on,
+              d.used_count, d.reason, d.status, d.created_at, d.ended_at, d.ended_reason,
+              g.full_name AS granted_by_name, e.full_name AS ended_by_name
+         FROM client_discounts d
+         LEFT JOIN users g ON g.id = d.granted_by
+         LEFT JOIN users e ON e.id = d.ended_by
+        WHERE d.client_id = ?
+        ORDER BY d.status = 'active' DESC, d.created_at DESC
+        LIMIT 20`,
+    )
+      .bind(params.id)
+      .all();
+
     return json({
       ...catalogue,
       subscription: subscription
@@ -570,6 +676,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
        */
       client_services: services.results,
       logins: logins.results,
+      discounts: discounts.results,
     });
   });
 
@@ -585,6 +692,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const body = await readJson<{
       tier?: unknown;
       monthly_fee?: unknown;
+      currency?: unknown;
       started_on?: string;
       note?: string;
       status?: unknown;
@@ -600,6 +708,14 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const status = body.status
       ? requireEnum(body.status, "status", ["active", "paused", "ended"] as const)
       : "active";
+    /*
+     * Cedis unless somebody says dollars. Nothing converts between the two - see
+     * shared/money.ts - so this is the currency the client is actually billed in, and it
+     * stays with the subscription rather than being read off the package each time.
+     */
+    const currency = body.currency
+      ? requireEnum(body.currency, "currency", CURRENCIES)
+      : DEFAULT_CURRENCY;
     const timestamp = nowIso();
     const existing = await loadSubscription(env, params.id);
 
@@ -612,12 +728,13 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       statements.push(
         env.DB.prepare(
           `UPDATE client_subscriptions
-              SET tier = ?, monthly_fee = ?, status = ?, note = ?, updated_at = ?,
-                  updated_by = ?, ended_on = ?
+              SET tier = ?, monthly_fee = ?, currency = ?, status = ?, note = ?,
+                  updated_at = ?, updated_by = ?, ended_on = ?
             WHERE client_id = ?`,
         ).bind(
           tier,
           fee,
+          currency,
           status,
           body.note?.trim()?.slice(0, 500) || null,
           timestamp,
@@ -677,11 +794,12 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
           `INSERT INTO client_subscriptions
              (client_id, tier, monthly_fee, currency, started_on, status, note,
               created_at, updated_at, updated_by)
-           VALUES (?, ?, ?, 'GHS', ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           params.id,
           tier,
           fee,
+          currency,
           body.started_on?.trim() || timestamp.slice(0, 10),
           status,
           body.note?.trim()?.slice(0, 500) || null,
@@ -699,6 +817,20 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         }),
       );
     }
+
+    /*
+     * Every live allocation of this client follows the package. Schedule 2 prices an
+     * associate's fee by the client's tier, so a client moved from Growth to Firm is an
+     * associate whose fee for that client moves with them - and the alternative, a
+     * second control setting the same thing, is what put two different answers on one
+     * screen in the first place.
+     */
+    statements.push(
+      env.DB.prepare(
+        `UPDATE client_allocations SET tier = ?
+          WHERE client_id = ? AND status IN ('offered', 'accepted')`,
+      ).bind(tier, params.id),
+    );
 
     await env.DB.batch(statements);
     return json({ ok: true });
@@ -772,16 +904,24 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     let name = body.name?.trim() ?? "";
     let serviceId: string | null = null;
+    /*
+     * What this piece of work is quoted in. The catalogue's currency where it came from
+     * the catalogue, otherwise cedis. It stays on the row because an invoice is in one
+     * currency and nothing converts: a piece of work quoted in dollars cannot join a
+     * cedi invoice, and the invoice route says so rather than adding the figure anyway.
+     */
+    let quotedIn = DEFAULT_CURRENCY as string;
     if (body.service_id) {
       const service = await env.DB.prepare(
-        `SELECT id, name FROM additional_services WHERE id = ?`,
+        `SELECT id, name, currency FROM additional_services WHERE id = ?`,
       )
         .bind(body.service_id)
-        .first<{ id: string; name: string }>();
+        .first<{ id: string; name: string; currency: string }>();
       if (!service) throw notFound("There is no such service.");
       serviceId = service.id;
       // Copied, so the record survives the catalogue being reorganised.
       name = service.name;
+      quotedIn = currencyOf(service.currency);
     }
     if (!name) throw badRequest("Say which service this is.");
 
@@ -793,9 +933,9 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     await env.DB.prepare(
       `INSERT INTO client_services
-         (id, client_id, service_id, name, status, quoted_fee, note,
+         (id, client_id, service_id, name, status, quoted_fee, currency, note,
           quoted_at, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         id,
@@ -804,6 +944,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         name.slice(0, 120),
         status,
         optionalAmount(body.quoted_fee, "The fee"),
+        quotedIn,
         body.note?.trim()?.slice(0, 500) || null,
         timestamp,
         actor.id,
@@ -1053,6 +1194,124 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       .bind(params.id)
       .run();
     if (!result.meta.changes) throw notFound("There is no such login.");
+    return noContent();
+  });
+
+  // -------------------------------------------------------------------------
+  // Discounts
+  // -------------------------------------------------------------------------
+  //
+  // Partner business throughout. A discount is the fee by another name, and the grade
+  // that may change a fee is the grade that may take money off one.
+
+  /**
+   * Puts a client on a discount.
+   *
+   * One at a time, and the database is what holds that: a partial unique index on the
+   * active row, rather than a check here that two people pressing the button at the same
+   * moment could both pass. A Partner who wants different terms ends the current
+   * discount and grants another, and both rows stay readable afterwards.
+   */
+  router.post("/api/clients/:id/discounts", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{
+      kind?: unknown;
+      value?: unknown;
+      applies_to?: unknown;
+      runs?: unknown;
+      invoice_count?: unknown;
+      until_on?: string;
+      reason?: string;
+    }>(request);
+
+    const client = await env.DB.prepare(`SELECT id, name FROM clients WHERE id = ?`)
+      .bind(params.id)
+      .first<{ id: string; name: string }>();
+    if (!client) throw notFound("There is no such client.");
+
+    const kind = requireEnum(body.kind, "kind", DISCOUNT_KINDS) as DiscountKind;
+    const appliesTo = requireEnum(
+      body.applies_to,
+      "applies_to",
+      DISCOUNT_SCOPES,
+    ) as DiscountScope;
+    const runs = requireEnum(body.runs, "runs", DISCOUNT_RUNS) as DiscountRun;
+    const value = Number(body.value);
+    const invoiceCount =
+      runs === "count" ? Math.trunc(Number(body.invoice_count)) : null;
+    const untilOn = runs === "until" ? body.until_on?.trim() || null : null;
+    const now = new Date().toISOString().slice(0, 10);
+
+    const refusal = whyNotADiscount({
+      kind,
+      value,
+      runs,
+      invoice_count: invoiceCount,
+      until_on: untilOn,
+      today: now,
+    });
+    if (refusal) throw badRequest(refusal);
+
+    /*
+     * Retires whatever has stopped applying before asking whether one is live, so a
+     * client whose discount ran out last month is not told they already have one.
+     */
+    const existing = await activeDiscount(env, params.id);
+    if (existing) {
+      throw conflict(
+        `${client.name} is already on a discount - ${describeDiscount(existing, (n) => String(n))}. End that one first.`,
+      );
+    }
+
+    const id = newId();
+    const timestamp = nowIso();
+    await env.DB.prepare(
+      `INSERT INTO client_discounts
+         (id, client_id, kind, value, applies_to, runs, invoice_count, until_on,
+          reason, status, granted_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+    )
+      .bind(
+        id,
+        params.id,
+        kind,
+        value,
+        appliesTo,
+        runs,
+        invoiceCount,
+        untilOn,
+        body.reason?.trim()?.slice(0, 300) || null,
+        actor.id,
+        timestamp,
+        timestamp,
+      )
+      .run();
+
+    return json({ id }, 201);
+  });
+
+  /**
+   * Ends a discount early.
+   *
+   * The row stays, with who ended it and why. Invoices already issued keep the figures
+   * they were issued with: ending a discount is a decision about what happens next, not
+   * a correction to documents the client is already holding.
+   */
+  router.post("/api/discounts/:id/end", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ reason?: string }>(request);
+    const reason = requireString(body.reason, "reason", { max: 300 });
+
+    const result = await env.DB.prepare(
+      `UPDATE client_discounts
+          SET status = 'ended', ended_at = ?, ended_by = ?, ended_reason = ?, updated_at = ?
+        WHERE id = ? AND status = 'active'`,
+    )
+      .bind(nowIso(), actor.id, reason, nowIso(), params.id)
+      .run();
+    if (!result.meta.changes) {
+      throw notFound("There is no discount running under that reference.");
+    }
     return noContent();
   });
 }

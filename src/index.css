@@ -138,3 +138,67 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+/* --------------------------------------------------------------- packages */
+/*
+  The package cards, which are the one place in the portal that is selling something
+  rather than recording it. A card lifts slightly when it is pointed at, and turns over
+  to show everything the package includes - the front is the decision, the back is the
+  detail, and a client comparing four columns of small print is a client who reads none
+  of it.
+
+  Turning over is done in CSS from a class the component sets, so it happens on hover,
+  on keyboard focus and on a tap, rather than on hover alone - a flip nobody on a phone
+  can trigger is a flip that hides half the page.
+*/
+.flip {
+  perspective: 1400px;
+}
+.flip-inner {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.flip.is-turned .flip-inner {
+  transform: rotateY(180deg);
+}
+.flip-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.flip-back {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+  overflow: auto;
+}
+
+/*
+  Everything above is decoration. Somebody who has asked their system to stop moving
+  things gets the same two faces without the turn, and the card simply swaps.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .flip-inner {
+    transition: none;
+  }
+}
+
+/* A card that rises to meet the pointer, used wherever cards are being compared. */
+.lift {
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms ease;
+}
+.lift:hover,
+.lift:focus-within {
+  transform: translateY(-3px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lift {
+    transition: none;
+  }
+  .lift:hover,
+  .lift:focus-within {
+    transform: none;
+  }
+}

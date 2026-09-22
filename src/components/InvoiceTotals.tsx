@@ -17,9 +17,12 @@ export function InvoiceTotals({
   withheld = 0,
   balanceDue,
   withholdingLabel = "Withholding tax",
+  discount = 0,
+  discountLabel,
 }: {
   lines: InvoiceLineRow[];
   taxes: InvoiceTaxRow[];
+  /** What tax was charged on: the lines, less any discount. */
   net: number;
   gross: number;
   currency: string;
@@ -27,6 +30,12 @@ export function InvoiceTotals({
   withheld?: number;
   balanceDue?: number;
   withholdingLabel?: string;
+  /**
+   * Taken off before tax. `net` is already net of it, so the subtotal shown above it is
+   * the two added back together - there is no third figure that could get out of step.
+   */
+  discount?: number;
+  discountLabel?: string | null;
 }) {
   return (
     <div className="scroll-x">
@@ -50,6 +59,33 @@ export function InvoiceTotals({
               <td className="text-right tabular-nums">{formatMoneyExact(line.amount, currency)}</td>
             </tr>
           ))}
+
+          {/*
+            With a discount there are three figures rather than one: what the work came
+            to, what came off, and what tax was then charged on. Showing only the last
+            would leave a Partner - and the client reading the same lines - unable to
+            see why the total is not the sum of the column above it.
+          */}
+          {discount > 0 && (
+            <>
+              <tr>
+                <td colSpan={3} className="text-right font-medium">
+                  Subtotal
+                </td>
+                <td className="text-right tabular-nums font-medium">
+                  {formatMoneyExact(net + discount, currency)}
+                </td>
+              </tr>
+              <tr>
+                <td colSpan={3} className="text-right text-emerald-700">
+                  {discountLabel || "Discount"}
+                </td>
+                <td className="text-right tabular-nums text-emerald-700">
+                  -{formatMoneyExact(discount, currency)}
+                </td>
+              </tr>
+            </>
+          )}
 
           <tr>
             <td colSpan={3} className="text-right font-medium">

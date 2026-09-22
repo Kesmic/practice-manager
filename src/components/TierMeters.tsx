@@ -12,21 +12,29 @@
 
 import type { Assessment, Criterion } from "@shared/subscriptions";
 import { CRITERION_UNIT_LABELS } from "@shared/subscriptions";
-import { formatMoney } from "../lib/format";
+import { formatAmount } from "@shared/money";
 
-function show(value: number | null, unit: Criterion["unit"], currency: string): string {
+/**
+ * A figure, in whatever the criterion is measured in.
+ *
+ * The criterion's own currency, never the client's. The firm's turnover bands are in
+ * dollars while most clients are billed in cedis, and drawing a 15,000 ceiling as
+ * "GHS 15,000" on a client's own page put a figure in front of them that nobody had
+ * ever quoted.
+ */
+function show(value: number | null, criterion: Criterion): string {
   if (value === null) return "-";
-  return unit === "money" ? formatMoney(value, currency) : value.toLocaleString("en-GB");
+  return criterion.unit === "money"
+    ? formatAmount(value, criterion.currency, { decimals: false })
+    : value.toLocaleString("en-GB");
 }
 
 export function TierMeters({
   criteria,
   assessment,
-  currency = "GHS",
 }: {
   criteria: Criterion[];
   assessment: Assessment;
-  currency?: string;
 }) {
   const byId = new Map(criteria.map((c) => [c.id, c]));
 
@@ -61,10 +69,8 @@ export function TierMeters({
                 </span>
               )}
               <span className="ml-auto text-sm tabular-nums text-slate-600">
-                {show(line.value, criterion.unit, currency)}
-                {line.ceiling !== null && (
-                  <> of {show(line.ceiling, criterion.unit, currency)}</>
-                )}
+                {show(line.value, criterion)}
+                {line.ceiling !== null && <> of {show(line.ceiling, criterion)}</>}
                 {line.ceiling === null && line.value !== null && <> · no ceiling</>}
               </span>
             </div>

@@ -13,17 +13,28 @@ import type { StaffAttachment, StaffFileKind } from "@shared/staff-files";
 import type { SignatureSpecimen } from "@shared/signatures";
 import type { CriterionUnit, FeeBasis, ServiceState } from "@shared/subscriptions";
 import type { TaxBasis, Totals } from "@shared/invoices";
+import type { DiscountKind, DiscountRun, DiscountScope } from "@shared/discounts";
+import type { Currency } from "@shared/money";
+import type { ProspectStage, PartnerState } from "@shared/growth-partners";
+import type { ProposalDocument } from "@shared/proposal-document";
 import type {
+  AdditionalService,
   ClientInvoiceDetail,
   ClientInvoiceList,
   ClientPortalSubscription,
   ClientPortalUser,
   ClientSubscriptionDetail,
+  GrowthPartnerOverview,
   InvoiceDetail,
   InvoiceList,
+  PartnerPipeline,
+  PartnerSelf,
+  PartnerStatement,
   SubscriptionCatalogue,
   SubscriptionsOverview,
   TaxLineRow,
+  TierInclusion,
+  TierRow,
 } from "@shared/types";
 import type { StaffEmailPolicy } from "@shared/staff-email";
 import type {
@@ -1066,7 +1077,15 @@ export const api = {
 
   saveTier: (
     tier: ClientTier,
-    body: { monthly_fee: number | null; summary: string; ceilings: Record<string, number | null> },
+    body: {
+      monthly_fee: number | null;
+      currency: Currency;
+      summary: string;
+      ideal_for: string;
+      ceilings: Record<string, number | null>;
+      /** The whole list, in order. Omitted when only the price is being changed. */
+      inclusions?: Array<{ label: string; sub: boolean }>;
+    },
   ) => request<void>(`/api/subscription-tiers/${tier}`, { method: "PATCH", body }),
 
   addService: (body: {
@@ -1074,6 +1093,7 @@ export const api = {
     summary?: string;
     fee: number | null;
     fee_basis: FeeBasis;
+    currency?: Currency;
     service_line?: string;
   }) => request<{ id: string }>("/api/additional-services", { method: "POST", body }),
   editService: (
@@ -1083,10 +1103,31 @@ export const api = {
       summary?: string;
       fee: number | null;
       fee_basis: FeeBasis;
+      currency?: Currency;
       service_line?: string;
       active?: boolean;
     },
   ) => request<void>(`/api/additional-services/${id}`, { method: "PATCH", body }),
+
+  /*
+   * Discounts. Granting one is Partner business and the Worker says so again; this is
+   * only the shape of the request.
+   */
+  grantDiscount: (
+    clientId: string,
+    body: {
+      kind: DiscountKind;
+      value: number;
+      applies_to: DiscountScope;
+      runs: DiscountRun;
+      invoice_count?: number | null;
+      until_on?: string | null;
+      reason?: string;
+    },
+  ) => request<{ id: string }>(`/api/clients/${clientId}/discounts`, { method: "POST", body }),
+
+  endDiscount: (id: string, reason: string) =>
+    request<void>(`/api/discounts/${id}/end`, { method: "POST", body: { reason } }),
 
   subscriptions: () => request<SubscriptionsOverview>("/api/subscriptions"),
   clientSubscription: (clientId: string) =>
@@ -1096,6 +1137,7 @@ export const api = {
     body: {
       tier: ClientTier;
       monthly_fee: number | null;
+      currency?: Currency;
       started_on?: string;
       note?: string;
       status?: "active" | "paused" | "ended";
@@ -1173,9 +1215,192 @@ export const api = {
     request<{ sent: boolean; step?: number }>(`/api/invoices/${id}/remind`, { method: "POST" }),
 
   // ------------------------------------------------- the client's own portal
+  // ------------------------------------------------------- growth partners
+  //
+  // A third set of calls, against a third session. Nothing here touches the staff or
+  // client endpoints, and nothing there touches these.
+
+  partnerApply: (body: {
+    full_name: string;
+    email: string;
+    phone?: string;
+    business_name?: string;
+    note?: string;
+  }) => request<{ ok: true; message: string }>("/api/partner/apply", { method: "POST", body }),
+
+  partnerLogin: (email: string, password: string) =>
+    request<{ ok: true }>("/api/partner/login", { method: "POST", body: { email, password } }),
+  partnerLogout: () => request<{ ok: true }>("/api/partner/logout", { method: "POST" }),
+  partnerSession: () => request<{ partner: PartnerSelf }>("/api/partner/session"),
+
+  partnerForgotPassword: (email: string) =>
+    request<{ ok: true; message: string }>("/api/partner/forgot-password", {
+      method: "POST",
+      body: { email },
+    }),
+  partnerInvitation: (token: string) =>
+    request<{ full_name: string; email: string }>(
+      `/api/partner/invitation/${encodeURIComponent(token)}`,
+    ),
+  acceptPartnerInvitation: (token: string, password: string) =>
+    request<{ ok: true }>(`/api/partner/invitation/${encodeURIComponent(token)}`, {
+      method: "POST",
+      body: { password },
+    }),
+  partnerChangePassword: (current: string, password: string) =>
+    request<void>("/api/partner/password", { method: "POST", body: { current, password } }),
+
+  partnerAgreement: () =>
+    request<{
+      agreement: {
+        id: string;
+        title: string;
+        body: string;
+        status: "issued" | "signed" | "superseded";
+        issued_at: string;
+        signed_at: string | null;
+        typed_name: string | null;
+        commission_rate: number;
+        commission_months: number;
+        hold_days: number;
+        has_signature: boolean;
+      } | null;
+      full_name: string;
+    }>("/api/partner/agreement"),
+
+  /* The image itself as the body, the way a staff specimen is uploaded. */
+  uploadPartnerSignature: async (file: File) => {
+    const response = await fetch("/api/partner/agreement/signature", {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file,
+      credentials: "same-origin",
+    });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => ({ error: "Upload failed." }));
+      throw new ApiRequestError(
+        response.status,
+        (problem as { error?: string }).error ?? "Upload failed.",
+      );
+    }
+  },
+
+  signPartnerAgreement: (typedName: string) =>
+    request<{ signed_at: string }>("/api/partner/agreement/sign", {
+      method: "POST",
+      body: { typed_name: typedName },
+    }),
+
+  partnerPipeline: () => request<PartnerPipeline>("/api/partner/prospects"),
+  partnerStatement: () => request<PartnerStatement>("/api/partner/statement"),
+  partnerPackages: () =>
+    request<{
+      tiers: TierRow[];
+      inclusions: TierInclusion[];
+      services: AdditionalService[];
+    }>("/api/partner/packages"),
+
+  registerProspect: (body: {
+    business_name: string;
+    contact_name?: string;
+    contact_email?: string;
+    contact_phone?: string;
+    sector?: string;
+    note?: string;
+  }) => request<{ id: string }>("/api/partner/prospects", { method: "POST", body }),
+
+  moveProspect: (
+    id: string,
+    body: { stage?: ProspectStage; note?: string; lost_reason?: string },
+  ) => request<void>(`/api/partner/prospects/${id}`, { method: "PATCH", body }),
+
+  createProposal: (
+    prospectId: string,
+    body: {
+      tier: ClientTier | null;
+      currency: Currency;
+      monthly_fee: number | null;
+      discount: number;
+      prepared_for?: string;
+      address?: string;
+      salutation?: string;
+      note?: string;
+      lines?: Array<{ description: string; frequency: string; amount: number }>;
+    },
+  ) =>
+    request<{ id: string; reference: string }>(
+      `/api/partner/prospects/${prospectId}/proposals`,
+      { method: "POST", body },
+    ),
+  sendProposal: (id: string) =>
+    request<{ link: string }>(`/api/partner/proposals/${id}/send`, { method: "POST" }),
+  withdrawProposal: (id: string) =>
+    request<void>(`/api/partner/proposals/${id}/withdraw`, { method: "POST" }),
+
+  // ------------------------------------------- the firm's side of partners
+
+  growthPartners: () => request<GrowthPartnerOverview>("/api/growth-partners"),
+  approvePartner: (
+    id: string,
+    body: { commission_rate: number; commission_months: number; hold_days: number },
+  ) =>
+    request<{ invitation_url: string }>(`/api/growth-partners/${id}/approve`, {
+      method: "POST",
+      body,
+    }),
+  setPartnerStatus: (id: string, status: PartnerState, reason?: string) =>
+    request<void>(`/api/growth-partners/${id}/status`, {
+      method: "POST",
+      body: { status, reason },
+    }),
+  invitePartner: (id: string) =>
+    request<{ invitation_url: string }>(`/api/growth-partners/${id}/invite`, {
+      method: "POST",
+    }),
+  extendHold: (prospectId: string, days: number, reason: string) =>
+    request<{ hold_until: string }>(`/api/prospects/${prospectId}/extend-hold`, {
+      method: "POST",
+      body: { days, reason },
+    }),
+  markProspectWon: (prospectId: string, clientId: string, wonOn?: string) =>
+    request<{ ok: true }>(`/api/prospects/${prospectId}/won`, {
+      method: "POST",
+      body: { client_id: clientId, won_on: wonOn },
+    }),
+  approveCommission: (id: string) =>
+    request<void>(`/api/commissions/${id}/approve`, { method: "POST" }),
+  cancelCommission: (id: string, reason: string) =>
+    request<void>(`/api/commissions/${id}/cancel`, { method: "POST", body: { reason } }),
+  payCommission: (id: string, reference?: string) =>
+    request<void>(`/api/commissions/${id}/paid`, { method: "POST", body: { reference } }),
+
+  // --------------------------------------------- what a prospect can reach
+
+  readProposal: (token: string) =>
+    request<{ id: string; reference: string; status: string; document: ProposalDocument }>(
+      `/api/proposals/${encodeURIComponent(token)}`,
+    ),
+  decideProposal: (token: string, decision: "accepted" | "declined", reason?: string) =>
+    request<void>(`/api/proposals/${encodeURIComponent(token)}/decide`, {
+      method: "POST",
+      body: { decision, reason },
+    }),
+
   clientLogin: (email: string, password: string) =>
     request<{ ok: true }>("/api/client/login", { method: "POST", body: { email, password } }),
   clientLogout: () => request<{ ok: true }>("/api/client/logout", { method: "POST" }),
+
+  /**
+   * Asks for a reset link.
+   *
+   * The answer is the same sentence whether or not that address has an account, so the
+   * caller cannot learn anything from it - and must not try to.
+   */
+  clientForgotPassword: (email: string) =>
+    request<{ ok: true; message: string }>("/api/client/forgot-password", {
+      method: "POST",
+      body: { email },
+    }),
   clientSession: () => request<{ user: ClientPortalUser }>("/api/client/session"),
   clientInvitation: (token: string) =>
     request<{ full_name: string; email: string; client_name: string }>(
@@ -1188,6 +1413,13 @@ export const api = {
     }),
   changeClientPassword: (current: string, password: string) =>
     request<void>("/api/client/password", { method: "POST", body: { current, password } }),
+  /*
+   * A question, not a change. The Worker notifies whoever holds the client and touches
+   * nothing about what they are on.
+   */
+  clientAskAboutPackage: (tier: ClientTier) =>
+    request<void>("/api/client/package-enquiry", { method: "POST", body: { tier } }),
+
   clientMySubscription: () => request<ClientPortalSubscription>("/api/client/subscription"),
   clientAskForService: (serviceId: string, note?: string) =>
     request<{ id: string }>("/api/client/services", {
@@ -1242,9 +1474,14 @@ export const api = {
       `/api/allocations${status ? `?status=${status}` : ""}`,
     ),
 
+  /*
+   * No tier. It is read off the client's subscription by the Worker, because the
+   * package a client is on decides the associate's fee under Schedule 2 and there is
+   * one place that is set.
+   */
   offerClient: (
     clientId: string,
-    input: { user_id: string; tier?: ClientTier | null; note?: string | null },
+    input: { user_id: string; note?: string | null },
   ) =>
     request<{ allocation: ClientAllocation }>(`/api/clients/${clientId}/allocations`, {
       method: "POST",

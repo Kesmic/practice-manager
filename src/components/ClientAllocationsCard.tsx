@@ -17,11 +17,8 @@ import type { ClientAllocation } from "@shared/types";
 import type { User } from "@shared/types";
 import {
   ALLOCATION_STATUS_LABELS,
-  CLIENT_TIERS,
   GROUND_SPECS,
-  TIER_HINTS,
   TIER_LABELS,
-  type ClientTier,
 } from "@shared/allocations";
 import { ApiRequestError, api } from "../lib/api";
 import { formatDate } from "../lib/format";
@@ -44,7 +41,6 @@ export function ClientAllocationsCard({
 }) {
   const [allocations, setAllocations] = useState<ClientAllocation[] | null>(null);
   const [userId, setUserId] = useState("");
-  const [tier, setTier] = useState<ClientTier | "">("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -79,11 +75,9 @@ export function ClientAllocationsCard({
     try {
       await api.offerClient(clientId, {
         user_id: userId,
-        tier: tier || null,
         note: note.trim() || null,
       });
       setUserId("");
-      setTier("");
       setNote("");
       await load();
       setNotice(
@@ -146,8 +140,11 @@ export function ClientAllocationsCard({
                     {allocation.user_name}
                   </span>
                   {allocation.tier ? (
-                    <span className="ml-2 text-xs text-slate-500">
-                      {TIER_LABELS[allocation.tier]} tier
+                    <span
+                      className="ml-2 text-xs text-slate-500"
+                      title="From this client's subscription, which is where the package is set."
+                    >
+                      {TIER_LABELS[allocation.tier]} package
                     </span>
                   ) : null}
                   <span
@@ -236,25 +233,16 @@ export function ClientAllocationsCard({
                 </Select>
               )}
             </Field>
-            <Field
-              label="Subscription tier"
-              hint={tier ? TIER_HINTS[tier] : "Decides the fee under the agreement. Leave blank for an employee."}
-            >
-              {(id) => (
-                <Select
-                  id={id}
-                  value={tier}
-                  onChange={(e) => setTier(e.target.value as ClientTier | "")}
-                >
-                  <option value="">Not priced by tier</option>
-                  {CLIENT_TIERS.map((key) => (
-                    <option key={key} value={key}>
-                      {TIER_LABELS[key]}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
+            {/*
+              No tier control. Schedule 2 prices this fee by the client's package, and
+              the package is set once, on the subscription above - two controls for one
+              fact is how the two came to disagree on the same screen.
+            */}
+            <p className="hint">
+              The fee under the agreement follows this client's package, which is set on
+              their subscription. Leave an employee unpriced by not putting the client on
+              a package.
+            </p>
             <Field
               label="Anything they should know"
               hint="Shown to them when they decide."

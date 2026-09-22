@@ -49,6 +49,17 @@ export const CLIENT_SESSION_COOKIE = "kpm_client";
  */
 export const INVITATION_TTL_DAYS = 7;
 
+/**
+ * How long a reset link a client asked for themselves stands.
+ *
+ * An hour, not the seven days an invitation gets. An invitation is arranged between two
+ * people who know it is coming; a reset link arrives unannounced in an inbox that may
+ * not be the client's alone, and every hour it stays valid is an hour it is a live
+ * credential sitting in a mailbox. An hour is long enough to read an email and act on
+ * it, and asking again costs nothing.
+ */
+export const RESET_TTL_MINUTES = 60;
+
 export interface AuthenticatedClientUser {
   id: string;
   /** The client they belong to. Every query scopes on this and never on the request. */

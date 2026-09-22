@@ -18,6 +18,16 @@ import { Guide } from "./pages/Guide";
 import { Handbook } from "./pages/Handbook";
 import { Intake } from "./pages/Intake";
 import { ClientPortal, ClientPublic } from "./components/ClientLayout";
+import { PartnerPortal, PartnerPublic } from "./components/PartnerLayout";
+import { PartnerLogin } from "./pages/partner/PartnerLogin";
+import { PartnerApply } from "./pages/partner/PartnerApply";
+import { PartnerInvitation } from "./pages/partner/PartnerInvitation";
+import { PartnerPipeline } from "./pages/partner/PartnerPipeline";
+import { PartnerEarnings } from "./pages/partner/PartnerEarnings";
+import { PartnerAccount } from "./pages/partner/PartnerAccount";
+import { PartnerAgreement } from "./pages/partner/PartnerAgreement";
+import { ProposalView } from "./pages/ProposalView";
+import { GrowthPartners } from "./pages/GrowthPartners";
 import { ClientLogin } from "./pages/client/ClientLogin";
 import { ClientInvitation } from "./pages/client/ClientInvitation";
 import { ClientSubscription } from "./pages/client/ClientSubscription";
@@ -128,6 +138,44 @@ export function App() {
         <Route path="account" element={<ClientAccount />} />
       </Route>
 
+      {/*
+        The growth partner portal. A third population with a third session, outside both
+        of the above for the same reason they are outside each other: nothing under
+        /partner can reach a staff or client page, and nothing there can reach these.
+
+        /partner/apply is open to anybody. What it writes cannot sign in.
+      */}
+      <Route
+        path="/partner/login"
+        element={
+          <PartnerPublic>
+            <PartnerLogin />
+          </PartnerPublic>
+        }
+      />
+      <Route path="/partner/apply" element={<PartnerApply />} />
+      <Route
+        path="/partner/invitation/:token"
+        element={
+          <PartnerPublic>
+            <PartnerInvitation />
+          </PartnerPublic>
+        }
+      />
+      <Route path="/partner" element={<PartnerPortal />}>
+        <Route index element={<PartnerPipeline />} />
+        <Route path="earnings" element={<PartnerEarnings />} />
+        <Route path="engagement" element={<PartnerAgreement />} />
+        <Route path="account" element={<PartnerAccount />} />
+      </Route>
+
+      {/*
+        A proposal, opened from the link that was emailed. No account and no session:
+        the token in the path is what stands in for one, and it opens exactly the one
+        document it was minted for.
+      */}
+      <Route path="/proposal/:token" element={<ProposalView />} />
+
       <Route
         element={
           <Protected>
@@ -165,6 +213,18 @@ export function App() {
           element={
             <Protected minimum="manager">
               <Invoices />
+            </Protected>
+          }
+        />
+        {/*
+          Manager and above, the same line the client record draws around money: a
+          growth partner's commission is what the firm pays out on a client's fees.
+        */}
+        <Route
+          path="/growth-partners"
+          element={
+            <Protected minimum="manager">
+              <GrowthPartners />
             </Protected>
           }
         />

@@ -29,6 +29,7 @@ import {
 } from "../auth";
 import {
   CLIENT_SESSION_COOKIE,
+  RESET_TTL_MINUTES,
   clearedClientCookie,
   createClientSession,
   destroyClientSession,
@@ -40,12 +41,18 @@ import {
   clearAccountFailures,
   recordFailure,
 } from "../throttle";
-import { newId, nowIso, requireEnum, requireString } from "../db";
+import { newId, notificationStatement, nowIso, requireEnum, requireString } from "../db";
+import { newToken } from "../auth";
+import { readSettings } from "./settings";
+import { sendToPerson } from "../email";
 import { Router, badRequest, json, noContent, notFound, readJson, unauthorized } from "../http";
 import {
   SERVICE_STATES,
+  CLIENT_TIERS,
+  TIER_LABELS,
   assess,
   clientMayMove,
+  type ClientTier,
   type ServiceState,
 } from "../../shared/subscriptions";
 import { feeFor, readCatalogue } from "./subscriptions";
@@ -306,7 +313,7 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       .bind(actor.client_id)
       .first<{
         client_id: string;
-        tier: "starter" | "growth" | "enterprise";
+        tier: ClientTier;
         monthly_fee: number | null;
         currency: string;
         started_on: string;
@@ -340,6 +347,8 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       criteria: catalogue.criteria,
       tiers: catalogue.tiers,
       ceilings: catalogue.ceilings,
+      // What each package includes, which is what the cards turn over to show.
+      inclusions: catalogue.inclusions,
       /*
        * Only what the firm is currently offering. A retired service is not something to
        * put in front of a client, and the ones they have already asked for come back on
@@ -417,6 +426,51 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
   });
 
   /**
+   * Asks the firm about another package.
+   *
+   * A message, not a move. The portal never re-tiers anybody, so this puts the question
+   * in the inbox of whoever holds the client and changes nothing about what they pay -
+   * the client is told exactly that when they send it.
+   */
+  router.post("/api/client/package-enquiry", async ({ request, env }) => {
+    const actor = await requireClientUser(env, request);
+    const body = await readJson<{ tier?: unknown }>(request);
+    const tier = requireEnum(body.tier, "tier", CLIENT_TIERS) as ClientTier;
+
+    const owners = await env.DB.prepare(
+      `SELECT partner_id, manager_id FROM clients WHERE id = ?`,
+    )
+      .bind(actor.client_id)
+      .first<{ partner_id: string | null; manager_id: string | null }>();
+
+    /*
+     * Both of them, and neither is a failure: a client whose record has nobody on it is
+     * a client whose enquiry would otherwise go nowhere, so it is not an error here and
+     * the request still succeeds. The enquiry is also on the firm's own screens.
+     */
+    const recipients = [owners?.partner_id, owners?.manager_id].filter(
+      (id, index, all): id is string => !!id && all.indexOf(id) === index,
+    );
+    if (recipients.length) {
+      await env.DB.batch(
+        recipients.map((userId) =>
+          notificationStatement(env, {
+            userId,
+            taskId: null,
+            kind: "subscription:enquiry",
+            title: `${actor.client_name} has asked about the ${TIER_LABELS[tier]} package`,
+            body:
+              `${actor.full_name} asked about it from their portal. Nothing has changed ` +
+              `on their account - moving them is a conversation and then a change you make.`,
+          }),
+        ),
+      );
+    }
+
+    return noContent();
+  });
+
+  /**
    * Accepts or refuses a quote. The only change a client may make to a request.
    *
    * `clientMayMove` is the whole rule: from quoted, to agreed or declined. Quoting
@@ -474,7 +528,8 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
     const [invoices, payments] = await env.DB.batch([
       env.DB.prepare(
         `SELECT id, number, state, issued_on, due_on, currency, net, tax_total, gross,
-                balance_due, withholding_amount, period_label
+                balance_due, withholding_amount, discount_amount, discount_label,
+                period_label
            FROM invoices
           WHERE client_id = ? AND state <> 'draft'
           ORDER BY issued_on DESC, number DESC`,
@@ -530,7 +585,8 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
 
     const invoice = await env.DB.prepare(
       `SELECT id, number, state, issued_on, due_on, currency, net, tax_total, gross,
-              balance_due, withholding_amount, period_label, note
+              balance_due, withholding_amount, discount_amount, discount_label,
+              period_label, note
          FROM invoices
         WHERE id = ? AND client_id = ? AND state <> 'draft'`,
     )
@@ -579,7 +635,127 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
     if (!mine) throw notFound("There is no such invoice on your account.");
     return await serveDocument(env, params.id);
   });
+  /**
+   * A client asking for a reset link themselves.
+   *
+   * Three things make this safe to expose to anyone on the internet.
+   *
+   * **The answer never varies.** The same sentence whether the address has an account,
+   * has never had one, belongs to a suspended login, or belongs to a client the firm has
+   * exited. Anything else answers "is this business a client of yours" to a stranger,
+   * which is the question shared/intake.ts already takes trouble never to answer.
+   *
+   * **The work happens after the response.** The lookup, the token and the email are all
+   * handed to `waitUntil`, so an address the firm holds and one it does not take exactly
+   * the same time to refuse. Without that the endpoint answers the same question to
+   * anybody with a stopwatch.
+   *
+   * **Every request is counted, not merely the failed ones.** A reset endpoint with no
+   * ceiling is a way to post somebody an email a second. Counted under its own key
+   * rather than the sign-in one, because sharing that counter would let anybody lock a
+   * client out of signing in simply by asking for resets on their behalf.
+   */
+  router.post("/api/client/forgot-password", async ({ request, env, waitUntil }) => {
+    const body = await readJson<{ email?: string }>(request);
+    const email = (body.email ?? "").trim().toLowerCase();
+
+    const keys = await attemptKeys(request, `client-reset:${email}`);
+    await assertLoginAllowed(env, keys);
+    await recordFailure(env, keys);
+
+    waitUntil(sendResetLink(env, request, email));
+
+    return json({
+      ok: true,
+      message:
+        "If that address has an account with us, a link to set a new password is on its way. It works once and expires in an hour.",
+    });
+  });
 }
+
+/**
+ * Issues and sends a reset link, or quietly does nothing.
+ *
+ * Runs after the response has gone, so nothing it does or does not do is observable
+ * from outside. Every refusal is silent for that reason - there is nobody left to tell,
+ * and telling them was never the point.
+ */
+async function sendResetLink(
+  env: Env,
+  request: Request,
+  email: string,
+): Promise<void> {
+  try {
+    if (!email) return;
+
+    const row = await env.DB.prepare(
+      `SELECT cu.id, cu.full_name, cu.email, cu.status, c.name AS client_name,
+              c.status AS client_status
+         FROM client_users cu
+         JOIN clients c ON c.id = cu.client_id
+        WHERE cu.email = ? COLLATE NOCASE`,
+    )
+      .bind(email)
+      .first<{
+        id: string;
+        full_name: string;
+        email: string;
+        status: string;
+        client_name: string;
+        client_status: string;
+      }>();
+
+    // Nothing for a stranger, for somebody the firm shut out, or for a client it has
+    // exited. All three look identical from outside.
+    if (!row) return;
+    if (row.status === "suspended") return;
+    if (row.client_status === "exited") return;
+
+    const token = newToken();
+    const timestamp = nowIso();
+    const expires = new Date(Date.now() + RESET_TTL_MINUTES * 60_000).toISOString();
+
+    await env.DB.batch([
+      /*
+       * Any outstanding link stops working. Two live reset links would be two ways in,
+       * and somebody clicking the older email would set a password the newer one then
+       * invalidates.
+       */
+      env.DB.prepare(
+        `DELETE FROM client_invitations WHERE client_user_id = ? AND used_at IS NULL`,
+      ).bind(row.id),
+      env.DB.prepare(
+        `INSERT INTO client_invitations (id, client_user_id, expires_at, created_at)
+         VALUES (?, ?, ?, ?)`,
+      ).bind(await tokenDigest(token), row.id, expires, timestamp),
+    ]);
+
+    const settings = await readSettings(env);
+    const origin = (env.PORTAL_URL ?? "").trim().replace(/\/+$/, "") ||
+      new URL(request.url).origin;
+
+    await sendToPerson(env, {
+      to: { email: row.email, full_name: row.full_name },
+      subject: `Setting a new password for your ${settings.firm_name} account`,
+      headline: `Somebody asked to reset the password for the ${row.client_name} account.`,
+      detail:
+        "If that was you, use the link below. It works once and expires in an hour, " +
+        "and using it signs you out on every other device.\n\n" +
+        "If it was not you, do nothing - your current password still works and this " +
+        "link will expire on its own. Tell us if it keeps happening.",
+      link: `${origin}/client/invitation/${encodeURIComponent(token)}`,
+      linkLabel: "Set a new password",
+      firmName: settings.firm_name,
+      reason: `somebody asked ${settings.firm_name} to reset the password on this account`,
+    });
+  } catch {
+    /*
+     * Swallowed on purpose. The response has already gone, so there is nobody to tell,
+     * and a throw here would only fill the log with the addresses people typed.
+     */
+  }
+}
+
 
 
 /** Referenced so the cookie's name is exported from exactly one place. */

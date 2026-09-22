@@ -46,7 +46,15 @@ const CRITERIA: Criterion[] = [
   { id: "turnover", name: "Annual turnover", unit: "money", how_measured: null, position: 2 },
 ];
 
-// Ceilings matching the tier descriptions already in shared/allocations.ts.
+/*
+  A ladder to measure the rules against. Not the firm's own - those are three criteria
+  the firm has not set ceilings on and one, monthly turnover, that it has - but the same
+  shape: two capped tiers and, above them, tiers with no ceiling at all.
+
+  Firm and Enterprise are both uncapped, which is true of the real ones too: nothing in
+  the firm's pricing separates them by a number. That makes Firm the tier that catches
+  everybody who has outgrown Growth, and the move to Enterprise a Partner's judgement.
+*/
 const CEILINGS: Ceiling[] = [
   { tier: "starter", criterion_id: "txn", ceiling: 100 },
   { tier: "starter", criterion_id: "staff", ceiling: 5 },
@@ -54,6 +62,9 @@ const CEILINGS: Ceiling[] = [
   { tier: "growth", criterion_id: "txn", ceiling: 500 },
   { tier: "growth", criterion_id: "staff", ceiling: 25 },
   { tier: "growth", criterion_id: "turnover", ceiling: 5_000_000 },
+  { tier: "firm", criterion_id: "txn", ceiling: null },
+  { tier: "firm", criterion_id: "staff", ceiling: null },
+  { tier: "firm", criterion_id: "turnover", ceiling: null },
   { tier: "enterprise", criterion_id: "txn", ceiling: null },
   { tier: "enterprise", criterion_id: "staff", ceiling: null },
   { tier: "enterprise", criterion_id: "turnover", ceiling: null },
@@ -71,20 +82,22 @@ function figures(txn: number, staff: number, turnover: number): Figure[] {
 // The ladder is the contract's ladder
 // ---------------------------------------------------------------------------
 
-test("the tiers are the three the agreement names, cheapest first", () => {
-  // Not a list this module may extend: client_allocations has a CHECK constraint on
-  // these three, and Schedule 2 prices associates by them.
+test("the packages are the four in the firm's proposal, cheapest first", () => {
+  // Not a list this module may extend at runtime: Schedule 2 prices associates by them
+  // and every screen is typed against them.
   assert.deepEqual([...TIER_ORDER].sort(), [...CLIENT_TIERS].sort());
-  assert.deepEqual(TIER_ORDER, ["starter", "growth", "enterprise"]);
+  assert.deepEqual(TIER_ORDER, ["starter", "growth", "firm", "enterprise"]);
 });
 
 test("the ladder goes both ways and stops at the ends", () => {
   assert.equal(tierAbove("starter"), "growth");
-  assert.equal(tierAbove("growth"), "enterprise");
+  assert.equal(tierAbove("growth"), "firm");
+  assert.equal(tierAbove("firm"), "enterprise");
   assert.equal(tierAbove("enterprise"), null);
-  assert.equal(tierBelow("enterprise"), "growth");
+  assert.equal(tierBelow("enterprise"), "firm");
   assert.equal(tierBelow("starter"), null);
   assert.ok(tierRank("starter") < tierRank("growth"));
+  assert.ok(tierRank("growth") < tierRank("firm"));
 });
 
 // ---------------------------------------------------------------------------
@@ -110,11 +123,19 @@ test("a figure exactly on the ceiling is still covered", () => {
 });
 
 test("one past the ceiling moves them", () => {
-  assert.equal(suggestTier(CEILINGS, figures(501, 25, 5_000_000)), "enterprise");
+  assert.equal(suggestTier(CEILINGS, figures(501, 25, 5_000_000)), "firm");
 });
 
-test("the top tier catches everything, because it has no ceilings", () => {
-  assert.equal(suggestTier(CEILINGS, figures(90_000, 4_000, 800_000_000)), "enterprise");
+test("the first uncapped tier catches everything, and the ladder stops there", () => {
+  /*
+   * Firm has no ceilings, so the suggestion never reaches Enterprise however large the
+   * figures get. That is the honest answer rather than a defect: the firm's own pricing
+   * distinguishes the two by the client being a multinational with complex transactions,
+   * which is not a number, and a portal that suggested Enterprise off a turnover figure
+   * would be inventing a threshold nobody agreed to.
+   */
+  assert.equal(suggestTier(CEILINGS, figures(90_000, 4_000, 800_000_000)), "firm");
+  assert.equal(tierCovers("firm", CEILINGS, figures(90_000, 4_000, 8e8)), true);
   assert.equal(tierCovers("enterprise", CEILINGS, figures(90_000, 4_000, 8e8)), true);
 });
 
@@ -196,7 +217,7 @@ test("a client past a ceiling is flagged, and it names which one", () => {
   // opening this needs the sentence "staff, 31 against 25", not just a red pill.
   const a = assess("growth", CRITERIA, CEILINGS, figures(455, 31, 3_900_000));
   assert.equal(a.standing, "outgrown");
-  assert.equal(a.suggested, "enterprise");
+  assert.equal(a.suggested, "firm");
   assert.equal(a.should_move, true);
   assert.deepEqual(a.breaches, [{ criterion_id: "staff", value: 31, ceiling: 25 }]);
 });

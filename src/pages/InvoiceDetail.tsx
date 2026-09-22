@@ -165,6 +165,8 @@ export function InvoiceDetail() {
           currency={invoice.currency}
           withheld={invoice.withholding_amount}
           balanceDue={invoice.balance_due}
+          discount={invoice.discount_amount}
+          discountLabel={invoice.discount_label}
         />
         <dl className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-sm">
           <div className="flex font-semibold">

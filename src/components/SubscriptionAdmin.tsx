@@ -1,12 +1,13 @@
 /**
- * The subscription catalogue: what the firm prices on, what each tier costs, and the
- * work sold outside a tier.
+ * The subscription catalogue: what the firm prices on, what each package costs, what it
+ * includes, and the work sold outside a package.
  *
- * There is no "add a tier" here, and that is deliberate. Starter, Growth and Enterprise
- * are named in Schedule 2 of the Associate agreement, they set what associates are paid,
- * and the allocation table has a CHECK constraint on exactly those three. A fourth tier
- * added from a settings screen would be one no signed agreement has heard of. What is
- * editable is everything else: the criteria, each tier's ceilings, and each tier's fee.
+ * There is no "add a package" here, and that is deliberate. Starter, Growth, Firm and
+ * Enterprise are named in Schedule 2 of the Associate agreement and set what associates
+ * are paid; a fifth added from a settings screen would be one no signed agreement has
+ * heard of, and no rate to pay anybody servicing it. What is editable is everything
+ * else: the criteria, each package's ceilings, its price and currency, who it is for,
+ * and every line of what is in it.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -23,6 +24,13 @@ import {
   type FeeBasis,
 } from "@shared/subscriptions";
 import type { SubscriptionCatalogue } from "@shared/types";
+import {
+  CURRENCIES,
+  CURRENCY_LABELS,
+  DEFAULT_CURRENCY,
+  currencyOf,
+  formatAmount,
+} from "@shared/money";
 import { ApiRequestError, api } from "../lib/api";
 import {
   ErrorBanner,
@@ -34,7 +42,6 @@ import {
   TextInput,
   options,
 } from "./ui";
-import { formatMoney } from "../lib/format";
 
 export function SubscriptionAdmin() {
   const [data, setData] = useState<SubscriptionCatalogue | null>(null);
@@ -235,10 +242,34 @@ function TiersCard({
   const valueOf = (tier: ClientTier, field: string, fallback: string) =>
     draft[key(tier, field)] ?? fallback;
 
+  /**
+   * The package's inclusions as one editable block of text.
+   *
+   * A line indented by two spaces is a sub-item of the line above it, which is exactly
+   * how the proposal reads - "VAT & levies" under "Tax services" - and is a great deal
+   * less work to edit than a row of controls per line. The Worker parses the same shape
+   * back out.
+   */
+  const inclusionsText = (tier: ClientTier) => {
+    const lines = data.inclusions.filter((i) => i.tier === tier);
+    const tops = lines.filter((i) => !i.parent_id).sort((a, b) => a.position - b.position);
+    return tops
+      .flatMap((top) => [
+        top.label,
+        ...lines
+          .filter((i) => i.parent_id === top.id)
+          .sort((a, b) => a.position - b.position)
+          .map((sub) => `  ${sub.label}`),
+      ])
+      .join("\n");
+  };
+
   const save = (tier: ClientTier) => {
     const row = data.tiers.find((t) => t.tier === tier);
     const fee = valueOf(tier, "fee", row?.monthly_fee?.toString() ?? "").trim();
     const summary = valueOf(tier, "summary", row?.summary ?? "");
+    const idealFor = valueOf(tier, "ideal_for", row?.ideal_for ?? "");
+    const currency = valueOf(tier, "currency", row?.currency ?? DEFAULT_CURRENCY);
     const ceilings: Record<string, number | null> = {};
     for (const criterion of data.criteria) {
       const current = data.ceilings.find(
@@ -247,12 +278,20 @@ function TiersCard({
       const raw = valueOf(tier, criterion.id, current?.ceiling?.toString() ?? "").trim();
       ceilings[criterion.id] = raw === "" ? null : Number(raw);
     }
+    const inclusions = valueOf(tier, "inclusions", inclusionsText(tier))
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => ({ label: line.trim(), sub: /^\s\s/.test(line) }));
+
     void guard(
       () =>
         api.saveTier(tier, {
           monthly_fee: fee === "" ? null : Number(fee),
+          currency: currencyOf(currency),
           summary,
+          ideal_for: idealFor,
           ceilings,
+          inclusions,
         }),
       `${TIER_LABELS[tier]} saved.`,
     );
@@ -261,26 +300,31 @@ function TiersCard({
   return (
     <section className="card">
       <div className="card-header">
-        <h2 className="card-title">The three tiers</h2>
+        <h2 className="card-title">The packages</h2>
       </div>
       <div className="space-y-5 p-4">
         <p className="muted">
-          Fixed, because the Associate agreement names them and prices what associates are
-          paid by them. A blank ceiling means no ceiling, which is what makes the top tier
-          the one everybody who does not fit below lands on. A blank fee means one has not
-          been set, and the client's page says so rather than showing nothing.
+          The four in the firm's pricing proposal. The names are fixed, because the
+          Associate agreement prices what associates are paid by them, but everything
+          here is yours: the price, the currency, who each one is for, and what is in it.
+          A blank ceiling means no ceiling - which is why Firm, having none, is the
+          package everybody who outgrows Growth lands on, and the move to Enterprise is
+          your judgement rather than a threshold.
         </p>
 
         {TIER_ORDER.map((tier) => {
           const row = data.tiers.find((t) => t.tier === tier);
           return (
-            <div key={tier} className="rounded-lg ring-1 ring-slate-200">
+            <div
+              key={tier}
+              className="rounded-lg ring-1 ring-slate-200 transition-shadow hover:shadow-md"
+            >
               <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-2.5">
                 <h3 className="text-sm font-semibold text-slate-900">{TIER_LABELS[tier]}</h3>
                 <span className="text-xs text-slate-500">
                   {row?.monthly_fee === null || row?.monthly_fee === undefined
-                    ? "No fee set"
-                    : `${formatMoney(row.monthly_fee, row.currency)} a month`}
+                    ? "No price set"
+                    : `${formatAmount(row.monthly_fee, row.currency)} a month`}
                 </span>
                 <button
                   type="button"
@@ -293,7 +337,7 @@ function TiersCard({
               </div>
 
               <div className="grid gap-3 p-4 sm:grid-cols-2">
-                <Field label="Fee a month" hint="Leave blank if it has not been decided.">
+                <Field label="Price a month" hint="Leave blank if it has not been decided.">
                   {(id) => (
                     <TextInput
                       id={id}
@@ -305,7 +349,35 @@ function TiersCard({
                     />
                   )}
                 </Field>
-                <Field label="What it covers" hint="Shown to the client on their own page.">
+                <Field
+                  label="Quoted in"
+                  hint="Nothing is ever converted: this is the currency the client is billed in."
+                >
+                  {(id) => (
+                    <Select
+                      id={id}
+                      value={valueOf(tier, "currency", row?.currency ?? DEFAULT_CURRENCY)}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, [key(tier, "currency")]: e.target.value }))
+                      }
+                    >
+                      {options(CURRENCIES, CURRENCY_LABELS)}
+                    </Select>
+                  )}
+                </Field>
+
+                <Field label="Who it is for" hint="The first thing a client reads about it.">
+                  {(id) => (
+                    <TextInput
+                      id={id}
+                      value={valueOf(tier, "ideal_for", row?.ideal_for ?? "")}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, [key(tier, "ideal_for")]: e.target.value }))
+                      }
+                    />
+                  )}
+                </Field>
+                <Field label="What it covers" hint="A sentence, under the heading.">
                   {(id) => (
                     <TextInput
                       id={id}
@@ -316,6 +388,25 @@ function TiersCard({
                     />
                   )}
                 </Field>
+
+                <div className="sm:col-span-2">
+                  <Field
+                    label="What is included"
+                    hint="One line each. Indent a line by two spaces to put it under the line above, the way the proposal sets out tax services."
+                  >
+                    {(id) => (
+                      <TextArea
+                        id={id}
+                        rows={8}
+                        className="font-mono text-xs"
+                        value={valueOf(tier, "inclusions", inclusionsText(tier))}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, [key(tier, "inclusions")]: e.target.value }))
+                        }
+                      />
+                    )}
+                  </Field>
+                </div>
 
                 {data.criteria.map((criterion) => {
                   const current = data.ceilings.find(
@@ -363,6 +454,7 @@ function ServicesCard({
   const [summary, setSummary] = useState("");
   const [fee, setFee] = useState("");
   const [basis, setBasis] = useState<FeeBasis>("fixed");
+  const [currency, setCurrency] = useState<string>(DEFAULT_CURRENCY);
 
   return (
     <section className="card">
@@ -371,8 +463,13 @@ function ServicesCard({
       </div>
       <div className="space-y-4 p-4">
         <p className="muted">
-          Work sold on its own, outside any tier. A fee can be fixed, a daily rate, or a
-          starting point to be quoted. Clients see these and can ask for them.
+          Work sold on its own, outside any package. A fee can be fixed, a daily rate,
+          or a starting point to be quoted, in either currency. Clients see these and
+          can ask for them.
+        </p>
+        <p className="hint">
+          Nothing converts between the two. A piece of work priced in dollars cannot go
+          on an invoice in cedis - it is re-quoted, or billed on its own invoice.
         </p>
 
         {data.services.length > 0 && (
@@ -392,7 +489,7 @@ function ServicesCard({
                 )}
                 <span className="ml-auto text-sm font-semibold tabular-nums">
                   {describeFee(service.fee, service.fee_basis, (n) =>
-                    formatMoney(n, service.currency),
+                    formatAmount(n, service.currency, { decimals: false }),
                   )}
                 </span>
                 <button
@@ -407,6 +504,7 @@ function ServicesCard({
                           summary: service.summary ?? "",
                           fee: service.fee,
                           fee_basis: service.fee_basis,
+                          currency: currencyOf(service.currency),
                           active: !service.active,
                         }),
                       service.active ? `${service.name} retired.` : `${service.name} restored.`,
@@ -421,7 +519,7 @@ function ServicesCard({
         )}
 
         <form
-          className="grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-[1fr,8rem,10rem,auto]"
+          className="grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-[1fr,7rem,9rem,9rem,auto]"
           onSubmit={(e) => {
             e.preventDefault();
             void guard(
@@ -431,6 +529,7 @@ function ServicesCard({
                   summary,
                   fee: fee.trim() === "" ? null : Number(fee),
                   fee_basis: basis,
+                  currency: currencyOf(currency),
                 }),
               `${name} added.`,
             ).then(() => {
@@ -472,12 +571,23 @@ function ServicesCard({
               </Select>
             )}
           </Field>
+          <Field label="Priced in">
+            {(id) => (
+              <Select
+                id={id}
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+              >
+                {options(CURRENCIES, CURRENCY_LABELS)}
+              </Select>
+            )}
+          </Field>
           <div className="flex items-end">
             <button type="submit" className="btn-secondary" disabled={busy || !name.trim()}>
               Add
             </button>
           </div>
-          <div className="sm:col-span-4">
+          <div className="sm:col-span-5">
             <Field label="What it is" hint="One line, shown to the client.">
               {(id) => (
                 <TextArea

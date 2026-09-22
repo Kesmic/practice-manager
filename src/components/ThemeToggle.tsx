@@ -47,14 +47,31 @@ const OPTIONS: Array<{ value: ThemeChoice; label: string; icon: JSX.Element }> =
   },
 ];
 
-export function ThemeToggle({ compact = false }: { compact?: boolean }) {
+export function ThemeToggle({
+  compact = false,
+  /**
+   * Set where the control sits on one of the navy surfaces.
+   *
+   * The light chrome is nearly invisible on navy, and a control somebody cannot see is
+   * a control they cannot use - which matters here, because the sign-in band is the one
+   * place the toggle appears before anybody has a session to remember a choice in.
+   */
+  onDark = false,
+}: {
+  compact?: boolean;
+  onDark?: boolean;
+}) {
   const { choice, setChoice } = useTheme();
 
   return (
     <div
       role="radiogroup"
       aria-label="Appearance"
-      className="inline-flex items-center gap-0.5 rounded-md bg-slate-100 p-0.5 ring-1 ring-inset ring-slate-200"
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded-md p-0.5 ring-1 ring-inset ${
+        onDark
+          ? "bg-white/10 ring-white/15"
+          : "bg-slate-100 ring-slate-200"
+      }`}
     >
       {OPTIONS.map((option) => {
         const selected = choice === option.value;
@@ -68,8 +85,12 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
             onClick={() => setChoice(option.value)}
             className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
               selected
-                ? "bg-panel text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
+                ? onDark
+                  ? "bg-white/90 text-brand-900 shadow-sm"
+                  : "bg-panel text-slate-900 shadow-sm"
+                : onDark
+                  ? "text-white/70 hover:text-white"
+                  : "text-slate-500 hover:text-slate-700"
             }`}
           >
             <span className="h-4 w-4">{option.icon}</span>

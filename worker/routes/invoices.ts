@@ -52,6 +52,15 @@ import {
   type InvoiceDocument,
 } from "../../shared/invoice-document";
 import {
+  discountAmount,
+  discountApplies,
+  discountLabel,
+  discountableBase,
+} from "../../shared/discounts";
+import { activeDiscount, consumeDiscount, releaseDiscount } from "../discounts";
+import { accrueCommission, cancelCommission } from "../commissions";
+import { currencyOf } from "../../shared/money";
+import {
   balanceDue,
   withholdingOn,
   DEFAULT_REMINDER_DAYS,
@@ -152,6 +161,10 @@ interface InvoiceRow {
   note: string | null;
   reminders_sent: number;
   last_reminder_at: string | null;
+  /** Nulled if the discount row ever goes; the figures below stay. */
+  discount_id?: string | null;
+  discount_label?: string | null;
+  discount_amount?: number;
 }
 
 async function paymentsFor(env: Env, invoiceId: string): Promise<PaymentLike[]> {
@@ -164,44 +177,73 @@ async function paymentsFor(env: Env, invoiceId: string): Promise<PaymentLike[]> 
 }
 
 /**
- * Rewrites an invoice's stored totals from its lines and the firm's current tax.
+ * Rewrites an invoice's stored totals from its lines, the client's discount and the
+ * firm's current tax.
  *
  * Only ever called on a draft. The moment an invoice is sent its figures are the
  * document, and this must not touch them.
+ *
+ * The order is load-bearing: lines, then the discount, then tax on what is left, then
+ * withholding on that. Tax is charged on what the firm actually bills, so a discount
+ * applied after it would have the firm remitting VAT on money it never received.
  */
 async function recomputeDraft(env: Env, invoiceId: string): Promise<void> {
-  const [lines, taxes] = await Promise.all([
+  const invoice = await env.DB.prepare(
+    `SELECT client_id, withholding_rate FROM invoices WHERE id = ?`,
+  )
+    .bind(invoiceId)
+    .first<{ client_id: string; withholding_rate: number | null }>();
+  if (!invoice) throw notFound("There is no such invoice.");
+
+  const [lines, taxes, discount] = await Promise.all([
     env.DB.prepare(
-      `SELECT quantity, unit_amount FROM invoice_lines WHERE invoice_id = ?`,
+      `SELECT quantity, unit_amount, amount, source FROM invoice_lines WHERE invoice_id = ?`,
     )
       .bind(invoiceId)
       .all(),
     activeTaxLines(env),
+    activeDiscount(env, invoice.client_id),
   ]);
 
-  const net = netOf(lines.results as unknown as Array<{ quantity: number; unit_amount: number }>);
+  const rows = lines.results as unknown as Array<{
+    quantity: number;
+    unit_amount: number;
+    amount: number;
+    source: string;
+  }>;
+  const subtotal = netOf(rows);
+
+  /*
+   * Worked out against the lines the discount's scope actually covers, so a discount on
+   * the subscription does not quietly come off an audit fee that happens to be on the
+   * same invoice. Applied at draft time and frozen onto the row; the count against the
+   * discount itself is not touched until the invoice is issued, so a cancelled draft
+   * does not burn a one-off.
+   */
+  const taken =
+    discount && discountApplies(discount, today())
+      ? discountAmount(discount, discountableBase(rows, discount.applies_to))
+      : 0;
+  const net = round2(subtotal - taken);
   const totals = computeTotals(net, taxes);
 
   /*
    * Withholding is charged on the amount before tax, which is how it works on services
-   * here and what the firm's own invoices do. It is held on the invoice rather than read
-   * from the setting at print time, for the reason the tax lines are frozen: a rate
-   * change must not alter a document already in a client's hands.
+   * here and what the firm's own invoices do. On the discounted amount, because it is a
+   * percentage of what is actually billed - taking it on the full fee would deduct tax
+   * the client is not going to remit, and leave the invoice short. It is held on the
+   * invoice rather than read from the setting at print time, for the reason the tax
+   * lines are frozen: a rate change must not alter a document already in a client's
+   * hands.
    */
-  const current = await env.DB.prepare(
-    `SELECT withholding_rate FROM invoices WHERE id = ?`,
-  )
-    .bind(invoiceId)
-    .first<{ withholding_rate: number | null }>();
-  const rate = current?.withholding_rate ?? 0;
-  const withheld = withholdingOn(totals.net, rate);
+  const withheld = withholdingOn(totals.net, invoice.withholding_rate ?? 0);
 
   const statements = [
     env.DB.prepare(`DELETE FROM invoice_taxes WHERE invoice_id = ?`).bind(invoiceId),
     env.DB.prepare(
       `UPDATE invoices
           SET net = ?, tax_total = ?, gross = ?, withholding_amount = ?, balance_due = ?,
-              updated_at = ?
+              discount_id = ?, discount_label = ?, discount_amount = ?, updated_at = ?
         WHERE id = ?`,
     ).bind(
       totals.net,
@@ -209,6 +251,9 @@ async function recomputeDraft(env: Env, invoiceId: string): Promise<void> {
       totals.gross,
       withheld,
       balanceDue(totals.gross, withheld),
+      taken > 0 && discount ? discount.id : null,
+      taken > 0 && discount ? discountLabel(discount) : null,
+      taken,
       nowIso(),
       invoiceId,
     ),
@@ -402,6 +447,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       env.DB.prepare(
         `SELECT i.id, i.number, i.client_id, i.state, i.issued_on, i.due_on, i.currency,
                 i.net, i.tax_total, i.gross, i.balance_due, i.withholding_amount,
+                i.discount_amount, i.discount_label,
                 i.period_label, i.reminders_sent,
                 i.last_reminder_at, c.name AS client_name, c.code AS client_code
            FROM invoices i JOIN clients c ON c.id = i.client_id
@@ -498,6 +544,12 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       serviceId: string | null;
     }> = [];
 
+    /*
+     * What this invoice is in, decided once and before any line is added. The client's
+     * subscription where they have one, otherwise cedis. Every line has to be in it.
+     */
+    const invoiceCurrency = currencyOf(subscription?.currency);
+
     if (period) {
       if (!subscription) {
         throw badRequest("That client has no subscription, so there is no month to bill.");
@@ -527,7 +579,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
 
     if (body.include_services !== false) {
       const { results } = await env.DB.prepare(
-        `SELECT cs.id, cs.name, cs.quoted_fee
+        `SELECT cs.id, cs.name, cs.quoted_fee, cs.currency
            FROM client_services cs
           WHERE cs.client_id = ? AND cs.status = 'delivered' AND cs.quoted_fee IS NOT NULL
             AND NOT EXISTS (
@@ -535,8 +587,20 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
             )`,
       )
         .bind(params.id)
-        .all<{ id: string; name: string; quoted_fee: number }>();
+        .all<{ id: string; name: string; quoted_fee: number; currency: string }>();
       for (const service of results) {
+        /*
+         * An invoice is in one currency. A piece of work quoted in dollars cannot be
+         * added to a cedi invoice as though the figure meant the same thing - nothing
+         * in the portal converts, and putting the number on anyway would bill the
+         * client an amount nobody ever quoted. It is refused, with the two currencies
+         * named, so somebody decides rather than the portal.
+         */
+        if (currencyOf(service.currency) !== currencyOf(invoiceCurrency)) {
+          throw badRequest(
+            `${service.name} is quoted in ${currencyOf(service.currency)} and this invoice is in ${currencyOf(invoiceCurrency)}. Nothing here converts between the two - re-quote that work in ${currencyOf(invoiceCurrency)}, or bill it on its own invoice.`,
+          );
+        }
         lines.push({
           description: service.name,
           quantity: 1,
@@ -576,7 +640,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
           number,
           params.id,
           dueOn,
-          subscription?.currency ?? "GHS",
+          invoiceCurrency,
           period,
           body.note?.trim()?.slice(0, 500) || null,
           withholdingRate || null,
@@ -642,6 +706,17 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       .bind(today(), timestamp, timestamp, params.id)
       .run();
 
+    // Now, and not before: what the client is holding is what counts against a
+    // discount that only covers so many invoices.
+    await consumeDiscount(env, invoice);
+
+    /*
+     * And what it earns the growth partner who sold this client, if one did. Also here
+     * rather than at draft time: a draft is not a bill, and a cancelled one that had
+     * already earned somebody a commission would have to be unpicked by hand.
+     */
+    await accrueCommission(env, params.id);
+
     for (const contact of contacts) {
       await sendToPerson(env, {
         to: contact,
@@ -673,6 +748,18 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       );
     }
 
+    const cancelled = await env.DB.prepare(
+      `SELECT client_id, state, discount_id, discount_amount FROM invoices WHERE id = ?`,
+    )
+      .bind(params.id)
+      .first<{
+        client_id: string;
+        state: InvoiceState;
+        discount_id: string | null;
+        discount_amount: number;
+      }>();
+    if (!cancelled) throw notFound("There is no such invoice.");
+
     const timestamp = nowIso();
     await env.DB.batch([
       env.DB.prepare(
@@ -689,6 +776,22 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
           WHERE invoice_id = ?`,
       ).bind(params.id),
     ]);
+
+    /*
+     * And so does the discount, but only if this invoice had actually been issued. A
+     * draft never counted against it, so giving a use back here would hand the client
+     * an extra discounted invoice every time somebody cancelled a draft.
+     */
+    if (cancelled.state !== "draft") await releaseDiscount(env, cancelled);
+
+    /*
+     * And so does the commission it earned. A cancelled invoice was never paid, so it
+     * never earned anybody anything - and the billed month goes back into the partner's
+     * six, to be earned on the invoice that replaces this one.
+     */
+    if (cancelled.state !== "draft") {
+      await cancelCommission(env, params.id, `Invoice cancelled: ${reason}`);
+    }
 
     return noContent();
   });
@@ -877,6 +980,8 @@ export async function serveDocument(env: Env, invoiceId: string): Promise<Respon
         client_code: string;
         client_address: string | null;
         client_tax_id: string | null;
+        discount_label: string | null;
+        discount_amount: number;
         withholding_rate: number | null;
         withholding_amount: number;
         balance_due: number;
@@ -950,6 +1055,10 @@ export async function serveDocument(env: Env, invoiceId: string): Promise<Respon
       amount: line.amount,
     })),
     taxes: taxes.results as unknown as Array<{ name: string; rate: number; amount: number }>,
+    discount:
+      row.discount_amount && row.discount_amount > 0
+        ? { label: row.discount_label || "Discount", amount: row.discount_amount }
+        : null,
     net: row.net,
     tax_total: row.tax_total,
     gross: row.gross,

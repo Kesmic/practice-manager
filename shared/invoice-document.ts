@@ -60,6 +60,12 @@ export interface InvoiceDocument {
     amount: number;
   }>;
   taxes: Array<{ name: string; rate: number; amount: number }>;
+  /**
+   * Taken off before tax, the way it was granted. `net` is already net of it, so the
+   * subtotal the document shows is the two added back together - there is no separate
+   * subtotal figure to get out of step with the lines.
+   */
+  discount: { label: string; amount: number } | null;
   net: number;
   tax_total: number;
   gross: number;
@@ -240,6 +246,23 @@ export function renderInvoice(doc: InvoiceDocument): string {
    * invoices put it. A note at the foot would be tidier and would not survive being
    * read by somebody comparing this against last month's.
    */
+  /*
+   * The discount sits in the body too, immediately under the lines it came off. A client
+   * who has been given one looks for it among the charges rather than in the totals
+   * block, and one that appeared only at the foot reads as though the fee had changed.
+   */
+  const discountRow = doc.discount
+    ? `
+        <tr class="deduction">
+          <td></td>
+          <td>Discount</td>
+          <td>${escapeHtml(doc.discount.label)}</td>
+          <td class="r">1</td>
+          <td class="r">-${figure(doc.discount.amount)}</td>
+          <td class="r">-${figure(doc.discount.amount)}</td>
+        </tr>`
+    : "";
+
   const deduction = doc.withholding
     ? `
         <tr class="deduction">
@@ -325,14 +348,21 @@ export function renderInvoice(doc: InvoiceDocument): string {
         <th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th>
       </tr>
     </thead>
-    <tbody>${rows}${deduction}</tbody>
+    <tbody>${rows}${discountRow}${deduction}</tbody>
   </table>
 
   <section class="foot">
     <p class="thanks">Thanks for your business!</p>
     <div class="totals">
       <dl>
-        <dt>Subtotal</dt><dd>${figure(doc.net)}</dd>
+        <dt>Subtotal</dt><dd>${figure(doc.net + (doc.discount?.amount ?? 0))}</dd>
+        ${
+          doc.discount
+            ? `<dt>${escapeHtml(doc.discount.label)}</dt>
+               <dd>-${figure(doc.discount.amount)}</dd>
+               <dt>Before tax</dt><dd>${figure(doc.net)}</dd>`
+            : ""
+        }
         ${taxRows}
         ${
           doc.withholding

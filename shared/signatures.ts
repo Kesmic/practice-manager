@@ -108,6 +108,21 @@ export function signatureKey(userId: string, signatureId: string): string {
   return `staff/${userId}/signatures/${signatureId}`;
 }
 
+/**
+ * Where a growth partner's signature goes.
+ *
+ * Its own prefix, not `staff/`. A growth partner is not a member of the firm, and a
+ * sweep that deletes everything under `staff/<id>/` when somebody leaves must not be
+ * able to reach one - the two populations have separate tables for the same reason.
+ *
+ * Keyed by the agreement rather than by a specimen id: a partner signs one engagement
+ * once, and a library of specimens for a population that signs once is a library nobody
+ * reads.
+ */
+export function partnerSignatureKey(partnerId: string, agreementId: string): string {
+  return `partners/${partnerId}/signatures/${agreementId}`;
+}
+
 /** What the portal says about a specimen without handing over the image. */
 export interface SignatureSpecimen {
   id: string;

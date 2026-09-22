@@ -36,17 +36,24 @@
 // ---------------------------------------------------------------------------
 
 /**
- * The subscription tiers Schedule 2 of the Associate agreement prices.
+ * The packages the firm sells, which are also the tiers Schedule 2 of the Associate
+ * agreement prices.
  *
- * Held here rather than only in the contract text because the tier decides the fee, and
- * a fee that exists only inside a document nobody can query cannot be reported on.
+ * One list, not two. What a client subscribes to and what an associate is paid for
+ * servicing them are the same package - the agreement prices the associate's fee *by*
+ * the client's tier - and two lists would be two answers to "what is this client on".
+ *
+ * These four are the ones in the firm's own pricing proposal. The names are fixed here
+ * because a signed agreement names them and the screens are typed against them; what
+ * each one costs, covers, and includes is data, editable in Portal settings.
  */
-export const CLIENT_TIERS = ["starter", "growth", "enterprise"] as const;
+export const CLIENT_TIERS = ["starter", "growth", "firm", "enterprise"] as const;
 export type ClientTier = (typeof CLIENT_TIERS)[number];
 
 export const TIER_LABELS: Record<ClientTier, string> = {
   starter: "Starter",
   growth: "Growth",
+  firm: "Firm",
   enterprise: "Enterprise",
 };
 
@@ -54,13 +61,23 @@ export const TIER_LABELS: Record<ClientTier, string> = {
 export const TIER_FEE_TOKEN: Record<ClientTier, string> = {
   starter: "STARTER FEE",
   growth: "GROWTH FEE",
+  firm: "FIRM FEE",
   enterprise: "ENTERPRISE FEE",
 };
 
+/**
+ * Who each package is for, in the proposal's own terms.
+ *
+ * The bands are monthly turnover, which is what the proposal prices on. Firm and
+ * Enterprise are not separated by a number: the first is for established local
+ * businesses, the second for multinationals with complex transactions, and choosing
+ * between them is a judgement rather than a threshold.
+ */
 export const TIER_HINTS: Record<ClientTier, string> = {
-  starter: "One to five members of staff and a low volume of transactions.",
-  growth: "Six to twenty-five members of staff and moderate complexity.",
-  enterprise: "Twenty-six or more members of staff, and a high volume or complexity.",
+  starter: "Solo entrepreneurs and startups, turning over up to 8,000 a month.",
+  growth: "Growing businesses with minimal transactions, between 8,000 and 15,000 a month.",
+  firm: "Established local businesses with high transaction volumes, above 15,000 a month.",
+  enterprise: "Multinational enterprises handling complex transactions.",
 };
 
 // ---------------------------------------------------------------------------

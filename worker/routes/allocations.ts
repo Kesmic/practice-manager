@@ -24,7 +24,6 @@ import { newId, notificationStatement, nowIso, optionalString, requireEnum } fro
 import { Router, badRequest, conflict, forbidden, json, notFound, readJson } from "../http";
 import {
   ALLOCATION_STATUSES,
-  CLIENT_TIERS,
   DECLINE_GROUNDS,
   GROUND_SPECS,
   type AllocationAction,
@@ -68,18 +67,27 @@ export function registerAllocationRoutes(router: Router<Env>): void {
 
     const body = await readJson<{
       user_id?: unknown;
-      tier?: unknown;
       note?: unknown;
     }>(request);
 
     const userId = String(body.user_id ?? "").trim();
     if (!userId) throw badRequest("Choose who this client is being allocated to.");
 
-    const tier =
-      body.tier === undefined || body.tier === null || body.tier === ""
-        ? null
-        : requireEnum(body.tier, "tier", CLIENT_TIERS);
     const note = optionalString(body.note, "note", MAX_NOTE);
+
+    /*
+     * The tier is read off the client's subscription, never sent by the caller. It is
+     * what Schedule 2 prices the associate's fee by, and it is the same package the
+     * client subscribes to - there are not two answers to what a client is on. It used
+     * to be a second control on the same screen as the subscription, which is precisely
+     * how the two came to disagree.
+     */
+    const subscription = await env.DB.prepare(
+      `SELECT tier FROM client_subscriptions WHERE client_id = ?`,
+    )
+      .bind(params.id)
+      .first<{ tier: string }>();
+    const tier = subscription?.tier ?? null;
 
     const [client, person] = await Promise.all([
       env.DB.prepare(`SELECT id, name FROM clients WHERE id = ?`)

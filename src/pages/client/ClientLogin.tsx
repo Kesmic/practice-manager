@@ -16,6 +16,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiRequestError, api } from "../../lib/api";
 import { useClientSession } from "../../lib/client-auth";
 import { ErrorBanner, Field, Spinner, TextInput } from "../../components/ui";
+import { AuthShell } from "../../components/AuthShell";
 
 export function ClientLogin() {
   const { user, loading, refresh } = useClientSession();
@@ -25,6 +26,8 @@ export function ClientLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [forgot, setForgot] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
 
   if (loading) return <Spinner label="Checking your session" />;
   if (user) {
@@ -49,58 +52,160 @@ export function ClientLogin() {
     }
   };
 
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-page px-4 py-10">
-      <div className="w-full max-w-sm">
-        <h1 className="section-title">Sign in</h1>
-        <p className="muted mt-1 mb-5">
-          For businesses we act for. Your accountant here will have sent you a link to set
-          your password.
+  /*
+   * The answer is deliberately the same whether or not the address has an account, and
+   * the screen shows that answer rather than checking anything - a form that behaved
+   * differently for a real address would undo what the endpoint is careful about.
+   */
+  const askForLink = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const { message } = await api.clientForgotPassword(email);
+      setSent(message);
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError ? err.message : "Could not send that just now.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (forgot) {
+    return (
+      <AuthShell kicker="Client portal">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+          Set a new password
+        </h1>
+        <p className="muted mb-5 mt-1">
+          Tell us the address you sign in with and we will send you a link.
         </p>
 
-        <form onSubmit={submit} className="card space-y-4 p-5">
-          {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
+        {sent ? (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-700">{sent}</p>
+            <p className="hint">
+              Nothing has changed yet - your current password still works until you use
+              the link.
+            </p>
+            <button
+              type="button"
+              className="btn-secondary w-full"
+              onClick={() => {
+                setForgot(false);
+                setSent(null);
+              }}
+            >
+              Back to sign in
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={askForLink} className="space-y-4">
+            {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
+            <Field label="Email" required>
+              {(id) => (
+                <TextInput
+                  id={id}
+                  type="email"
+                  required
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              )}
+            </Field>
+            <button
+              type="submit"
+              className="btn-primary w-full"
+              disabled={busy || !email.trim()}
+            >
+              {busy ? "Sending..." : "Send me a link"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost w-full"
+              onClick={() => setForgot(false)}
+            >
+              Back to sign in
+            </button>
+          </form>
+        )}
+      </AuthShell>
+    );
+  }
 
-          <Field label="Email" required>
-            {(id) => (
-              <TextInput
-                id={id}
-                type="email"
-                required
-                autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            )}
-          </Field>
+  return (
+    <AuthShell
+      kicker="Client portal"
+      footer={
+        <>
+          Your accountant here sets your account up - there is nothing to sign up for. If
+          you work at the firm,{" "}
+          <a className="link" href="/login">
+            sign in over here
+          </a>
+          .
+        </>
+      }
+    >
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Sign in</h1>
+      <p className="muted mb-5 mt-1">
+        For businesses we act for: your subscription, your invoices and what you have
+        asked us for.
+      </p>
 
-          <Field label="Password" required>
-            {(id) => (
-              <TextInput
-                id={id}
-                type="password"
-                required
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            )}
-          </Field>
+      <form onSubmit={submit} className="space-y-4">
+        {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
 
+        <Field label="Email" required>
+          {(id) => (
+            <TextInput
+              id={id}
+              type="email"
+              required
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          )}
+        </Field>
+
+        <Field label="Password" required>
+          {(id) => (
+            <TextInput
+              id={id}
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          )}
+        </Field>
+
+        <button
+          type="submit"
+          className="btn-primary w-full py-2.5"
+          disabled={busy || !email.trim() || !password}
+        >
+          {busy ? "Signing in..." : "Sign in"}
+        </button>
+
+        <p className="text-center text-xs text-slate-500">
           <button
-            type="submit"
-            className="btn-primary w-full"
-            disabled={busy || !email.trim() || !password}
+            type="button"
+            className="link"
+            onClick={() => {
+              setForgot(true);
+              setError(null);
+            }}
           >
-            {busy ? "Signing in..." : "Sign in"}
+            Forgotten your password?
           </button>
-
-          <p className="hint text-center">
-            Forgotten your password, or never set one? Ask us and we will send you a fresh
-            link.
-          </p>
-        </form>
-      </div>
-    </div>
+        </p>
+      </form>
+    </AuthShell>
   );
 }
