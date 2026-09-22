@@ -105,19 +105,30 @@ export function FirmLogo({
   maxHeight = "max-h-10",
   /** Set where the logo sits on one of the navy surfaces. */
   onDark = false,
+  /**
+   * Set where the logo sits on a surface that stays white whatever the theme - the
+   * disc at the centre of the sign-in's orbit. Without this, dark mode would reach
+   * for the light-ink logo, or draw a white plate inside an already white circle.
+   */
+  onLight = false,
+  /** Centred in its box rather than set against the left edge. */
+  centred = false,
   labelled = false,
 }: {
   maxWidth?: string;
   maxHeight?: string;
   onDark?: boolean;
+  onLight?: boolean;
+  centred?: boolean;
   labelled?: boolean;
 }) {
   const { branding } = useFirm();
   const { active } = useTheme();
 
   // A dark background is either a surface that is always navy, or any surface at
-  // all once the theme is dark. Both want light ink.
-  const dark = onDark || active === "dark";
+  // all once the theme is dark. Both want light ink - unless the surface is one that
+  // stays light regardless.
+  const dark = !onLight && (onDark || active === "dark");
   const lightInk = branding.logo_dark_data_url;
   const custom = Boolean(branding.logo_data_url || lightInk);
   const source = (dark && lightInk ? lightInk : branding.logo_data_url) || "/icon.svg";
@@ -138,7 +149,9 @@ export function FirmLogo({
     <img
       src={source}
       alt={labelled ? `${branding.firm_name} logo` : ""}
-      className={`h-auto w-full ${maxWidth} ${maxHeight} object-contain object-left`}
+      className={`h-auto w-full ${maxWidth} ${maxHeight} object-contain ${
+        centred ? "object-center" : "object-left"
+      }`}
     />
   );
 

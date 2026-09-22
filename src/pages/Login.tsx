@@ -163,11 +163,6 @@ export function Login() {
       kicker="Practice Manager"
       footer={
         <>
-          <p>
-            Accounts are issued by the firm - there is nothing to sign up for.
-            If you are new and have not been given one, speak to whoever is
-            handling your onboarding.
-          </p>
           {/*
             This page is where a client lands if they bookmark the portal's address, and
             without this line there is nothing here telling them they are in the wrong
@@ -175,7 +170,7 @@ export function Login() {
             only that a separate door exists - so it holds the line the intake page
             draws.
           */}
-          <p className="mt-3">
+          <p>
             Are you a client of the firm?{" "}
             <a className="link" href="/client/login">
               Sign in to your own account
