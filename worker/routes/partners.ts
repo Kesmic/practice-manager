@@ -13,10 +13,10 @@
  * they do see of a client they sold is what they need to do the job: that the invoice
  * went out, and what it earned them.
  *
- * **Anybody may apply, and applying gets you nothing.** Sign-up writes a row with no
- * password and status `applied`, which cannot sign in. The firm admits them, and only
- * then does a link to set a password go out. So the open form is a way onto a list
- * somebody reads, not a foothold in the portal.
+ * **Nobody applies; the firm invites.** There is no open form. A partner exists because
+ * somebody at the firm added them, set their terms, and sent them a link to set a
+ * password. So the only way onto the list is through a person with the role to add to
+ * it, and the public sees a sign-in and nothing else.
  *
  * **A partner never marks their own prospect won.** Won means the firm has a signed
  * client, and the stage machine in shared/growth-partners.ts refuses the move. A partner
@@ -121,68 +121,8 @@ export async function issueInvitation(
 
 export function registerPartnerRoutes(router: Router<Env>): void {
   // -------------------------------------------------------------------------
-  // Applying, and getting in
+  // Getting in
   // -------------------------------------------------------------------------
-
-  /**
-   * Anybody may apply.
-   *
-   * What this writes cannot sign in: no password, status `applied`. So the form is open
-   * without being a way in, and the answer says the same thing whether or not the
-   * address is already on the list - otherwise it would tell a stranger who sells for
-   * the firm.
-   */
-  router.post("/api/partner/apply", async ({ request, env }) => {
-    const body = await readJson<{
-      full_name?: string;
-      email?: string;
-      phone?: string;
-      business_name?: string;
-      note?: string;
-    }>(request);
-
-    const email = requireString(body.email, "email", { max: 200 }).trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) {
-      throw badRequest("That does not look like an email address.");
-    }
-    const fullName = requireString(body.full_name, "full_name", { max: 120 });
-
-    // Throttled on the address, so the form cannot be used to enumerate or to flood.
-    const keys = await attemptKeys(request, `partner-apply:${email}`);
-    await assertLoginAllowed(env, keys);
-    await recordFailure(env, keys);
-
-    const timestamp = nowIso();
-    try {
-      await env.DB.prepare(
-        `INSERT INTO growth_partners
-           (id, full_name, email, phone, business_name, status, note,
-            applied_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'applied', ?, ?, ?, ?)`,
-      )
-        .bind(
-          newId(),
-          fullName,
-          email,
-          body.phone?.trim()?.slice(0, 40) || null,
-          body.business_name?.trim()?.slice(0, 160) || null,
-          body.note?.trim()?.slice(0, 1000) || null,
-          timestamp,
-          timestamp,
-          timestamp,
-        )
-        .run();
-    } catch (err) {
-      // Already on the list. Answered the same way as a new application, deliberately.
-      if (!/UNIQUE/i.test(String(err))) throw err;
-    }
-
-    return json({
-      ok: true,
-      message:
-        "Thank you. Somebody at the firm will look at this and come back to you by email.",
-    });
-  });
 
   router.post("/api/partner/login", async ({ request, env }) => {
     const body = await readJson<{ email?: string; password?: string }>(request);

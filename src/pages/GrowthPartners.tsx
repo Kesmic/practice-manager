@@ -5,9 +5,9 @@
  * Three decisions live here and nowhere else, and each is deliberately a decision rather
  * than something that happens by itself:
  *
- * **Admitting somebody.** An application is a row on a list until a Partner reads it.
- * Approving sets the terms - the rate, the months, the hold - onto that partner, so a
- * deal struck today survives the firm's standard terms changing later.
+ * **Adding somebody.** There is no application form; a partner exists because somebody
+ * here added them. Adding sets the terms - the rate, the months, the hold - onto that
+ * partner, so a deal struck today survives the firm's standard terms changing later.
  *
  * **Extending a hold.** Ninety days is what a registration buys. Extending it needs a
  * reason, because a hold nobody can judge is a claim for ever.
@@ -17,7 +17,7 @@
  * it has gone.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   COMMISSION_STATE_LABELS,
   PARTNER_STATE_LABELS,
@@ -45,7 +45,7 @@ export function GrowthPartners() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [approving, setApproving] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
   const [winning, setWinning] = useState<string | null>(null);
   const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
 
@@ -77,15 +77,6 @@ export function GrowthPartners() {
     }
   };
 
-  const waiting = useMemo(
-    () => data?.partners.filter((p) => p.status === "applied") ?? [],
-    [data],
-  );
-  const working = useMemo(
-    () => data?.partners.filter((p) => p.status !== "applied") ?? [],
-    [data],
-  );
-
   if (error && !data) return <ErrorBanner error={error} />;
   if (!data) return <Spinner label="Loading growth partners" />;
 
@@ -93,77 +84,31 @@ export function GrowthPartners() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="section-title">Growth partners</h1>
-        <p className="muted mt-1">
-          People outside the firm who sell for it. They run the cycle - the pitch, the
-          proposal, the engagement - and we come in when a meeting needs somebody from
-          here.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="section-title">Growth partners</h1>
+          <p className="muted mt-1">
+            People outside the firm who sell for it. They run the cycle - the pitch, the
+            proposal, the engagement - and we come in when a meeting needs somebody from
+            here.
+          </p>
+        </div>
+        {partner && (
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={busy}
+            onClick={() => setAdding(true)}
+          >
+            Add a growth partner
+          </button>
+        )}
       </div>
 
       {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
       {notice && <SuccessBanner message={notice} onDismiss={() => setNotice(null)} />}
 
-      {waiting.length > 0 && (
-        <section className="card p-5">
-          <h2 className="card-title">Waiting on us</h2>
-          <p className="muted mt-1">
-            An application is a row on a list. Nobody can sign in until it is approved.
-          </p>
-          <div className="mt-3 divide-y divide-slate-100">
-            {waiting.map((row) => (
-              <div key={row.id} className="py-3">
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span className="font-medium text-slate-800">{row.full_name}</span>
-                  <span className="text-sm text-slate-500">{row.email}</span>
-                  {row.business_name && (
-                    <span className="pill bg-slate-100 text-slate-700 ring-slate-200">
-                      {row.business_name}
-                    </span>
-                  )}
-                  <span className="ml-auto text-xs text-slate-500">
-                    applied {formatDate(row.applied_at)}
-                  </span>
-                </div>
-                {row.note && <p className="hint mt-1 max-w-prose">{row.note}</p>}
-                {partner && (
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      type="button"
-                      className="btn-primary btn-sm"
-                      disabled={busy}
-                      onClick={() => setApproving(row.id)}
-                    >
-                      Admit them
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-ghost btn-sm"
-                      disabled={busy}
-                      onClick={() => {
-                        const reason = window.prompt(
-                          `Why is ${row.full_name}'s application not going ahead? They are not shown this.`,
-                          "",
-                        );
-                        if (reason === null) return;
-                        void act(
-                          () => api.setPartnerStatus(row.id, "ended", reason),
-                          "Closed.",
-                        );
-                      }}
-                    >
-                      Not this time
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {working.map((row) => {
+      {data.partners.map((row) => {
         const theirs = data.prospects.filter((p) => p.partner_id === row.id);
         const earned = data.commissions.filter(
           (c) => c.partner_id === row.id && c.status !== "cancelled",
@@ -433,18 +378,18 @@ export function GrowthPartners() {
         );
       })}
 
-      {approving && (
-        <ApproveModal
-          onClose={() => setApproving(null)}
-          onSave={async (terms) => {
+      {adding && (
+        <AddPartnerModal
+          onClose={() => setAdding(false)}
+          onSave={async (body) => {
             await act(async () => {
-              const { invitation_url } = await api.approvePartner(approving, terms);
+              const { invitation_url } = await api.addPartner(body);
               window.prompt(
                 "Emailed to them. You can also hand this link over directly:",
                 invitation_url,
               );
-            }, "Admitted, and a link to set a password has gone out.");
-            setApproving(null);
+            }, "Added, and a link to set a password has gone out.");
+            setAdding(false);
           }}
         />
       )}
@@ -466,25 +411,34 @@ export function GrowthPartners() {
   );
 }
 
-function ApproveModal({
+function AddPartnerModal({
   onClose,
   onSave,
 }: {
   onClose: () => void;
-  onSave: (terms: {
+  onSave: (body: {
+    full_name: string;
+    email: string;
+    phone?: string;
+    business_name?: string;
     commission_rate: number;
     commission_months: number;
     hold_days: number;
   }) => Promise<void>;
 }) {
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [businessName, setBusinessName] = useState("");
   const [rate, setRate] = useState("25");
   const [months, setMonths] = useState("6");
   const [holdDays, setHoldDays] = useState("90");
+  const ready = fullName.trim().length > 0 && email.trim().length > 0;
 
   return (
     <Modal
       open
-      title="Admit them as a growth partner"
+      title="Add a growth partner"
       onClose={onClose}
       footer={
         <>
@@ -494,22 +448,73 @@ function ApproveModal({
           <button
             type="button"
             className="btn-primary"
+            disabled={!ready}
             onClick={() =>
               void onSave({
+                full_name: fullName.trim(),
+                email: email.trim(),
+                phone: phone.trim() || undefined,
+                business_name: businessName.trim() || undefined,
                 commission_rate: Number(rate),
                 commission_months: Number(months),
                 hold_days: Number(holdDays),
               })
             }
           >
-            Admit them
+            Add and send a link
           </button>
         </>
       }
     >
       <div className="space-y-4">
         <p className="muted">
-          These are written onto this partner. Changing the firm's standard terms later
+          They get an email with a link to set a password, and their engagement to sign
+          before they can register anything.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Full name" required>
+            {(id) => (
+              <TextInput
+                id={id}
+                autoFocus
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="Email" required>
+            {(id) => (
+              <TextInput
+                id={id}
+                type="email"
+                autoComplete="off"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="Phone">
+            {(id) => (
+              <TextInput
+                id={id}
+                inputMode="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="Business they sell through" hint="Leave blank where there is none.">
+            {(id) => (
+              <TextInput
+                id={id}
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+        <p className="muted">
+          The terms are written onto this partner. Changing the firm's standard terms later
           will not change theirs.
         </p>
         <div className="grid gap-3 sm:grid-cols-3">

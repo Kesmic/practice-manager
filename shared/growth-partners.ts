@@ -59,11 +59,11 @@ export const HOLD_DAYS = 90;
 // ---------------------------------------------------------------------------
 
 /**
- * They apply, the firm admits them, and either side can end it.
+ * The firm adds them, and either side can end it.
  *
- * `applied` is not a lesser kind of active: an applicant has no portal at all beyond the
- * page that says the firm is looking at it. Nothing they could do before the firm has
- * agreed to work with them would be safe to act on.
+ * `applied` is kept for the column's CHECK and for any row written before the firm
+ * invited rather than admitted; nothing writes it now. A partner in it has no portal at
+ * all, which is the same as it always was.
  */
 export const PARTNER_STATES = ["applied", "active", "suspended", "ended"] as const;
 export type PartnerState = (typeof PARTNER_STATES)[number];

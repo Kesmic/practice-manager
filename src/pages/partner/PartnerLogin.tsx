@@ -10,7 +10,7 @@
  */
 
 import { useState } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiRequestError, api } from "../../lib/api";
 import { usePartnerSession } from "../../lib/partner-auth";
 import {
@@ -78,15 +78,7 @@ export function PartnerLogin() {
   return (
     <AuthShell
       kicker="Growth partners"
-      footer={
-        <>
-          Not working with us yet?{" "}
-          <Link className="link" to="/partner/apply">
-            Apply to become a growth partner
-          </Link>
-          .
-        </>
-      }
+      footer="Accounts are set up by the firm - there is nothing to sign up for."
     >
       <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
         {forgot ? "Set a new password" : "Sign in"}

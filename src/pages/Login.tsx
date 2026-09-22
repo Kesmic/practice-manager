@@ -1,7 +1,7 @@
 /**
  * Sign in.
  *
- * Everything outside the form itself - the firm's side with its dial, the phone band,
+ * Everything outside the form itself - the sky, the greeting, the phone band,
  * the card, the appearance control, the small print at the foot - belongs to AuthShell,
  * which the client's and the growth partner's sign-ins use too. Five pages that each
  * framed themselves was five chances to frame one of them badly, and the one that was
@@ -179,10 +179,6 @@ export function Login() {
             Are you a client of the firm?{" "}
             <a className="link" href="/client/login">
               Sign in to your own account
-            </a>
-            . A growth partner?{" "}
-            <a className="link" href="/partner/login">
-              Sign in here
             </a>
             .
           </p>
@@ -389,11 +385,8 @@ export function Login() {
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
             Sign in
           </h1>
-          <p className="muted mt-1">
-            Use the work email address the firm set up for you.
-          </p>
 
-          <form onSubmit={submit} className="mt-7 space-y-4" noValidate>
+          <form onSubmit={submit} className="mt-6 space-y-4" noValidate>
             <ErrorBanner error={error} onDismiss={() => setError(null)} />
 
             {signedOutIdle && !error && (

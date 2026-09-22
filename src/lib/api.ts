@@ -1220,14 +1220,6 @@ export const api = {
   // A third set of calls, against a third session. Nothing here touches the staff or
   // client endpoints, and nothing there touches these.
 
-  partnerApply: (body: {
-    full_name: string;
-    email: string;
-    phone?: string;
-    business_name?: string;
-    note?: string;
-  }) => request<{ ok: true; message: string }>("/api/partner/apply", { method: "POST", body }),
-
   partnerLogin: (email: string, password: string) =>
     request<{ ok: true }>("/api/partner/login", { method: "POST", body: { email, password } }),
   partnerLogout: () => request<{ ok: true }>("/api/partner/logout", { method: "POST" }),
@@ -1340,11 +1332,16 @@ export const api = {
   // ------------------------------------------- the firm's side of partners
 
   growthPartners: () => request<GrowthPartnerOverview>("/api/growth-partners"),
-  approvePartner: (
-    id: string,
-    body: { commission_rate: number; commission_months: number; hold_days: number },
-  ) =>
-    request<{ invitation_url: string }>(`/api/growth-partners/${id}/approve`, {
+  addPartner: (body: {
+    full_name: string;
+    email: string;
+    phone?: string;
+    business_name?: string;
+    commission_rate: number;
+    commission_months: number;
+    hold_days: number;
+  }) =>
+    request<{ id: string; invitation_url: string }>("/api/growth-partners", {
       method: "POST",
       body,
     }),
