@@ -7,6 +7,7 @@
  * The colours are applied to CSS variables as soon as they arrive.
  */
 
+import type { CSSProperties } from "react";
 import {
   createContext,
   useCallback,
@@ -166,8 +167,19 @@ export function FirmLogo({
  * The firm's name as text, for use beside the logo. Renders nothing once a logo
  * has been uploaded, because a wordmark already carries the name.
  */
-export function FirmName({ className = "" }: { className?: string }) {
+export function FirmName({
+  className = "",
+  /** For a surface whose ink is decided at runtime, such as the sky on the sign-in. */
+  style,
+}: {
+  className?: string;
+  style?: CSSProperties;
+}) {
   const { branding } = useFirm();
   if (branding.logo_data_url || branding.logo_dark_data_url) return null;
-  return <p className={className}>{branding.firm_name}</p>;
+  return (
+    <p className={className} style={style}>
+      {branding.firm_name}
+    </p>
+  );
 }
