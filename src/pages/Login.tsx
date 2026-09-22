@@ -1,17 +1,11 @@
 /**
  * Sign in.
  *
- * A two-panel layout on a wide screen: the firm's own side on the left, the form on the
- * right. That panel exists to answer "am I in the right place?" before anyone types
- * anything - the firm's logo and name at a size you cannot mistake, and a plain
- * statement of what the portal is. It collapses away below large screens, where a
- * decorative panel would only push the form under the fold; there, AuthShell's branded
- * band says the same thing in the space a phone has.
- *
- * Everything outside the form itself - the band, the card, the appearance control, the
- * small print at the foot - belongs to AuthShell, which the client's and the growth
- * partner's sign-ins use too. Five pages that each framed themselves was five chances
- * to frame one of them badly, and the one that was framed badly was the phone.
+ * Everything outside the form itself - the firm's side with its dial, the phone band,
+ * the card, the appearance control, the small print at the foot - belongs to AuthShell,
+ * which the client's and the growth partner's sign-ins use too. Five pages that each
+ * framed themselves was five chances to frame one of them badly, and the one that was
+ * framed badly was the phone.
  *
  * Deliberate details, each of which earns its place:
  *
@@ -33,29 +27,11 @@ import { ApiRequestError, type LoginChallenge } from "../lib/api";
 type SecondStep = "totp" | "questions" | "recovery";
 import { IDLE_SIGNED_OUT_MESSAGE } from "@shared/session-policy";
 import { useSession } from "../lib/auth";
-import { FirmLogo, FirmName, useFirm } from "../lib/firm";
 import { ErrorBanner, Field, Spinner, TextInput } from "../components/ui";
 import { AuthShell } from "../components/AuthShell";
 
-/** What the portal is for, said once, without salesmanship. */
-const ASSURANCES = [
-  {
-    title: "Client work, start to sign-off",
-    body: "Deliverables, deadlines, review points and approval - with a record of who did what.",
-  },
-  {
-    title: "Your employment, in one place",
-    body: "Your contract, the handbook, your own details and everything you have signed.",
-  },
-  {
-    title: "Confidential by design",
-    body: "You see the clients and records your role requires, and nothing beyond them.",
-  },
-];
-
 export function Login() {
   const { user, loading, signIn, completeSignIn, idled } = useSession();
-  const { branding } = useFirm();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState("");
@@ -210,80 +186,8 @@ export function Login() {
             </a>
             .
           </p>
+          <p className="mt-3">Staff access only. Activity in the portal is recorded.</p>
         </>
-      }
-      /* The firm's own side, on a wide screen only. The shell's band says the same
-         thing on a phone, where this would only push the form under the fold. */
-      aside={
-        <aside className="relative hidden overflow-hidden bg-brand-900 lg:flex lg:min-h-screen lg:flex-col lg:justify-between lg:p-12">
-          {/*
-          Two soft washes of the firm's own colours. Kept very low contrast: this
-          panel sits behind a logo and text, and a busy background would fight
-          both. Pointer-events off so it can never intercept a click.
-        */}
-          <div aria-hidden className="pointer-events-none absolute inset-0">
-            <div className="absolute -left-24 -top-24 h-96 w-96 rounded-full bg-brand-500/25 blur-3xl" />
-            <div className="absolute -bottom-32 right-[-10%] h-[28rem] w-[28rem] rounded-full bg-accent-500/20 blur-3xl" />
-          </div>
-
-          <div className="relative flex flex-col gap-2.5">
-            <FirmLogo
-              maxWidth="max-w-[16rem]"
-              maxHeight="max-h-20"
-              onDark
-              labelled
-            />
-            <FirmName className="text-base font-semibold text-white" />
-            <p className="text-xs uppercase tracking-[0.18em] text-white/50">
-              Practice Manager
-            </p>
-          </div>
-
-          <div className="relative max-w-lg">
-            <h2 className="text-3xl font-semibold leading-tight tracking-tight text-white">
-              The firm's work, its records and its people - behind one sign-in.
-            </h2>
-            <ul className="mt-8 space-y-5">
-              {ASSURANCES.map((item) => (
-                <li key={item.title} className="flex gap-3">
-                  <span
-                    aria-hidden
-                    className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10"
-                  >
-                    <svg
-                      viewBox="0 0 20 20"
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path
-                        d="m5 10.5 3.5 3.5L15 6"
-                        className="text-emerald-400"
-                      />
-                    </svg>
-                  </span>
-                  <div>
-                    <p className="text-sm font-medium text-white">
-                      {item.title}
-                    </p>
-                    <p className="mt-0.5 text-sm leading-relaxed text-white/60">
-                      {item.body}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <p className="relative text-xs text-white/40">
-            {branding.firm_name}
-            {branding.firm_name && " · "}
-            Staff access only. Activity in the portal is recorded.
-          </p>
-        </aside>
       }
     >
       {challenge ? (
