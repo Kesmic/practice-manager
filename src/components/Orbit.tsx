@@ -19,8 +19,8 @@
 import { FirmLogo } from "../lib/firm";
 
 export function Orbit({ compact = false }: { compact?: boolean }) {
-  const size = compact ? 168 : 560;
-  const disc = compact ? 60 : 200;
+  const size = compact ? 184 : 560;
+  const disc = compact ? 68 : 200;
   return (
     <div
       aria-hidden
@@ -54,8 +54,10 @@ export function Orbit({ compact = false }: { compact?: boolean }) {
         style={{ width: disc, height: disc }}
       >
         <FirmLogo
-          maxWidth={compact ? "max-w-[2.75rem]" : "max-w-[8.5rem]"}
-          maxHeight={compact ? "max-h-7" : "max-h-20"}
+          maxWidth={compact ? "max-w-[3.25rem]" : "max-w-[8.5rem]"}
+          maxHeight={compact ? "max-h-9" : "max-h-24"}
+          onLight
+          centred
         />
       </div>
     </div>
