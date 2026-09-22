@@ -389,11 +389,8 @@ export function Login() {
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
             Sign in
           </h1>
-          <p className="muted mt-1">
-            Use the work email address the firm set up for you.
-          </p>
 
-          <form onSubmit={submit} className="mt-7 space-y-4" noValidate>
+          <form onSubmit={submit} className="mt-6 space-y-4" noValidate>
             <ErrorBanner error={error} onDismiss={() => setError(null)} />
 
             {signedOutIdle && !error && (
