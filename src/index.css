@@ -202,3 +202,29 @@
     transform: none;
   }
 }
+
+/*
+  The two orbits on the sign-in page (src/components/Orbit.tsx). Slow, so they are
+  noticed only when looked at; still, for anyone who has asked their system to stop
+  moving things.
+*/
+.orbit-spin,
+.orbit-spin-reverse {
+  transform-origin: 50% 50%;
+  animation: orbit 40s linear infinite;
+}
+.orbit-spin-reverse {
+  animation-duration: 26s;
+  animation-direction: reverse;
+}
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orbit-spin,
+  .orbit-spin-reverse {
+    animation: none;
+  }
+}
