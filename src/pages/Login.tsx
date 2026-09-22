@@ -1,7 +1,7 @@
 /**
  * Sign in.
  *
- * Everything outside the form itself - the sky, the greeting, the phone band,
+ * Everything outside the form itself - the firm's side with its orbit, the phone band,
  * the card, the appearance control, the small print at the foot - belongs to AuthShell,
  * which the client's and the growth partner's sign-ins use too. Five pages that each
  * framed themselves was five chances to frame one of them badly, and the one that was

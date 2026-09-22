@@ -5,25 +5,23 @@
  * invitation pages - and they share one frame so that none of them can be framed badly
  * on its own. Two things about it.
  *
- * **The page is the sky over Accra, now.** Dawn, the flat blue of the afternoon, the
- * amber of the evening, the navy of the night, with the sun or the moon where it would
- * be and a greeting for the hour. That is the whole of the firm's side: no list of
- * what the portal is for, no assurances. A page that is never the same twice says the
- * portal is alive better than a paragraph could. On a phone the sky is the band across
- * the top, carrying the firm's logo and which door this is - "Client portal", "Growth
- * partners" - so somebody following a link from an email can tell at a glance that they
- * are in the right place.
+ * **The firm's side is a picture, not a paragraph.** On a wide screen the left half is
+ * navy with the orbit from Orbit.tsx: the firm's own mark at the centre and everyone
+ * it works with going slowly round it. That is what the portal is - the one place
+ * clients, partners and staff meet - and it says so without a list of what the portal
+ * is for. On a phone the same orbit sits, smaller, in a navy band across the top, with
+ * which door this is - "Client portal", "Growth partners" - so somebody following a
+ * link from an email can tell at a glance that they are in the right place.
  *
- * **The form sits on the sky in a card**, on every size of screen. The appearance
- * control lives with it, because somebody who needs dark mode needs it on this page too,
- * and it is drawn for light or dark ink according to the sky rather than the theme.
+ * **The form is the other half.** On a wide screen it is a panel of its own; on a
+ * phone it is a card lifted onto the band. The appearance control lives with the form,
+ * because somebody who needs dark mode needs it on this page too.
  */
 
 import type { ReactNode } from "react";
-import { FirmLogo, FirmName } from "../lib/firm";
-import { useEffect, useState } from "react";
+import { FirmName } from "../lib/firm";
 import { ThemeToggle } from "./ThemeToggle";
-import { accraHour, skyFor } from "../lib/daylight";
+import { Orbit } from "./Orbit";
 
 export function AuthShell({
   /** Which door this is: "Client portal", "Growth partners", "Practice Manager". */
@@ -36,120 +34,71 @@ export function AuthShell({
   children: ReactNode;
   footer?: ReactNode;
 }) {
-  const sky = useSky();
   return (
-    <div
-      className="relative min-h-screen overflow-x-hidden motion-safe:transition-colors motion-safe:duration-1000"
-      style={{ background: `linear-gradient(180deg, ${sky.top}, ${sky.bottom})` }}
-    >
-      {/*
-        The sun, or the moon. On a wide screen it hangs at the height of the hour, in
-        the middle of the page; on a phone it sits in the band at the top right, where
-        it is a mark beside the firm's name rather than something the card has to avoid.
-      */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-0 hidden h-44 w-44 rounded-full motion-safe:transition-all motion-safe:duration-1000 lg:block"
-        style={{
-          background: sky.sun,
-          boxShadow: `0 0 120px 60px ${sky.glow}`,
-          transform: `translate(-50%, ${sky.height * 100}vh)`,
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute right-6 top-[4.5rem] h-20 w-20 rounded-full lg:hidden"
-        style={{ background: sky.sun, boxShadow: `0 0 60px 30px ${sky.glow}` }}
-      />
-      {/* A little weight at the foot of the sky, so the card has something to stand on. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-brand-900/20 to-transparent"
-      />
+    <div className="min-h-screen overflow-x-hidden bg-page lg:grid lg:grid-cols-[1.05fr_1fr]">
+      {/* ------------------------------------------- the firm's side, wide screens */}
+      <aside className="relative hidden overflow-hidden bg-brand-900 lg:flex lg:min-h-screen lg:flex-col lg:justify-between lg:p-12">
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Orbit />
+        </div>
+        <div className="relative flex flex-col items-start gap-1.5">
+          <FirmName className="text-base font-semibold text-white" />
+          <p className="text-xs uppercase tracking-[0.18em] text-white/55">{kicker}</p>
+        </div>
+        <p className="relative max-w-xs text-xs leading-relaxed text-white/50">
+          Clients, partners and the people who do the work - around one centre.
+        </p>
+      </aside>
 
-      <div className="relative flex min-h-screen flex-col lg:grid lg:grid-cols-[1.1fr_1fr] lg:items-stretch">
-        {/* --------------------------------------------- the firm's side */}
-        <div className="flex flex-col justify-between px-5 pb-16 pt-6 lg:px-14 lg:pb-14 lg:pt-12">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-col items-start gap-1.5 lg:gap-2">
-              <FirmLogo
-                maxWidth="max-w-[9rem] lg:max-w-[14rem]"
-                maxHeight="max-h-10 lg:max-h-16"
-                onDark={sky.dark}
-                labelled
-              />
-              <div className="min-w-0">
-                <FirmName
-                  className="truncate text-sm font-semibold lg:text-base"
-                  style={{ color: sky.ink }}
-                />
-                <p
-                  className="text-[11px] uppercase tracking-[0.18em] lg:text-xs"
-                  style={{ color: sky.sub }}
-                >
-                  {kicker}
-                </p>
-              </div>
+      <main className="relative flex min-h-screen flex-col lg:justify-center lg:bg-panel lg:px-14 lg:py-10">
+        {/*
+          The control sits in the corner of the form's panel on a wide screen and in
+          the band on a phone. Either way the shell owns it, because a page that placed
+          its own would have to know which layout it was in.
+        */}
+        <div className="absolute right-8 top-6 z-20 hidden lg:block">
+          <ThemeToggle compact />
+        </div>
+
+        {/* ------------------------------------------------- the phone band */}
+        <div className="relative isolate overflow-hidden bg-brand-900 px-5 pb-14 pt-5 lg:hidden">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <FirmName className="truncate text-sm font-semibold text-white" />
+              <p className="text-[11px] uppercase tracking-[0.18em] text-white/55">
+                {kicker}
+              </p>
             </div>
-            <div className="lg:hidden">
-              <ThemeToggle compact onDark={sky.dark} />
-            </div>
+            <ThemeToggle compact onDark />
           </div>
-
-          <div className="mt-8 max-w-[calc(100%-5rem)] lg:mt-0 lg:max-w-lg">
-            <h1
-              className="text-3xl font-semibold leading-none tracking-[-0.03em] lg:text-6xl"
-              style={{ color: sky.ink }}
-            >
-              {sky.greeting}
-            </h1>
-            <p className="mt-3 text-sm lg:text-base" style={{ color: sky.sub }}>
-              {sky.line}
-            </p>
+          <div className="mt-3 flex justify-center">
+            <Orbit compact />
           </div>
         </div>
 
-        {/* ---------------------------------------------------- the card */}
-        <main className="relative flex flex-1 flex-col px-4 pb-10 lg:justify-center lg:px-14 lg:py-10">
-          <div className="absolute right-8 top-6 z-20 hidden lg:block">
-            <ThemeToggle compact onDark={sky.dark} />
-          </div>
-
-          <div className="mx-auto w-full max-w-sm -mt-8 lg:mt-0 lg:max-w-md">
-            <div className="rounded-3xl bg-panel/95 p-6 shadow-[0_30px_70px_rgba(15,36,64,0.22)] ring-1 ring-slate-900/5 backdrop-blur-xl sm:p-8">
+        {/* ------------------------------------------------------ the content */}
+        {/*
+          Above the band, not under it. The band isolates itself so nothing in it can
+          escape, and an isolated, positioned element paints over a static sibling -
+          which put the card's heading behind the navy until this said otherwise.
+        */}
+        <div className="relative z-10 flex flex-1 flex-col px-4 pb-10 sm:px-6 lg:flex-none lg:px-0 lg:pb-0">
+          <div className="mx-auto w-full max-w-sm -mt-9 lg:mt-0">
+            <div
+              className="rounded-2xl bg-panel p-5 shadow-lg ring-1 ring-slate-900/5
+                         sm:p-6 lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none lg:ring-0"
+            >
               {children}
             </div>
 
-            {/*
-              The links in the small print are drawn for a light page. On a dark sky
-              they would vanish, so the footer restyles them to match its own ink.
-            */}
             {footer && (
-              <div
-                className={`mt-6 px-1 text-center text-xs leading-relaxed lg:px-2 ${
-                  sky.dark ? "[&_.link]:text-white [&_.link]:underline" : ""
-                }`}
-                style={{ color: sky.sub }}
-              >
+              <div className="mt-6 px-1 text-center text-xs leading-relaxed text-slate-500 lg:mt-10 lg:px-0 lg:text-left">
                 {footer}
               </div>
             )}
           </div>
-        </main>
-      </div>
+        </div>
+      </main>
     </div>
   );
-}
-
-/**
- * The sky for the hour in Accra, rechecked once a minute so a page left open over
- * dusk goes dark without a reload.
- */
-function useSky() {
-  const [hour, setHour] = useState(() => accraHour());
-  useEffect(() => {
-    const timer = window.setInterval(() => setHour(accraHour()), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
-  return skyFor(hour);
 }
