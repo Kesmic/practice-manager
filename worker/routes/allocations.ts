@@ -22,6 +22,8 @@ import type { Env } from "../env";
 import { requireUser, type AuthenticatedUser } from "../auth";
 import { newId, notificationStatement, nowIso, optionalString, requireEnum } from "../db";
 import { Router, badRequest, conflict, forbidden, json, notFound, readJson } from "../http";
+import { notifyAllocation } from "../email";
+import { readSettings } from "./settings";
 import {
   ALLOCATION_STATUSES,
   DECLINE_GROUNDS,
@@ -59,7 +61,7 @@ export function registerAllocationRoutes(router: Router<Env>): void {
   // Offering
   // -------------------------------------------------------------------------
 
-  router.post("/api/clients/:id/allocations", async ({ request, env, params }) => {
+  router.post("/api/clients/:id/allocations", async ({ request, env, params, url, waitUntil }) => {
     const actor = await requireUser(env, request);
     if (!canAllocate(actor.role)) {
       throw forbidden("Allocating a client is restricted to Manager grade and above.");
@@ -141,6 +143,20 @@ export function registerAllocationRoutes(router: Router<Env>): void {
           "of your agreement.",
       }),
     ]);
+
+    /*
+     * The same offer, to their inbox. After the response, and never able to fail the
+     * offer: the allocation is already written by the time this runs.
+     */
+    await notifyAllocation(env, waitUntil, {
+      userId,
+      clientName: client.name,
+      note,
+      actorId: actor.id,
+      actorName: actor.full_name,
+      origin: url.origin,
+      firmName: (await readSettings(env)).firm_name,
+    });
 
     return json({ allocation: await loadAllocation(env, id) }, 201);
   });

@@ -708,6 +708,60 @@ export async function notifyAssignment(
 }
 
 /**
+ * Emails the person a client has just been offered to.
+ *
+ * Being offered a client is the one notice in the portal a person may decline, and
+ * clause 8.2 of their agreement says on what ground. A notice they only see the next
+ * time they happen to open the portal is not much of an offer, so it goes to their
+ * inbox as well - through the same exclusions as everything else here: nobody
+ * suspended, nobody who has turned email off, and never the person who made the offer.
+ *
+ * Safe to call unconditionally, and never throws.
+ */
+export async function notifyAllocation(
+  env: Env,
+  waitUntil: (promise: Promise<unknown>) => void,
+  input: {
+    userId: string;
+    clientName: string;
+    note: string | null;
+    actorId: string;
+    actorName: string;
+    origin: string;
+    firmName: string;
+  },
+): Promise<void> {
+  if (!emailConfigured(env)) return;
+
+  waitUntil(
+    (async () => {
+      try {
+        const [recipient] = await pickPeople(env, [input.userId], input.actorId);
+        if (!recipient) return;
+
+        const message: Message = {
+          subject: `${input.clientName}: offered to you`,
+          headline: `${input.actorName} has offered you ${input.clientName}.`,
+          detail:
+            "Accept it, or decline it if taking it on would stop you performing properly " +
+            "for a client already assigned to you. Declining on that ground is not a " +
+            "breach of your agreement." +
+            (input.note ? ` ${input.actorName} adds: ${input.note}` : ""),
+          link: `${portalUrl(env, input.origin)}/my-clients`,
+          linkLabel: "See the offer",
+          firmName: input.firmName,
+          reason: "a client has been offered to you",
+        };
+        const { text, html } = render(message, recipient);
+        await deliver(env, recipient.email, message.subject, text, html);
+      } catch (err) {
+        console.error("Allocation email failed:", err);
+      }
+    })(),
+  );
+}
+
+/**
  * One message for a batch of deliverables raised together.
  *
  * Generating a quarter of VAT returns creates dozens of deliverables at once. Sent
