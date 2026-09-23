@@ -268,15 +268,7 @@ export function ClientSubscription() {
       */}
       {tiers.length > 0 && (
         <section className="card p-5">
-          <div className="mb-4">
-            <h2 className="card-title">Our packages</h2>
-            <p className="muted mt-1">
-              Point at one, or tap it, to see everything it includes.{" "}
-              {subscription
-                ? "Nothing moves on its own - if another one suits you better, ask us and we will talk it through."
-                : "Ask us about any of them."}
-            </p>
-          </div>
+          <h2 className="card-title mb-4">Our packages</h2>
           <PackageCards
             tiers={tiers}
             inclusions={data.inclusions}
