@@ -64,10 +64,6 @@ export function ClientAccount() {
           <DetailRow label="Email">{user.email}</DetailRow>
           <DetailRow label="Business">{user.client_name}</DetailRow>
         </dl>
-        <p className="hint mt-3">
-          To change your name or email, tell us - we keep these in step with your client
-          record rather than letting the two drift apart.
-        </p>
       </div>
 
       <form onSubmit={submit} className="card space-y-4 p-5">
