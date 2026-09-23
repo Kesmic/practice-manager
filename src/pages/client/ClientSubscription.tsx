@@ -26,6 +26,7 @@ import { ApiRequestError, api } from "../../lib/api";
 import { TierMeters } from "../../components/TierMeters";
 import { PackageCards } from "../../components/PackageCards";
 import { formatAmount } from "@shared/money";
+import { describeDiscountTerm, discountAmount } from "@shared/discounts";
 import { ErrorBanner, Spinner, SuccessBanner } from "../../components/ui";
 import { formatDate, formatMoney } from "../../lib/format";
 
@@ -54,6 +55,19 @@ export function ClientSubscription() {
 
   const { subscription, assessment, criteria, tiers, available, services } = data;
   const currency = subscription?.currency ?? "GHS";
+  const discount = data?.discount ?? null;
+  /*
+   * What the discount takes off the monthly fee, when it bites on the subscription at
+   * all. A discount on additional services only leaves the fee as it is, and is
+   * described underneath instead.
+   */
+  const feeOff =
+    discount &&
+    subscription?.fee !== null &&
+    subscription?.fee !== undefined &&
+    discount.applies_to !== "services"
+      ? discountAmount(discount, subscription.fee)
+      : null;
   const next = subscription ? tierAbove(subscription.tier) : null;
   const nextTier = next ? tiers.find((t) => t.tier === next) : null;
   const mine = subscription ? tiers.find((t) => t.tier === subscription.tier) : null;
@@ -141,16 +155,58 @@ export function ClientSubscription() {
                 )}
               </div>
               <div className="ml-auto text-right">
-                <div className="text-2xl font-semibold tabular-nums tracking-tight text-slate-900">
-                  {subscription.fee === null
-                    ? "Not set"
-                    : formatMoney(subscription.fee, currency)}
-                </div>
-                <p className="muted">
-                  {subscription.fee === null ? "Ask us about your fee" : "a month"}
-                </p>
+                {/*
+                  With a discount on the subscription, the listed fee is struck through
+                  and what they actually pay stands in its place - a client who has been
+                  given something should be able to see it without opening an invoice.
+                */}
+                {feeOff !== null && subscription.fee !== null ? (
+                  <>
+                    <div className="text-sm tabular-nums text-slate-500 line-through">
+                      {formatMoney(subscription.fee, currency)}
+                    </div>
+                    <div className="text-2xl font-semibold tabular-nums tracking-tight text-slate-900">
+                      {formatMoney(subscription.fee - feeOff, currency)}
+                    </div>
+                    <p className="muted">a month</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-2xl font-semibold tabular-nums tracking-tight text-slate-900">
+                      {subscription.fee === null
+                        ? "Not set"
+                        : formatMoney(subscription.fee, currency)}
+                    </div>
+                    <p className="muted">
+                      {subscription.fee === null ? "Ask us about your fee" : "a month"}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
+            {discount && (
+              <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900 ring-1 ring-inset ring-emerald-200">
+                <span className="font-medium">
+                  {feeOff !== null
+                    ? `${formatMoney(feeOff, currency)} off`
+                    : discount.kind === "percentage"
+                      ? `${discount.value}% off`
+                      : `${formatMoney(discount.value, currency)} off`}
+                  {discount.kind === "percentage" && feeOff !== null
+                    ? ` (${discount.value}%)`
+                    : ""}
+                </span>
+                <span className="text-emerald-800">
+                  {discount.applies_to === "subscription"
+                    ? "your subscription"
+                    : discount.applies_to === "services"
+                      ? "additional services"
+                      : "everything we bill you"}
+                  {" · "}
+                  {describeDiscountTerm(discount, formatDate)}
+                </span>
+              </p>
+            )}
             {subscription.status !== "active" && (
               <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-inset ring-amber-200">
                 This subscription is {subscription.status}. Nothing is being billed while

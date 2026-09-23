@@ -19,7 +19,7 @@ import {
   describeFee,
   nextStates,
   type ClientTier,
-
+  whyNotAStartDate,
 } from "@shared/subscriptions";
 import {
   DISCOUNT_KINDS,
@@ -888,6 +888,14 @@ function MoveTierModal({
   const [tier, setTier] = useState<ClientTier>(current?.tier ?? "starter");
   const [fee, setFee] = useState(current?.monthly_fee?.toString() ?? "");
   const [status, setStatus] = useState(current?.status ?? "active");
+  const today = new Date().toISOString().slice(0, 10);
+  /*
+   * When the package started, which is rarely today: the client agreed months ago and
+   * the record is being made now. Backdating it is what lets those months be invoiced
+   * for the periods they actually were.
+   */
+  const [startedOn, setStartedOn] = useState(current?.started_on ?? today);
+  const startProblem = whyNotAStartDate(startedOn, today);
   const listed = tiers.find((t) => t.tier === tier);
   /*
    * Follows the package when the Partner has not chosen otherwise, because a client put
@@ -911,11 +919,13 @@ function MoveTierModal({
           <button
             type="button"
             className="btn-primary"
+            disabled={startProblem !== null}
             onClick={() =>
               void onSave({
                 tier,
                 monthly_fee: fee.trim() === "" ? null : Number(fee),
                 currency,
+                started_on: startedOn,
                 status: status as "active" | "paused" | "ended",
               })
             }
@@ -967,6 +977,24 @@ function MoveTierModal({
             >
               {options(CURRENCIES, CURRENCY_LABELS)}
             </Select>
+          )}
+        </Field>
+        <Field
+          label="Started on"
+          hint={
+            startProblem ??
+            (startedOn < today
+              ? "Backdated. Months from then on can be invoiced for the periods they were."
+              : "The day the package began, which need not be today.")
+          }
+        >
+          {(id) => (
+            <TextInput
+              id={id}
+              type="date"
+              value={startedOn}
+              onChange={(e) => setStartedOn(e.target.value)}
+            />
           )}
         </Field>
         <Field label="Standing" hint="Paused stops billing without ending the subscription.">

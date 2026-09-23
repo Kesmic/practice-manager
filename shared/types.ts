@@ -35,6 +35,7 @@ import type {
   DiscountRun,
   DiscountScope,
   DiscountState,
+  Discount,
 } from "./discounts";
 import type { RemovalAdvice, RemovalFootprint } from "./removal";
 import type { ReportDuty, ReportSchedule, ReportState } from "./status-reports";
@@ -1260,8 +1261,20 @@ export interface ClientPortalUser {
   client_code: string;
 }
 
+/**
+ * What a client is told about a discount on their account: what comes off, of what,
+ * and for how long. Not who granted it or why - the reason is the firm's note to
+ * itself, and can say things like "goodwill after the late filing".
+ */
+export type ClientFacingDiscount = Pick<
+  Discount,
+  "kind" | "value" | "applies_to" | "runs" | "invoice_count" | "until_on" | "used_count"
+>;
+
 export interface ClientPortalSubscription {
   client: { name: string; code: string };
+  /** The live discount on the account, if there is one. */
+  discount: ClientFacingDiscount | null;
   criteria: SubscriptionCriterion[];
   tiers: TierRow[];
   ceilings: Ceiling[];

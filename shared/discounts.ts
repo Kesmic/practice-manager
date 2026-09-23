@@ -209,6 +209,27 @@ export function describeDiscount(
   return `${off} ${scope}, ${when}`;
 }
 
+/**
+ * How long a discount has left, the way a client reads it on their own page.
+ *
+ * describeDiscount above says what was granted; this says what remains. A client with
+ * "20% off for 3 invoices" wants to know it is two invoices now, and one that runs to a
+ * date wants the date written the way the firm writes dates, which is why the formatter
+ * is passed in rather than the ISO string shown raw.
+ */
+export function describeDiscountTerm(
+  discount: Pick<Discount, "runs" | "invoice_count" | "until_on" | "used_count">,
+  formatDate: (iso: string) => string,
+): string {
+  if (discount.runs === "once") return "on your next invoice";
+  if (discount.runs === "count") {
+    const left = invoicesLeft(discount) ?? 0;
+    const total = discount.invoice_count ?? 0;
+    return `${left} of ${total} invoice${total === 1 ? "" : "s"} left`;
+  }
+  return discount.until_on ? `until ${formatDate(discount.until_on)}` : "";
+}
+
 /** The label that goes on the invoice line, which a client will read. */
 export function discountLabel(
   discount: Pick<Discount, "kind" | "value" | "applies_to">,
