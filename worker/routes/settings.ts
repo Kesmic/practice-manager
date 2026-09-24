@@ -66,6 +66,15 @@ const DEFAULTS: Record<string, string> = {
   invoice_terms_days: "15",
 
   /**
+   * Whether the month's subscription invoices are raised and sent on their own, and
+   * on which day. "on" or "off"; the day 1 to 28. See shared/billing.ts for the window
+   * in which a missed run is made up, and why turning this on late in a month does
+   * not bill that month.
+   */
+  auto_billing: "on",
+  billing_day: "1",
+
+  /**
    * The About Us paragraph a proposal opens with.
    *
    * Seeded from the firm's own pricing proposal, because a proposal that goes out with

@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { BILLING_CATCH_UP_DAYS } from "@shared/billing";
 import {
   TAX_BASES,
   TAX_BASIS_LABELS,
@@ -299,6 +300,39 @@ export function InvoicingAdmin() {
               <TextInput id={id} value={value("firm_tax_id")} onChange={(e) => set("firm_tax_id", e.target.value)} />
             )}
           </Field>
+
+          <div className="sm:col-span-2 border-t border-slate-200 pt-4">
+            <h3 className="mb-1 text-sm font-semibold text-slate-900">Automatic monthly invoicing</h3>
+            <p className="hint mb-3">
+              On the billing day, every active subscription that has no invoice yet for the
+              month is invoiced and sent, exactly as if a Partner had done it - discount,
+              currency and partner commission included. Anyone it cannot bill (no fee set,
+              work quoted in another currency) is reported to the Partners rather than sent.
+              A run missed on the day is made up within {BILLING_CATCH_UP_DAYS} days; after
+              that the month is left to be raised by hand. The finance email above is copied
+              on every invoice and reminder.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Automatic invoicing">
+                {(id) => (
+                  <Select id={id} value={value("auto_billing") || "on"} onChange={(e) => set("auto_billing", e.target.value)}>
+                    <option value="on">On</option>
+                    <option value="off">Off</option>
+                  </Select>
+                )}
+              </Field>
+              <Field label="Billing day of the month" hint="1 to 28, so that every month has one.">
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    inputMode="numeric"
+                    value={value("billing_day") || "1"}
+                    onChange={(e) => set("billing_day", e.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+          </div>
 
           <div className="sm:col-span-2 border-t border-slate-200 pt-4">
             <h3 className="mb-3 text-sm font-semibold text-slate-900">Bank details</h3>
