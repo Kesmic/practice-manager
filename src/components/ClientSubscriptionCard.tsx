@@ -20,6 +20,7 @@ import {
   nextStates,
   type ClientTier,
   whyNotAStartDate,
+  whyNotAServiceLevel,
 } from "@shared/subscriptions";
 import {
   DISCOUNT_KINDS,
@@ -136,6 +137,11 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
               {subscription.negotiated && (
                 <span className="pill bg-slate-100 text-slate-600 ring-slate-200">
                   Negotiated rate
+                </span>
+              )}
+              {subscription.service_tier && (
+                <span className="pill bg-teal-50 text-teal-800 ring-teal-200">
+                  Served at {TIER_LABELS[subscription.service_tier]} level
                 </span>
               )}
               {subscription.status !== "active" && (
@@ -879,6 +885,7 @@ function MoveTierModal({
   onClose: () => void;
   onSave: (body: {
     tier: ClientTier;
+    service_tier: ClientTier | null;
     monthly_fee: number | null;
     currency: Currency;
     started_on?: string;
@@ -886,6 +893,15 @@ function MoveTierModal({
   }) => Promise<void>;
 }) {
   const [tier, setTier] = useState<ClientTier>(current?.tier ?? "starter");
+  /*
+   * "" is "the same as the package". Kept as a string so the select can say so in
+   * words rather than pretending the package is a second choice of itself.
+   */
+  const [serviceTier, setServiceTier] = useState<ClientTier | "">(
+    current?.service_tier ?? "",
+  );
+  const serviceProblem =
+    serviceTier && serviceTier !== tier ? whyNotAServiceLevel(tier, serviceTier) : null;
   const [fee, setFee] = useState(current?.monthly_fee?.toString() ?? "");
   const [status, setStatus] = useState(current?.status ?? "active");
   const today = new Date().toISOString().slice(0, 10);
@@ -919,10 +935,11 @@ function MoveTierModal({
           <button
             type="button"
             className="btn-primary"
-            disabled={startProblem !== null}
+            disabled={startProblem !== null || serviceProblem !== null}
             onClick={() =>
               void onSave({
                 tier,
+                service_tier: serviceTier && serviceTier !== tier ? serviceTier : null,
                 monthly_fee: fee.trim() === "" ? null : Number(fee),
                 currency,
                 started_on: startedOn,
@@ -940,6 +957,28 @@ function MoveTierModal({
           {(id) => (
             <Select id={id} value={tier} onChange={(e) => setTier(e.target.value as ClientTier)}>
               {options(TIER_ORDER, TIER_LABELS)}
+            </Select>
+          )}
+        </Field>
+        <Field
+          label="Served at"
+          hint={
+            serviceProblem ??
+            "Where this client gets a higher package's service than the one they are billed for, say which. Their figures are measured against it, and their own page tells them."
+          }
+        >
+          {(id) => (
+            <Select
+              id={id}
+              value={serviceTier}
+              onChange={(e) => setServiceTier(e.target.value as ClientTier | "")}
+            >
+              <option value="">Same as the package</option>
+              {TIER_ORDER.filter((t) => t !== tier).map((t) => (
+                <option key={t} value={t}>
+                  {TIER_LABELS[t]} level
+                </option>
+              ))}
             </Select>
           )}
         </Field>

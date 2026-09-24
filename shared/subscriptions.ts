@@ -405,6 +405,34 @@ export function clientMayMove(from: ServiceState, to: ServiceState): boolean {
   return from === "quoted" && (to === "agreed" || to === "declined");
 }
 
+/**
+ * The level a client is actually served at.
+ *
+ * Nearly always the package they are on. Where a Partner has said otherwise - a client
+ * on Starter being given Growth's service - it is that, and it is what their figures
+ * are measured against and what their own page says they receive. What they are billed
+ * for stays `tier`.
+ */
+export function servedTier(subscription: {
+  tier: ClientTier;
+  service_tier?: ClientTier | null;
+}): ClientTier {
+  return subscription.service_tier ?? subscription.tier;
+}
+
+/**
+ * Why a service level cannot be set, or null.
+ *
+ * Serving somebody at a level below their package is not a service level, it is
+ * short-changing them, and the portal will not record it as though it were a plan.
+ */
+export function whyNotAServiceLevel(tier: ClientTier, serviceTier: ClientTier): string | null {
+  if (tierRank(serviceTier) < tierRank(tier)) {
+    return `${TIER_LABELS[serviceTier]} is below ${TIER_LABELS[tier]}. A service level is a package served above the one billed, not below it.`;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Refusals, worded once so the form and the server say the same thing
 // ---------------------------------------------------------------------------

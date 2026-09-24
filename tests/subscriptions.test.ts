@@ -33,6 +33,8 @@ import {
   whyNotAFee,
   whyNotAFigure,
   whyNotAStartDate,
+  servedTier,
+  whyNotAServiceLevel,
   worstStanding,
   type Ceiling,
   type Criterion,
@@ -327,4 +329,17 @@ test("a package may have started before today, but not on a day that does not ex
   assert.match(whyNotAStartDate("1999-12-31", today) ?? "", /before the firm/);
   assert.match(whyNotAStartDate("2027-09-24", today) ?? "", /more than a year ahead/);
   assert.equal(whyNotAStartDate("2027-09-23", today), null); // exactly a year is allowed
+});
+
+test("a client is served at their package unless a Partner has said otherwise", () => {
+  assert.equal(servedTier({ tier: "starter" }), "starter");
+  assert.equal(servedTier({ tier: "starter", service_tier: null }), "starter");
+  assert.equal(servedTier({ tier: "starter", service_tier: "growth" }), "growth");
+});
+
+test("a service level is above the package, never below it", () => {
+  assert.equal(whyNotAServiceLevel("starter", "growth"), null);
+  assert.equal(whyNotAServiceLevel("starter", "enterprise"), null);
+  assert.equal(whyNotAServiceLevel("growth", "growth"), null);
+  assert.match(whyNotAServiceLevel("growth", "starter") ?? "", /below Growth/);
 });

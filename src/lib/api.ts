@@ -1136,6 +1136,7 @@ export const api = {
     clientId: string,
     body: {
       tier: ClientTier;
+      service_tier?: ClientTier | null;
       monthly_fee: number | null;
       currency?: Currency;
       started_on?: string;

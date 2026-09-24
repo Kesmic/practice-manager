@@ -54,6 +54,7 @@ import {
   clientMayMove,
   type ClientTier,
   type ServiceState,
+  servedTier,
 } from "../../shared/subscriptions";
 import { feeFor, readCatalogue } from "./subscriptions";
 import { activeDiscount } from "../discounts";
@@ -308,13 +309,14 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
     const catalogue = await readCatalogue(env);
 
     const subscription = await env.DB.prepare(
-      `SELECT client_id, tier, monthly_fee, currency, started_on, status
+      `SELECT client_id, tier, service_tier, monthly_fee, currency, started_on, status
          FROM client_subscriptions WHERE client_id = ?`,
     )
       .bind(actor.client_id)
       .first<{
         client_id: string;
         tier: ClientTier;
+        service_tier: ClientTier | null;
         monthly_fee: number | null;
         currency: string;
         started_on: string;
@@ -379,9 +381,10 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
         ? { ...subscription, ...feeFor(subscription, catalogue.tiers) }
         : null,
       figures,
+      // Measured against the level they are served at, which their page says.
       assessment: subscription
         ? assess(
-            subscription.tier,
+            servedTier(subscription),
             catalogue.criteria,
             catalogue.ceilings,
             figures as never,

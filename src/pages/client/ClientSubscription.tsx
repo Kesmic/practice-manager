@@ -20,6 +20,7 @@ import {
   describeFee,
   tierAbove,
   type ClientTier,
+  servedTier,
 } from "@shared/subscriptions";
 import type { ClientPortalSubscription } from "@shared/types";
 import { ApiRequestError, api } from "../../lib/api";
@@ -68,7 +69,14 @@ export function ClientSubscription() {
     discount.applies_to !== "services"
       ? discountAmount(discount, subscription.fee)
       : null;
-  const next = subscription ? tierAbove(subscription.tier) : null;
+  /*
+   * The level they are served at, which is what the meters below measure against and
+   * what "the package above" is above. Where a Partner has set it higher than the
+   * package, the page says so, because a client given Growth's service on a Starter
+   * fee should be able to see it rather than take it on trust.
+   */
+  const served = subscription ? servedTier(subscription) : null;
+  const next = served ? tierAbove(served) : null;
   const nextTier = next ? tiers.find((t) => t.tier === next) : null;
   const mine = subscription ? tiers.find((t) => t.tier === subscription.tier) : null;
 
@@ -144,8 +152,15 @@ export function ClientSubscription() {
           <section className="card border-l-4 border-l-brand-600 p-5">
             <div className="flex flex-wrap items-start gap-4">
               <div>
-                <span className="pill bg-brand-50 text-link ring-brand-200">
-                  Your package since {formatDate(subscription.started_on)}
+                <span className="flex flex-wrap gap-2">
+                  <span className="pill bg-brand-50 text-link ring-brand-200">
+                    Your package since {formatDate(subscription.started_on)}
+                  </span>
+                  {subscription.service_tier && (
+                    <span className="pill bg-teal-50 text-teal-800 ring-teal-200">
+                      Served at {TIER_LABELS[subscription.service_tier]} level
+                    </span>
+                  )}
                 </span>
                 <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
                   {TIER_LABELS[subscription.tier]}
@@ -217,7 +232,19 @@ export function ClientSubscription() {
 
           {assessment && criteria.length > 0 && (
             <section className="card p-5">
-              <h2 className="card-title">Where you sit against this package</h2>
+              <h2 className="card-title">
+                Where you sit against{" "}
+                {subscription.service_tier
+                  ? TIER_LABELS[subscription.service_tier]
+                  : "this package"}
+              </h2>
+              {subscription.service_tier && (
+                <p className="muted mt-1">
+                  You are on {TIER_LABELS[subscription.tier]}, and we serve you at{" "}
+                  {TIER_LABELS[subscription.service_tier]} level - so these are{" "}
+                  {TIER_LABELS[subscription.service_tier]}&apos;s ceilings.
+                </p>
+              )}
               {data.figures.length > 0 && data.figures[0].as_of && (
                 <p className="muted mb-4 mt-1">
                   Taken from your records to {formatDate(data.figures[0].as_of)}
