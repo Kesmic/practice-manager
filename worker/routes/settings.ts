@@ -162,9 +162,25 @@ const PUBLIC_KEYS = [
   "secondary_color",
 ];
 
-/** Longest value each setting may hold. */
+/**
+ * Longest value each setting may hold. Anything not listed is a short field of 200.
+ *
+ * The three proposal texts are paragraphs, and their seeded defaults are already
+ * longer than 200 - so before they were listed here, saving any settings tab at all
+ * failed on "firm_about", because the screen sends every setting back whether or not
+ * that tab touched it.
+ */
 const MAX_LENGTH: Record<string, number> = {
   welcome_message: 20_000,
+  firm_about: 5_000,
+  firm_core_services: 2_000,
+  proposal_terms: 10_000,
+  // One line per line, printed under the firm's name on an invoice.
+  firm_address: 500,
+  // JSON the screen writes: which services the intake form offers, and which
+  // navigation entries are shown to whom.
+  intake_services: 10_000,
+  nav_visibility: 10_000,
   // A data URI for the logo. 400,000 characters is roughly a 290 kB image, which
   // is generous for a logo and comfortably inside what a D1 row will hold.
   logo_data_url: 400_000,
