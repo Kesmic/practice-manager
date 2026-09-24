@@ -56,6 +56,7 @@ import {
   type ServiceState,
 } from "../../shared/subscriptions";
 import { feeFor, readCatalogue } from "./subscriptions";
+import { activeDiscount } from "../discounts";
 import { serveDocument } from "./invoices";
 import { standingOf, type InvoiceState, type PaymentLike } from "../../shared/invoices";
 
@@ -342,8 +343,25 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       .bind(actor.client_id)
       .all();
 
+    /*
+     * The discount on their account, trimmed to what a client should read: what comes
+     * off, of what, and for how long. Not the Partner's reason for granting it.
+     */
+    const discount = await activeDiscount(env, actor.client_id);
+
     return json({
       client: { name: actor.client_name, code: actor.client_code },
+      discount: discount
+        ? {
+            kind: discount.kind,
+            value: discount.value,
+            applies_to: discount.applies_to,
+            runs: discount.runs,
+            invoice_count: discount.invoice_count,
+            until_on: discount.until_on,
+            used_count: discount.used_count,
+          }
+        : null,
       criteria: catalogue.criteria,
       tiers: catalogue.tiers,
       ceilings: catalogue.ceilings,

@@ -55,6 +55,7 @@ import {
   type Criterion,
   type Figure,
   type ServiceState,
+  whyNotAStartDate,
 } from "../../shared/subscriptions";
 import {
   DISCOUNT_KINDS,
@@ -719,6 +720,20 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const timestamp = nowIso();
     const existing = await loadSubscription(env, params.id);
 
+    /*
+     * When the package started. Free to be in the past - a client agreed in July is a
+     * client whose July can then be billed - and required, so that a subscription never
+     * quietly takes today as its start because nobody said otherwise. On an existing
+     * subscription the date may be corrected; left out, it stays as it was.
+     */
+    let startedOn = existing?.started_on ?? timestamp.slice(0, 10);
+    if (body.started_on !== undefined || !existing) {
+      const raw = typeof body.started_on === "string" ? body.started_on : "";
+      const reason = whyNotAStartDate(raw || timestamp.slice(0, 10), timestamp.slice(0, 10));
+      if (reason) throw badRequest(reason);
+      startedOn = (raw || timestamp.slice(0, 10)).trim();
+    }
+
     const catalogue = await readCatalogue(env);
     const before = existing ? feeFor(existing, catalogue.tiers).fee : null;
     const after = feeFor({ tier, monthly_fee: fee, currency: "GHS" }, catalogue.tiers).fee;
@@ -729,7 +744,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         env.DB.prepare(
           `UPDATE client_subscriptions
               SET tier = ?, monthly_fee = ?, currency = ?, status = ?, note = ?,
-                  updated_at = ?, updated_by = ?, ended_on = ?
+                  started_on = ?, updated_at = ?, updated_by = ?, ended_on = ?
             WHERE client_id = ?`,
         ).bind(
           tier,
@@ -737,6 +752,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
           currency,
           status,
           body.note?.trim()?.slice(0, 500) || null,
+          startedOn,
           timestamp,
           actor.id,
           status === "ended" ? timestamp.slice(0, 10) : null,
@@ -800,7 +816,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
           tier,
           fee,
           currency,
-          body.started_on?.trim() || timestamp.slice(0, 10),
+          startedOn,
           status,
           body.note?.trim()?.slice(0, 500) || null,
           timestamp,

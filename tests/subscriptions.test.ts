@@ -32,6 +32,7 @@ import {
   whyNotACeiling,
   whyNotAFee,
   whyNotAFigure,
+  whyNotAStartDate,
   worstStanding,
   type Ceiling,
   type Criterion,
@@ -313,4 +314,17 @@ test("a count has to be whole; an amount need not be", () => {
   assert.equal(whyNotAFigure("4100000.50", "money"), null);
   assert.ok(whyNotAFigure("", "count"), "blank is not zero");
   assert.ok(whyNotAFigure("-3", "count"));
+});
+
+test("a package may have started before today, but not on a day that does not exist", () => {
+  const today = "2026-09-23";
+  assert.equal(whyNotAStartDate("2026-07-01", today), null); // backdated
+  assert.equal(whyNotAStartDate("2026-09-23", today), null); // today
+  assert.equal(whyNotAStartDate("2026-10-01", today), null); // agreed to start next month
+  assert.match(whyNotAStartDate("", today) ?? "", /when the package started/);
+  assert.match(whyNotAStartDate("1/7/2026", today) ?? "", /YYYY-MM-DD/);
+  assert.match(whyNotAStartDate("2026-02-30", today) ?? "", /not a real date/);
+  assert.match(whyNotAStartDate("1999-12-31", today) ?? "", /before the firm/);
+  assert.match(whyNotAStartDate("2027-09-24", today) ?? "", /more than a year ahead/);
+  assert.equal(whyNotAStartDate("2027-09-23", today), null); // exactly a year is allowed
 });

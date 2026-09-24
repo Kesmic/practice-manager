@@ -447,3 +447,32 @@ export function whyNotAFigure(raw: string, unit: CriterionUnit): string | null {
   if (value > 1_000_000_000_000) return "That figure is implausibly large.";
   return null;
 }
+
+/**
+ * Why this cannot be the day a subscription started, or null.
+ *
+ * A package rarely starts on the day somebody gets round to recording it in the portal.
+ * The client agreed in July, the first fee was for July, and the record is being made
+ * in September - so the date is free to be in the past, and the months between can then
+ * be invoiced for the periods they actually were. What it cannot be is nonsense, or so
+ * far ahead that it is a typo rather than a plan.
+ *
+ * `today` is passed in so that the form and the server agree on what "ahead" means,
+ * and so a test can pin it.
+ */
+export function whyNotAStartDate(raw: string, today: string): string | null {
+  const value = raw.trim();
+  if (!value) return "Say when the package started.";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return "Give the date as YYYY-MM-DD.";
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    return "That is not a real date.";
+  }
+  if (value < "2000-01-01") return "That is before the firm kept anything in here.";
+  const limit = new Date(`${today}T00:00:00Z`);
+  limit.setUTCFullYear(limit.getUTCFullYear() + 1);
+  if (value > limit.toISOString().slice(0, 10)) {
+    return "That is more than a year ahead. Record it nearer the time.";
+  }
+  return null;
+}

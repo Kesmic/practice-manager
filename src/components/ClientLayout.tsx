@@ -67,10 +67,6 @@ function Shell() {
         <Outlet />
       </main>
 
-      <footer className="mx-auto max-w-4xl px-4 pb-8 text-center text-xs text-slate-400">
-        If anything here looks wrong, tell us rather than the portal - we would rather fix
-        it than have you work around it.
-      </footer>
     </div>
   );
 }

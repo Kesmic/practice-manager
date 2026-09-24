@@ -20,6 +20,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   type Discount,
   describeDiscount,
+  describeDiscountTerm,
   discountAmount,
   discountApplies,
   discountLabel,
@@ -402,5 +403,25 @@ test("a client's discounts go when the client does", () => {
   assert.equal(
     db.prepare(`SELECT COUNT(*) AS n FROM client_discounts`).get()!.n,
     0,
+  );
+});
+
+test("a client is told what is left of a discount, not what was granted", () => {
+  const date = (iso: string) => `[${iso}]`;
+  assert.equal(
+    describeDiscountTerm({ runs: "once", invoice_count: null, until_on: null, used_count: 0 }, date),
+    "on your next invoice",
+  );
+  assert.equal(
+    describeDiscountTerm({ runs: "count", invoice_count: 3, until_on: null, used_count: 1 }, date),
+    "2 of 3 invoices left",
+  );
+  assert.equal(
+    describeDiscountTerm({ runs: "count", invoice_count: 1, until_on: null, used_count: 0 }, date),
+    "1 of 1 invoice left",
+  );
+  assert.equal(
+    describeDiscountTerm({ runs: "until", invoice_count: null, until_on: "2026-12-31", used_count: 4 }, date),
+    "until [2026-12-31]",
   );
 });
