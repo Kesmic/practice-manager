@@ -22,7 +22,10 @@ import { registerStaffFileRoutes } from "./routes/staff-files";
 import { registerStaffEmailRoutes } from "./routes/staff-email";
 import { registerTrainingRoutes } from "./routes/training";
 import { registerSignatureRoutes } from "./routes/signatures";
-import { registerSubscriptionRoutes } from "./routes/subscriptions";
+import {
+  registerPackageServiceRoutes,
+  registerSubscriptionRoutes,
+} from "./routes/subscriptions";
 import { registerClientPortalRoutes } from "./routes/client-portal";
 import { registerInvoiceRoutes } from "./routes/invoices";
 import { registerPartnerRoutes } from "./routes/partners";
@@ -70,6 +73,7 @@ registerEmployeeRoutes(router);
 registerStaffFileRoutes(router);
 registerSignatureRoutes(router);
 registerSubscriptionRoutes(router);
+registerPackageServiceRoutes(router);
 registerClientPortalRoutes(router);
 registerInvoiceRoutes(router);
 registerPartnerRoutes(router);

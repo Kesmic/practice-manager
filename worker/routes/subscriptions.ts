@@ -56,8 +56,6 @@ import {
   type Figure,
   type ServiceState,
   whyNotAStartDate,
-  servedTier,
-  whyNotAServiceLevel,
 } from "../../shared/subscriptions";
 import {
   DISCOUNT_KINDS,
@@ -70,6 +68,13 @@ import {
   type DiscountScope,
 } from "../../shared/discounts";
 import { activeDiscount } from "../discounts";
+import {
+  cheapestPackageWith,
+  whyNotAServiceName,
+  whyNotAnExtra,
+  type PackageService,
+  type ServiceInclusion,
+} from "../../shared/package-services";
 import { CURRENCIES, DEFAULT_CURRENCY, currencyOf } from "../../shared/money";
 import { sendToPerson } from "../email";
 
@@ -101,7 +106,8 @@ interface InclusionRow {
 
 /** The catalogue as every screen wants it: criteria, tiers, ceilings, services. */
 export async function readCatalogue(env: Env) {
-  const [criteria, tiers, ceilings, services, inclusions] = await env.DB.batch([
+  const [criteria, tiers, ceilings, services, inclusions, packageServices, serviceInclusions] =
+    await env.DB.batch([
     env.DB.prepare(
       `SELECT id, name, unit, how_measured, position, currency
          FROM subscription_criteria ORDER BY position, name`,
@@ -115,11 +121,32 @@ export async function readCatalogue(env: Env) {
       `SELECT id, name, summary, fee, fee_basis, currency, service_line, active, position
          FROM additional_services ORDER BY position, name`,
     ),
-    // What each package includes, which is what a client comparing two of them reads.
+    /*
+     * What each package includes, in the shape the package cards and the proposal
+     * read: one row per package per service, with the heading of any included
+     * sub-service brought along (the UNION), and sub-services ordered under their
+     * heading. Derived from the catalogue below, never stored in this shape.
+     */
     env.DB.prepare(
-      `SELECT id, tier, label, parent_id, position FROM tier_inclusions
-        ORDER BY tier, position`,
+      `SELECT s.id, i.tier, s.name AS label, s.parent_id,
+              COALESCE(p.position * 1000 + s.position + 1, s.position * 1000) AS position
+         FROM package_service_inclusions i
+         JOIN package_services s ON s.id = i.service_id
+         LEFT JOIN package_services p ON p.id = s.parent_id
+        WHERE s.active = 1 AND (p.id IS NULL OR p.active = 1)
+       UNION
+       SELECT p.id, i.tier, p.name, NULL, p.position * 1000
+         FROM package_service_inclusions i
+         JOIN package_services s ON s.id = i.service_id
+         JOIN package_services p ON p.id = s.parent_id
+        WHERE s.active = 1 AND p.active = 1
+        ORDER BY 2, 5`,
     ),
+    env.DB.prepare(
+      `SELECT id, name, parent_id, position, active FROM package_services
+        ORDER BY parent_id IS NOT NULL, position, name`,
+    ),
+    env.DB.prepare(`SELECT tier, service_id FROM package_service_inclusions`),
   ]);
 
   return {
@@ -128,6 +155,8 @@ export async function readCatalogue(env: Env) {
     ceilings: ceilings.results as unknown as Ceiling[],
     services: services.results,
     inclusions: inclusions.results as unknown as InclusionRow[],
+    package_services: packageServices.results as unknown as PackageService[],
+    service_inclusions: serviceInclusions.results as unknown as ServiceInclusion[],
   };
 }
 
@@ -173,15 +202,13 @@ async function latestFigures(env: Env, clientId: string): Promise<Figure[]> {
 
 async function loadSubscription(env: Env, clientId: string) {
   return await env.DB.prepare(
-    `SELECT client_id, tier, service_tier, monthly_fee, currency, started_on, status,
-            ended_on, note
+    `SELECT client_id, tier, monthly_fee, currency, started_on, status, ended_on, note
        FROM client_subscriptions WHERE client_id = ?`,
   )
     .bind(clientId)
     .first<{
       client_id: string;
       tier: ClientTier;
-      service_tier: ClientTier | null;
       monthly_fee: number | null;
       currency: string;
       started_on: string;
@@ -357,7 +384,6 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       ideal_for?: string;
       ceilings?: Record<string, unknown>;
       /** The whole list for this package, in order. Replaces what is there. */
-      inclusions?: Array<{ label?: unknown; sub?: unknown }>;
     }>(request);
 
     const fee = optionalAmount(body.monthly_fee, "The fee");
@@ -381,36 +407,6 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         tier,
       ),
     ];
-
-    /*
-     * Inclusions are replaced wholesale rather than patched line by line. The screen
-     * edits them as one list and sends the list back, and a partial update would need
-     * every line to carry an id the screen has no other use for.
-     *
-     * Only when the key is present: a caller changing a fee alone must not silently
-     * empty the package.
-     */
-    if (Array.isArray(body.inclusions)) {
-      statements.push(
-        env.DB.prepare(`DELETE FROM tier_inclusions WHERE tier = ?`).bind(tier),
-      );
-      let parent: string | null = null;
-      body.inclusions.forEach((line, index) => {
-        const label = String(line?.label ?? "").trim().slice(0, 120);
-        if (!label) return;
-        const id = newId();
-        // A sub-item hangs off the last top-level line above it, which is how the
-        // proposal reads: "VAT & levies" under "Tax services".
-        const sub = line?.sub === true && parent !== null;
-        if (!sub) parent = id;
-        statements.push(
-          env.DB.prepare(
-            `INSERT INTO tier_inclusions (id, tier, label, parent_id, position)
-             VALUES (?, ?, ?, ?, ?)`,
-          ).bind(id, tier, label, sub ? parent : null, index),
-        );
-      });
-    }
 
     for (const [criterionId, raw] of Object.entries(body.ceilings ?? {})) {
       const ceiling = optionalAmount(raw, "A ceiling");
@@ -549,8 +545,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     const [subs, figures] = await env.DB.batch([
       env.DB.prepare(
-        `SELECT s.client_id, s.tier, s.service_tier, s.monthly_fee, s.currency,
-                s.started_on, s.status,
+        `SELECT s.client_id, s.tier, s.monthly_fee, s.currency, s.started_on, s.status,
                 c.name AS client_name, c.code AS client_code,
                 p.full_name AS partner_name
            FROM client_subscriptions s
@@ -586,11 +581,9 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       client_name: string;
       client_code: string;
       partner_name: string | null;
-      service_tier: ClientTier | null;
     }>).map((sub) => {
       const mine = byClient.get(sub.client_id) ?? [];
-      // Measured against the level they are served at, not the one on the invoice.
-      const assessment = assess(servedTier(sub), catalogue.criteria, catalogue.ceilings, mine);
+      const assessment = assess(sub.tier, catalogue.criteria, catalogue.ceilings, mine);
       return {
         ...sub,
         ...feeFor(sub, catalogue.tiers),
@@ -666,6 +659,8 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       .bind(params.id)
       .all();
 
+    const extras = await readExtras(env, params.id, catalogue.service_inclusions);
+
     return json({
       ...catalogue,
       subscription: subscription
@@ -673,8 +668,9 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         : null,
       figures,
       figure_history: allFigures.results,
+      extras,
       assessment: subscription
-        ? assess(servedTier(subscription), catalogue.criteria, catalogue.ceilings, figures)
+        ? assess(subscription.tier, catalogue.criteria, catalogue.ceilings, figures)
         : null,
       history: history.results,
       /*
@@ -699,7 +695,6 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const body = await readJson<{
       tier?: unknown;
-      service_tier?: unknown;
       monthly_fee?: unknown;
       currency?: unknown;
       started_on?: string;
@@ -713,20 +708,6 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     if (!client) throw notFound("There is no such client.");
 
     const tier = requireEnum(body.tier, "tier", CLIENT_TIERS) as ClientTier;
-    /*
-     * The level they are served at, where a Partner has said it is above the package.
-     * Empty, or the package itself, is stored as null: "the same as the package" is
-     * one fact, not two ways of writing it.
-     */
-    const serviceTier =
-      body.service_tier === undefined || body.service_tier === null || body.service_tier === ""
-        ? null
-        : (requireEnum(body.service_tier, "service_tier", CLIENT_TIERS) as ClientTier);
-    if (serviceTier) {
-      const reason = whyNotAServiceLevel(tier, serviceTier);
-      if (reason) throw badRequest(reason);
-    }
-    const storedServiceTier = serviceTier && serviceTier !== tier ? serviceTier : null;
     const fee = optionalAmount(body.monthly_fee, "The fee");
     const status = body.status
       ? requireEnum(body.status, "status", ["active", "paused", "ended"] as const)
@@ -765,12 +746,11 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       statements.push(
         env.DB.prepare(
           `UPDATE client_subscriptions
-              SET tier = ?, service_tier = ?, monthly_fee = ?, currency = ?, status = ?,
-                  note = ?, started_on = ?, updated_at = ?, updated_by = ?, ended_on = ?
+              SET tier = ?, monthly_fee = ?, currency = ?, status = ?, note = ?,
+                  started_on = ?, updated_at = ?, updated_by = ?, ended_on = ?
             WHERE client_id = ?`,
         ).bind(
           tier,
-          storedServiceTier,
           fee,
           currency,
           status,
@@ -831,13 +811,12 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       statements.push(
         env.DB.prepare(
           `INSERT INTO client_subscriptions
-             (client_id, tier, service_tier, monthly_fee, currency, started_on, status,
-              note, created_at, updated_at, updated_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (client_id, tier, monthly_fee, currency, started_on, status, note,
+              created_at, updated_at, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           params.id,
           tier,
-          storedServiceTier,
           fee,
           currency,
           startedOn,
@@ -1352,6 +1331,241 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     if (!result.meta.changes) {
       throw notFound("There is no discount running under that reference.");
     }
+    return noContent();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Services, what packages include, and what a client gets on top
+// ---------------------------------------------------------------------------
+
+/** A client's extras, live first, each named for the cheapest package that includes it. */
+export async function readExtras(
+  env: Env,
+  clientId: string,
+  serviceInclusions: ServiceInclusion[],
+) {
+  const { results } = await env.DB.prepare(
+    `SELECT e.id, e.service_id, s.name, p.name AS parent_name, e.note, e.granted_at,
+            e.ended_at, e.ended_reason, g.full_name AS granted_by_name
+       FROM client_service_extras e
+       JOIN package_services s ON s.id = e.service_id
+       LEFT JOIN package_services p ON p.id = s.parent_id
+       LEFT JOIN users g ON g.id = e.granted_by
+      WHERE e.client_id = ?
+      ORDER BY e.ended_at IS NOT NULL, e.granted_at DESC
+      LIMIT 50`,
+  )
+    .bind(clientId)
+    .all<{
+      id: string;
+      service_id: string;
+      name: string;
+      parent_name: string | null;
+      note: string | null;
+      granted_at: string;
+      ended_at: string | null;
+      ended_reason: string | null;
+      granted_by_name: string | null;
+    }>();
+  return results.map((row) => ({
+    ...row,
+    from_tier: cheapestPackageWith(row.service_id, serviceInclusions),
+  }));
+}
+
+export function registerPackageServiceRoutes(router: Router<Env>): void {
+  /** A new service, or a sub-service under one. */
+  router.post("/api/package-services", async ({ request, env }) => {
+    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ name?: unknown; parent_id?: unknown }>(request);
+    const name = String(body.name ?? "").trim();
+    const reason = whyNotAServiceName(name);
+    if (reason) throw badRequest(reason);
+
+    const parentId = body.parent_id ? String(body.parent_id) : null;
+    if (parentId) {
+      const parent = await env.DB.prepare(
+        `SELECT id, parent_id FROM package_services WHERE id = ? AND active = 1`,
+      )
+        .bind(parentId)
+        .first<{ id: string; parent_id: string | null }>();
+      if (!parent) throw notFound("There is no such service to put that under.");
+      // One level only. A sub-sub-service is a sign the catalogue wants a new service.
+      if (parent.parent_id) {
+        throw badRequest("A sub-service cannot have sub-services of its own.");
+      }
+    }
+
+    const last = await env.DB.prepare(
+      `SELECT COALESCE(MAX(position), -1) AS position FROM package_services
+        WHERE parent_id IS ?`,
+    )
+      .bind(parentId)
+      .first<{ position: number }>();
+    const id = newId();
+    const timestamp = nowIso();
+    await env.DB.prepare(
+      `INSERT INTO package_services (id, name, parent_id, position, active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, ?, ?)`,
+    )
+      .bind(id, name, parentId, (last?.position ?? -1) + 1, timestamp, timestamp)
+      .run();
+    return json({ id }, 201);
+  });
+
+  /** Renames, reorders, or retires one. */
+  router.patch("/api/package-services/:id", async ({ request, env, params }) => {
+    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ name?: unknown; position?: unknown; active?: unknown }>(
+      request,
+    );
+    const existing = await env.DB.prepare(`SELECT id FROM package_services WHERE id = ?`)
+      .bind(params.id)
+      .first();
+    if (!existing) throw notFound("There is no such service.");
+
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    if (body.name !== undefined) {
+      const name = String(body.name ?? "").trim();
+      const reason = whyNotAServiceName(name);
+      if (reason) throw badRequest(reason);
+      sets.push("name = ?");
+      values.push(name);
+    }
+    if (body.position !== undefined) {
+      const position = Math.trunc(Number(body.position));
+      if (!Number.isInteger(position) || position < 0) {
+        throw badRequest("Position must be a whole number.");
+      }
+      sets.push("position = ?");
+      values.push(position);
+    }
+    if (body.active !== undefined) {
+      sets.push("active = ?");
+      values.push(body.active ? 1 : 0);
+    }
+    if (!sets.length) throw badRequest("Nothing to change.");
+    values.push(nowIso(), params.id);
+    await env.DB.prepare(
+      `UPDATE package_services SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`,
+    )
+      .bind(...values)
+      .run();
+    return noContent();
+  });
+
+  /**
+   * Removes a service outright - only while no client has ever been given it, or one
+   * of its sub-services, as an extra. After that it is retired instead, so their record
+   * keeps saying what they had.
+   */
+  router.delete("/api/package-services/:id", async ({ request, env, params }) => {
+    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const given = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM client_service_extras e
+        JOIN package_services s ON s.id = e.service_id
+       WHERE s.id = ? OR s.parent_id = ?`,
+    )
+      .bind(params.id, params.id)
+      .first<{ n: number }>();
+    if ((given?.n ?? 0) > 0) {
+      throw conflict(
+        "A client has been given this, so it stays on their record. Retire it instead - it comes off every package and off the list of things to give.",
+      );
+    }
+    const result = await env.DB.prepare(`DELETE FROM package_services WHERE id = ?`)
+      .bind(params.id)
+      .run();
+    if (!result.meta.changes) throw notFound("There is no such service.");
+    return noContent();
+  });
+
+  /**
+   * What a package includes, replaced wholesale: the screen edits the whole matrix and
+   * sends each column back.
+   */
+  router.put("/api/subscription-tiers/:tier/services", async ({ request, env, params }) => {
+    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const tier = requireEnum(params.tier, "tier", CLIENT_TIERS);
+    const body = await readJson<{ service_ids?: unknown }>(request);
+    if (!Array.isArray(body.service_ids)) {
+      throw badRequest("Send the services as a list of ids.");
+    }
+    const ids = [...new Set(body.service_ids.map((v) => String(v)))];
+
+    const { results } = await env.DB.prepare(
+      `SELECT id FROM package_services WHERE active = 1`,
+    ).all<{ id: string }>();
+    const live = new Set(results.map((r) => r.id));
+    if (ids.some((id) => !live.has(id))) {
+      throw badRequest("One of those services does not exist or has been retired.");
+    }
+
+    await env.DB.batch([
+      env.DB.prepare(`DELETE FROM package_service_inclusions WHERE tier = ?`).bind(tier),
+      ...ids.map((id) =>
+        env.DB.prepare(
+          `INSERT INTO package_service_inclusions (tier, service_id) VALUES (?, ?)`,
+        ).bind(tier, id),
+      ),
+    ]);
+    return noContent();
+  });
+
+  /** Gives a client a service from another package, on top of their own. */
+  router.post("/api/clients/:id/extras", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ service_id?: unknown; note?: string }>(request);
+    const serviceId = String(body.service_id ?? "").trim();
+    if (!serviceId) throw badRequest("Choose the service.");
+
+    const subscription = await loadSubscription(env, params.id);
+    if (!subscription) {
+      throw badRequest("Put them on a package first. An extra is on top of one.");
+    }
+
+    const catalogue = await readCatalogue(env);
+    const extras = await readExtras(env, params.id, catalogue.service_inclusions);
+    const reason = whyNotAnExtra({
+      tier: subscription.tier,
+      serviceId,
+      services: catalogue.package_services,
+      inclusions: catalogue.service_inclusions,
+      extras: extras.filter((e) => !e.ended_at),
+    });
+    if (reason) throw badRequest(reason);
+
+    const id = newId();
+    await env.DB.prepare(
+      `INSERT INTO client_service_extras (id, client_id, service_id, note, granted_by, granted_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        id,
+        params.id,
+        serviceId,
+        body.note?.trim()?.slice(0, 300) || null,
+        actor.id,
+        nowIso(),
+      )
+      .run();
+    return json({ id }, 201);
+  });
+
+  /** Takes an extra away. It stays on the record as ended. */
+  router.post("/api/extras/:id/end", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ reason?: string }>(request);
+    const result = await env.DB.prepare(
+      `UPDATE client_service_extras
+          SET ended_at = ?, ended_by = ?, ended_reason = ?
+        WHERE id = ? AND ended_at IS NULL`,
+    )
+      .bind(nowIso(), actor.id, body.reason?.trim()?.slice(0, 300) || null, params.id)
+      .run();
+    if (!result.meta.changes) throw notFound("There is no such live extra.");
     return noContent();
   });
 }

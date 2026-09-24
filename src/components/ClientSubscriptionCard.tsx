@@ -20,7 +20,6 @@ import {
   nextStates,
   type ClientTier,
   whyNotAStartDate,
-  whyNotAServiceLevel,
 } from "@shared/subscriptions";
 import {
   DISCOUNT_KINDS,
@@ -36,7 +35,13 @@ import {
   type DiscountRun,
   type DiscountScope,
 } from "@shared/discounts";
-import type { ClientDiscountRow, ClientSubscriptionDetail } from "@shared/types";
+import type { ClientDiscountRow, ClientExtraRow, ClientSubscriptionDetail } from "@shared/types";
+import {
+  describeSource,
+  extraCandidates,
+  includedTree,
+  whyNotAnExtra,
+} from "@shared/package-services";
 import {
   CURRENCIES,
   CURRENCY_LABELS,
@@ -68,6 +73,7 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
   const [recording, setRecording] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [discounting, setDiscounting] = useState(false);
+  const [giving, setGiving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -137,11 +143,6 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
               {subscription.negotiated && (
                 <span className="pill bg-slate-100 text-slate-600 ring-slate-200">
                   Negotiated rate
-                </span>
-              )}
-              {subscription.service_tier && (
-                <span className="pill bg-teal-50 text-teal-800 ring-teal-200">
-                  Served at {TIER_LABELS[subscription.service_tier]} level
                 </span>
               )}
               {subscription.status !== "active" && (
@@ -288,6 +289,28 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
             </div>
           )}
         </div>
+
+        {/* --- what they get ----------------------------------------------- */}
+        {subscription && (
+          <Included
+            tier={subscription.tier}
+            data={data}
+            partner={partner}
+            busy={busy}
+            onGive={() => setGiving(true)}
+            onEnd={(extra) => {
+              const reason = window.prompt(
+                `Why is ${extra.name} being taken away? The client is not shown this.`,
+                "",
+              );
+              if (!reason?.trim()) return;
+              void act(
+                () => api.endExtra(extra.id, reason.trim()),
+                `${extra.name} is no longer included for them.`,
+              );
+            }}
+          />
+        )}
 
         {/* --- discounts --------------------------------------------------- */}
         {partner && (
@@ -490,6 +513,18 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
         }}
       />
 
+      {giving && subscription && (
+        <ExtraModal
+          tier={subscription.tier}
+          data={data}
+          onClose={() => setGiving(false)}
+          onSave={async (body) => {
+            await act(() => api.giveExtra(clientId, body), "Added on top of their package.");
+            setGiving(false);
+          }}
+        />
+      )}
+
       <DiscountModal
         open={discounting}
         currency={currency}
@@ -518,6 +553,239 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
         }}
       />
     </section>
+  );
+}
+
+/**
+ * What this client actually gets: their package's services, with anything given on top
+ * of the package slotted in and marked for the package it came from.
+ *
+ * The client sees the same tree on their own page, drawn by the same function, so the
+ * two cannot disagree about what was promised.
+ */
+function Included({
+  tier,
+  data,
+  partner,
+  busy,
+  onGive,
+  onEnd,
+}: {
+  tier: ClientTier;
+  data: ClientSubscriptionDetail;
+  partner: boolean;
+  busy: boolean;
+  onGive: () => void;
+  onEnd: (extra: ClientExtraRow) => void;
+}) {
+  const live = data.extras.filter((e) => !e.ended_at);
+  const past = data.extras.filter((e) => e.ended_at);
+  const tree = includedTree({
+    tier,
+    services: data.package_services,
+    inclusions: data.service_inclusions,
+    extras: live,
+  });
+  const extraFor = (serviceId: string) => live.find((e) => e.service_id === serviceId);
+  const canGive =
+    extraCandidates({ tier, services: data.package_services, inclusions: data.service_inclusions, extras: live })
+      .length > 0;
+
+  return (
+    <div className="border-t border-slate-200 pt-4">
+      <div className="mb-2 flex flex-wrap items-baseline gap-2">
+        <h3 className="text-sm font-semibold text-slate-900">What they get</h3>
+        <span className="text-xs text-slate-500">
+          {TIER_LABELS[tier]}
+          {live.length > 0 && `, plus ${live.length} extra${live.length === 1 ? "" : "s"}`}
+        </span>
+        {partner && canGive && (
+          <button type="button" className="btn-ghost btn-sm ml-auto" disabled={busy} onClick={onGive}>
+            Give something from another package
+          </button>
+        )}
+      </div>
+
+      {tree.length === 0 ? (
+        <p className="muted">
+          Nothing is listed under {TIER_LABELS[tier]} yet. Set what each package includes in
+          Portal settings.
+        </p>
+      ) : (
+        <ul className="space-y-1.5 text-sm">
+          {tree.map((branch) => (
+            <li key={branch.id}>
+              <ExtraLine
+                name={branch.name}
+                extra={branch.extra}
+                from={branch.from}
+                row={branch.extra ? extraFor(branch.id) : undefined}
+                partner={partner}
+                busy={busy}
+                onEnd={onEnd}
+                heading
+              />
+              {branch.children.length > 0 && (
+                <ul className="ml-4 mt-1 space-y-1 border-l border-slate-200 pl-3">
+                  {branch.children.map((child) => (
+                    <li key={child.id}>
+                      <ExtraLine
+                        name={child.name}
+                        extra={child.extra}
+                        from={child.from}
+                        row={child.extra ? extraFor(child.id) : undefined}
+                        partner={partner}
+                        busy={busy}
+                        onEnd={onEnd}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {past.length > 0 && (
+        <p className="hint mt-3">
+          Previously given, since taken away:{" "}
+          {past
+            .map((e) => `${e.parent_name ? `${e.parent_name} · ` : ""}${e.name}`)
+            .join(", ")}
+          .
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** One line of the tree: plain when it is part of the package, marked when it is an extra. */
+function ExtraLine({
+  name,
+  extra,
+  from,
+  row,
+  partner,
+  busy,
+  onEnd,
+  heading = false,
+}: {
+  name: string;
+  extra: boolean;
+  from: ClientTier | null;
+  row?: ClientExtraRow;
+  partner: boolean;
+  busy: boolean;
+  onEnd: (extra: ClientExtraRow) => void;
+  heading?: boolean;
+}) {
+  if (!extra) {
+    return (
+      <span className={heading ? "font-medium text-slate-800" : "text-slate-700"}>{name}</span>
+    );
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2 rounded-md bg-teal-50 px-2 py-1 ring-1 ring-inset ring-teal-200">
+      <span className={`${heading ? "font-medium" : ""} text-teal-900`}>{name}</span>
+      <span className="pill bg-white text-teal-800 ring-teal-200">{describeSource(from)}</span>
+      {row?.note && <span className="text-xs text-teal-800">{row.note}</span>}
+      {row && (
+        <span className="text-xs text-teal-700">
+          since {formatDate(row.granted_at)}
+          {row.granted_by_name ? ` · ${row.granted_by_name}` : ""}
+        </span>
+      )}
+      {partner && row && (
+        <button
+          type="button"
+          className="link text-xs"
+          disabled={busy}
+          onClick={() => onEnd(row)}
+        >
+          Take away
+        </button>
+      )}
+    </span>
+  );
+}
+
+/** Giving a client one thing from another package. */
+function ExtraModal({
+  tier,
+  data,
+  onClose,
+  onSave,
+}: {
+  tier: ClientTier;
+  data: ClientSubscriptionDetail;
+  onClose: () => void;
+  onSave: (body: { service_id: string; note?: string }) => Promise<void>;
+}) {
+  const live = data.extras.filter((e) => !e.ended_at);
+  const candidates = extraCandidates({
+    tier,
+    services: data.package_services,
+    inclusions: data.service_inclusions,
+    extras: live,
+  });
+  const [serviceId, setServiceId] = useState(candidates[0]?.id ?? "");
+  const [note, setNote] = useState("");
+  const refusal = serviceId
+    ? whyNotAnExtra({
+        tier,
+        serviceId,
+        services: data.package_services,
+        inclusions: data.service_inclusions,
+        extras: live,
+      })
+    : "Choose the service.";
+  const chosen = candidates.find((c) => c.id === serviceId);
+
+  return (
+    <Modal
+      open
+      title="Give something from another package"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={refusal !== null}
+            onClick={() => void onSave({ service_id: serviceId, note: note.trim() || undefined })}
+          >
+            Include it for them
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="muted">
+          On top of {TIER_LABELS[tier]}, at no change to the fee. It appears on their own
+          page, marked for the package it belongs to.
+        </p>
+        <Field label="Service" hint={refusal ?? (chosen ? describeSource(chosen.from) : "")}>
+          {(id) => (
+            <Select id={id} value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
+              {candidates.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label} - {describeSource(c.from)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Why" hint="For the firm's record. The client is not shown this.">
+          {(id) => (
+            <TextInput id={id} value={note} onChange={(e) => setNote(e.target.value)} />
+          )}
+        </Field>
+      </div>
+    </Modal>
   );
 }
 
@@ -885,7 +1153,6 @@ function MoveTierModal({
   onClose: () => void;
   onSave: (body: {
     tier: ClientTier;
-    service_tier: ClientTier | null;
     monthly_fee: number | null;
     currency: Currency;
     started_on?: string;
@@ -893,15 +1160,6 @@ function MoveTierModal({
   }) => Promise<void>;
 }) {
   const [tier, setTier] = useState<ClientTier>(current?.tier ?? "starter");
-  /*
-   * "" is "the same as the package". Kept as a string so the select can say so in
-   * words rather than pretending the package is a second choice of itself.
-   */
-  const [serviceTier, setServiceTier] = useState<ClientTier | "">(
-    current?.service_tier ?? "",
-  );
-  const serviceProblem =
-    serviceTier && serviceTier !== tier ? whyNotAServiceLevel(tier, serviceTier) : null;
   const [fee, setFee] = useState(current?.monthly_fee?.toString() ?? "");
   const [status, setStatus] = useState(current?.status ?? "active");
   const today = new Date().toISOString().slice(0, 10);
@@ -935,11 +1193,10 @@ function MoveTierModal({
           <button
             type="button"
             className="btn-primary"
-            disabled={startProblem !== null || serviceProblem !== null}
+            disabled={startProblem !== null}
             onClick={() =>
               void onSave({
                 tier,
-                service_tier: serviceTier && serviceTier !== tier ? serviceTier : null,
                 monthly_fee: fee.trim() === "" ? null : Number(fee),
                 currency,
                 started_on: startedOn,
@@ -957,28 +1214,6 @@ function MoveTierModal({
           {(id) => (
             <Select id={id} value={tier} onChange={(e) => setTier(e.target.value as ClientTier)}>
               {options(TIER_ORDER, TIER_LABELS)}
-            </Select>
-          )}
-        </Field>
-        <Field
-          label="Served at"
-          hint={
-            serviceProblem ??
-            "Where this client gets a higher package's service than the one they are billed for, say which. Their figures are measured against it, and their own page tells them."
-          }
-        >
-          {(id) => (
-            <Select
-              id={id}
-              value={serviceTier}
-              onChange={(e) => setServiceTier(e.target.value as ClientTier | "")}
-            >
-              <option value="">Same as the package</option>
-              {TIER_ORDER.filter((t) => t !== tier).map((t) => (
-                <option key={t} value={t}>
-                  {TIER_LABELS[t]} level
-                </option>
-              ))}
             </Select>
           )}
         </Field>

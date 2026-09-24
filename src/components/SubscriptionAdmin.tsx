@@ -10,7 +10,7 @@
  * and every line of what is in it.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   CRITERION_UNITS,
   CRITERION_UNIT_LABELS,
@@ -24,6 +24,12 @@ import {
   type FeeBasis,
 } from "@shared/subscriptions";
 import type { SubscriptionCatalogue } from "@shared/types";
+import {
+  PACKAGE_COLUMNS,
+  serviceTree,
+  whyNotAServiceName,
+  type PackageService,
+} from "@shared/package-services";
 import {
   CURRENCIES,
   CURRENCY_LABELS,
@@ -87,6 +93,7 @@ export function SubscriptionAdmin() {
 
       <CriteriaCard data={data} busy={busy} guard={guard} />
       <TiersCard data={data} busy={busy} guard={guard} />
+      <PackageServicesCard data={data} busy={busy} guard={guard} />
       <ServicesCard data={data} busy={busy} guard={guard} />
     </div>
   );
@@ -242,28 +249,6 @@ function TiersCard({
   const valueOf = (tier: ClientTier, field: string, fallback: string) =>
     draft[key(tier, field)] ?? fallback;
 
-  /**
-   * The package's inclusions as one editable block of text.
-   *
-   * A line indented by two spaces is a sub-item of the line above it, which is exactly
-   * how the proposal reads - "VAT & levies" under "Tax services" - and is a great deal
-   * less work to edit than a row of controls per line. The Worker parses the same shape
-   * back out.
-   */
-  const inclusionsText = (tier: ClientTier) => {
-    const lines = data.inclusions.filter((i) => i.tier === tier);
-    const tops = lines.filter((i) => !i.parent_id).sort((a, b) => a.position - b.position);
-    return tops
-      .flatMap((top) => [
-        top.label,
-        ...lines
-          .filter((i) => i.parent_id === top.id)
-          .sort((a, b) => a.position - b.position)
-          .map((sub) => `  ${sub.label}`),
-      ])
-      .join("\n");
-  };
-
   const save = (tier: ClientTier) => {
     const row = data.tiers.find((t) => t.tier === tier);
     const fee = valueOf(tier, "fee", row?.monthly_fee?.toString() ?? "").trim();
@@ -278,11 +263,6 @@ function TiersCard({
       const raw = valueOf(tier, criterion.id, current?.ceiling?.toString() ?? "").trim();
       ceilings[criterion.id] = raw === "" ? null : Number(raw);
     }
-    const inclusions = valueOf(tier, "inclusions", inclusionsText(tier))
-      .split("\n")
-      .filter((line) => line.trim())
-      .map((line) => ({ label: line.trim(), sub: /^\s\s/.test(line) }));
-
     void guard(
       () =>
         api.saveTier(tier, {
@@ -291,7 +271,6 @@ function TiersCard({
           summary,
           ideal_for: idealFor,
           ceilings,
-          inclusions,
         }),
       `${TIER_LABELS[tier]} saved.`,
     );
@@ -389,25 +368,6 @@ function TiersCard({
                   )}
                 </Field>
 
-                <div className="sm:col-span-2">
-                  <Field
-                    label="What is included"
-                    hint="One line each. Indent a line by two spaces to put it under the line above, the way the proposal sets out tax services."
-                  >
-                    {(id) => (
-                      <TextArea
-                        id={id}
-                        rows={8}
-                        className="font-mono text-xs"
-                        value={valueOf(tier, "inclusions", inclusionsText(tier))}
-                        onChange={(e) =>
-                          setDraft((d) => ({ ...d, [key(tier, "inclusions")]: e.target.value }))
-                        }
-                      />
-                    )}
-                  </Field>
-                </div>
-
                 {data.criteria.map((criterion) => {
                   const current = data.ceilings.find(
                     (c) => c.tier === tier && c.criterion_id === criterion.id,
@@ -436,6 +396,235 @@ function TiersCard({
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The firm's services and sub-services, and which package includes which.
+ *
+ * Two things on one card because they are one decision: what the firm does, and what
+ * each package gets of it. The matrix is edited as a whole and saved as a whole, one
+ * column per package, because "Growth gets everything Starter gets, plus these" is
+ * easier to see as ticks in a grid than as four separate lists.
+ */
+function PackageServicesCard({
+  data,
+  busy,
+  guard,
+}: {
+  data: SubscriptionCatalogue;
+  busy: boolean;
+  guard: Guard;
+}) {
+  const [newService, setNewService] = useState("");
+  const [newSub, setNewSub] = useState<Record<string, string>>({});
+  /*
+   * The matrix as edited. Seeded from what is saved and reset whenever the catalogue
+   * reloads, so a save elsewhere on the page never leaves stale ticks here.
+   */
+  const [ticks, setTicks] = useState<Record<string, Set<string>>>({});
+  const [dirty, setDirty] = useState(false);
+  const saved = useMemo(() => {
+    const out: Record<string, Set<string>> = {};
+    for (const tier of PACKAGE_COLUMNS) out[tier] = new Set();
+    for (const i of data.service_inclusions) out[i.tier]?.add(i.service_id);
+    return out;
+  }, [data.service_inclusions]);
+  useEffect(() => {
+    setTicks(Object.fromEntries(Object.entries(saved).map(([t, set]) => [t, new Set(set)])));
+    setDirty(false);
+  }, [saved]);
+
+  const tree = serviceTree(data.package_services);
+  const retired = data.package_services.filter((s) => s.active !== 1);
+  const ticked = (tier: ClientTier, id: string) => ticks[tier]?.has(id) ?? false;
+  const toggle = (tier: ClientTier, id: string) => {
+    setTicks((prev) => {
+      const next = { ...prev, [tier]: new Set(prev[tier] ?? []) };
+      if (next[tier].has(id)) next[tier].delete(id);
+      else next[tier].add(id);
+      return next;
+    });
+    setDirty(true);
+  };
+  const saveMatrix = () =>
+    void guard(
+      () =>
+        Promise.all(
+          PACKAGE_COLUMNS.map((tier) => api.savePackageServices(tier, [...(ticks[tier] ?? [])])),
+        ),
+      "What each package includes is saved.",
+    );
+  const rename = (id: string, current: string) => {
+    const name = window.prompt("Rename it to:", current);
+    if (name === null || name.trim() === current) return;
+    const reason = whyNotAServiceName(name);
+    if (reason) {
+      window.alert(reason);
+      return;
+    }
+    void guard(() => api.updatePackageService(id, { name: name.trim() }), "Renamed.");
+  };
+  const remove = (id: string, name: string) => {
+    if (!window.confirm(`Remove ${name} from the catalogue and from every package?`)) return;
+    void guard(() => api.deletePackageService(id), `${name} removed.`);
+  };
+  const retire = (id: string, name: string) =>
+    void guard(() => api.updatePackageService(id, { active: false }), `${name} retired.`);
+  const restore = (id: string, name: string) =>
+    void guard(() => api.updatePackageService(id, { active: true }), `${name} is back.`);
+
+  const row = (service: PackageService, sub: boolean) => (
+    <tr key={service.id} className={sub ? "" : "bg-slate-50/60"}>
+      <td className={`py-1.5 pr-3 ${sub ? "pl-7 text-slate-700" : "font-medium text-slate-900"}`}>
+        <span>{service.name}</span>
+        <span className="ml-2 whitespace-nowrap text-xs">
+          <button type="button" className="link" disabled={busy} onClick={() => rename(service.id, service.name)}>
+            rename
+          </button>
+          {" · "}
+          <button type="button" className="link" disabled={busy} onClick={() => retire(service.id, service.name)}>
+            retire
+          </button>
+          {" · "}
+          <button type="button" className="link" disabled={busy} onClick={() => remove(service.id, service.name)}>
+            remove
+          </button>
+        </span>
+      </td>
+      {PACKAGE_COLUMNS.map((tier) => (
+        <td key={tier} className="py-1.5 text-center">
+          <input
+            type="checkbox"
+            aria-label={`${service.name} in ${TIER_LABELS[tier]}`}
+            checked={ticked(tier, service.id)}
+            onChange={() => toggle(tier, service.id)}
+          />
+        </td>
+      ))}
+    </tr>
+  );
+
+  return (
+    <section className="card">
+      <div className="card-header">
+        <h2 className="card-title">Services, and what each package includes</h2>
+        <button
+          type="button"
+          className="btn-primary btn-sm"
+          disabled={busy || !dirty}
+          onClick={saveMatrix}
+        >
+          Save what each package includes
+        </button>
+      </div>
+      <div className="space-y-5 p-4">
+        <p className="muted">
+          A service is a thing the firm does - Tax services; a sub-service is a part of it
+          - VAT &amp; levies. Tick what each package includes. Ticking a sub-service brings
+          its service along as the heading. A client on one package can then be given a
+          single service or sub-service from a higher one, on their record.
+        </p>
+
+        {tree.length === 0 ? (
+          <p className="muted">No services yet. Add the first one below.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="py-1.5 pr-3 font-medium">Service</th>
+                  {PACKAGE_COLUMNS.map((tier) => (
+                    <th key={tier} className="py-1.5 text-center font-medium">
+                      {TIER_LABELS[tier]}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {tree.map((service) => (
+                  <Fragment key={service.id}>
+                    {row(service, false)}
+                    {service.children.map((child) => row(child, true))}
+                    <tr>
+                      <td className="py-1.5 pl-7 pr-3" colSpan={1 + PACKAGE_COLUMNS.length}>
+                        <form
+                          className="flex max-w-md gap-2"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const name = (newSub[service.id] ?? "").trim();
+                            const reason = whyNotAServiceName(name);
+                            if (reason) return;
+                            void guard(
+                              () => api.addPackageService({ name, parent_id: service.id }),
+                              `${name} added under ${service.name}.`,
+                            );
+                            setNewSub((d) => ({ ...d, [service.id]: "" }));
+                          }}
+                        >
+                          <TextInput
+                            aria-label={`New sub-service under ${service.name}`}
+                            placeholder={`Add a sub-service under ${service.name}`}
+                            value={newSub[service.id] ?? ""}
+                            onChange={(e) =>
+                              setNewSub((d) => ({ ...d, [service.id]: e.target.value }))
+                            }
+                          />
+                          <button
+                            type="submit"
+                            className="btn-secondary btn-sm"
+                            disabled={busy || !(newSub[service.id] ?? "").trim()}
+                          >
+                            Add
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <form
+          className="flex max-w-md gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const name = newService.trim();
+            if (whyNotAServiceName(name)) return;
+            void guard(() => api.addPackageService({ name }), `${name} added.`);
+            setNewService("");
+          }}
+        >
+          <TextInput
+            aria-label="New service"
+            placeholder="Add a service, such as Payroll administration"
+            value={newService}
+            onChange={(e) => setNewService(e.target.value)}
+          />
+          <button type="submit" className="btn-secondary btn-sm" disabled={busy || !newService.trim()}>
+            Add a service
+          </button>
+        </form>
+
+        {retired.length > 0 && (
+          <p className="hint">
+            Retired:{" "}
+            {retired.map((s, i) => (
+              <span key={s.id}>
+                {i > 0 && ", "}
+                {s.name}{" "}
+                <button type="button" className="link" disabled={busy} onClick={() => restore(s.id, s.name)}>
+                  bring back
+                </button>
+              </span>
+            ))}
+            . A retired service stays on the record of any client who was given it.
+          </p>
+        )}
       </div>
     </section>
   );

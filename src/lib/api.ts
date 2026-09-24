@@ -1083,10 +1083,27 @@ export const api = {
       summary: string;
       ideal_for: string;
       ceilings: Record<string, number | null>;
-      /** The whole list, in order. Omitted when only the price is being changed. */
-      inclusions?: Array<{ label: string; sub: boolean }>;
     },
   ) => request<void>(`/api/subscription-tiers/${tier}`, { method: "PATCH", body }),
+
+  // ------------------------------------------- services and what packages include
+  addPackageService: (body: { name: string; parent_id?: string | null }) =>
+    request<{ id: string }>("/api/package-services", { method: "POST", body }),
+  updatePackageService: (
+    id: string,
+    body: { name?: string; position?: number; active?: boolean },
+  ) => request<void>(`/api/package-services/${id}`, { method: "PATCH", body }),
+  deletePackageService: (id: string) =>
+    request<void>(`/api/package-services/${id}`, { method: "DELETE" }),
+  savePackageServices: (tier: ClientTier, serviceIds: string[]) =>
+    request<void>(`/api/subscription-tiers/${tier}/services`, {
+      method: "PUT",
+      body: { service_ids: serviceIds },
+    }),
+  giveExtra: (clientId: string, body: { service_id: string; note?: string }) =>
+    request<{ id: string }>(`/api/clients/${clientId}/extras`, { method: "POST", body }),
+  endExtra: (id: string, reason: string) =>
+    request<void>(`/api/extras/${id}/end`, { method: "POST", body: { reason } }),
 
   addService: (body: {
     name: string;
@@ -1136,7 +1153,6 @@ export const api = {
     clientId: string,
     body: {
       tier: ClientTier;
-      service_tier?: ClientTier | null;
       monthly_fee: number | null;
       currency?: Currency;
       started_on?: string;
