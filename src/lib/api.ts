@@ -302,6 +302,15 @@ export const api = {
     password: string;
   }) => request<{ ok: true }>("/api/auth/bootstrap", { method: "POST", body: input }),
 
+  // ------------------------------------------------------------ push
+  pushKey: () => request<{ configured: boolean; public_key: string | null }>("/api/push/key"),
+  pushDevices: () => request<{ devices: number }>("/api/push/subscriptions"),
+  savePushSubscription: (body: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    request<void>("/api/push/subscriptions", { method: "PUT", body }),
+  removePushSubscription: (endpoint: string) =>
+    request<void>("/api/push/subscriptions", { method: "DELETE", body: { endpoint } }),
+  sendTestPush: () => request<{ sent: number }>("/api/push/test", { method: "POST" }),
+
   setEmailNotifications: (enabled: boolean) =>
     request<{ email_notifications: boolean }>("/api/me/preferences", {
       method: "PATCH",

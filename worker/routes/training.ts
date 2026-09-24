@@ -437,11 +437,21 @@ export function registerTrainingRoutes(router: Router<Env>): void {
 
   // ------------------------------------------------ asking somebody to certify
 
-  router.post("/api/employees/:id/certifications", async ({ request, env, params }) => {
+  router.post("/api/employees/:id/certifications", async ({ request, env, params, waitUntil }) => {
     const actor = await requireRole(env, request, MIN_TRAINING_ADMIN);
-    const target = await env.DB.prepare(`SELECT id, full_name FROM users WHERE id = ?`)
+    const target = await env.DB.prepare(
+      `SELECT u.id, u.full_name, u.email, p.work_email, p.personal_email
+         FROM users u LEFT JOIN employee_profiles p ON p.user_id = u.id
+        WHERE u.id = ?`,
+    )
       .bind(params.id)
-      .first<{ id: string; full_name: string }>();
+      .first<{
+        id: string;
+        full_name: string;
+        email: string;
+        work_email: string | null;
+        personal_email: string | null;
+      }>();
     if (!target) throw notFound("That employee does not exist.");
 
     const body = await readJson<Record<string, unknown>>(request);
@@ -490,6 +500,32 @@ export function registerTrainingRoutes(router: Router<Env>): void {
         detail: `Asked to take ${cert.name}${dueOn ? `, by ${dueOn}` : ""}.`,
       }),
     ]);
+
+    /*
+     * Told by email as well as in the inbox, the way a reminder already is. After the
+     * response, and never able to fail it: the assignment is written by now, and a
+     * mail provider having a bad afternoon is not a reason to undo it. Whoever asked
+     * is copied in, visibly, as on the reminder.
+     */
+    const settings = await readSettings(env);
+    waitUntil(
+      sendToPerson(env, {
+        to: { email: target.work_email || target.personal_email || target.email, full_name: target.full_name },
+        subject: `Please take the ${cert.name}`,
+        headline:
+          `${actor.full_name} has asked you to complete the ${cert.name}` +
+          (dueOn ? `, by ${dueOn}.` : "."),
+        detail:
+          `Tool: ${cert.tool_name}` +
+          (cert.course_url ? `\nCourse: ${cert.course_url}` : "") +
+          `\nWhen you have finished, attach your certificate under My training.`,
+        link: cert.course_url ?? "",
+        linkLabel: cert.course_url ? "Take the course" : "",
+        firmName: settings.firm_name,
+        reason: `the firm has asked you to complete ${cert.name}`,
+        cc: [actor.email],
+      }),
+    );
 
     return json({ id }, 201);
   });
