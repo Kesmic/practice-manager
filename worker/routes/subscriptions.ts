@@ -56,6 +56,8 @@ import {
   type Figure,
   type ServiceState,
   whyNotAStartDate,
+  servedTier,
+  whyNotAServiceLevel,
 } from "../../shared/subscriptions";
 import {
   DISCOUNT_KINDS,
@@ -171,13 +173,15 @@ async function latestFigures(env: Env, clientId: string): Promise<Figure[]> {
 
 async function loadSubscription(env: Env, clientId: string) {
   return await env.DB.prepare(
-    `SELECT client_id, tier, monthly_fee, currency, started_on, status, ended_on, note
+    `SELECT client_id, tier, service_tier, monthly_fee, currency, started_on, status,
+            ended_on, note
        FROM client_subscriptions WHERE client_id = ?`,
   )
     .bind(clientId)
     .first<{
       client_id: string;
       tier: ClientTier;
+      service_tier: ClientTier | null;
       monthly_fee: number | null;
       currency: string;
       started_on: string;
@@ -545,7 +549,8 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     const [subs, figures] = await env.DB.batch([
       env.DB.prepare(
-        `SELECT s.client_id, s.tier, s.monthly_fee, s.currency, s.started_on, s.status,
+        `SELECT s.client_id, s.tier, s.service_tier, s.monthly_fee, s.currency,
+                s.started_on, s.status,
                 c.name AS client_name, c.code AS client_code,
                 p.full_name AS partner_name
            FROM client_subscriptions s
@@ -581,9 +586,11 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       client_name: string;
       client_code: string;
       partner_name: string | null;
+      service_tier: ClientTier | null;
     }>).map((sub) => {
       const mine = byClient.get(sub.client_id) ?? [];
-      const assessment = assess(sub.tier, catalogue.criteria, catalogue.ceilings, mine);
+      // Measured against the level they are served at, not the one on the invoice.
+      const assessment = assess(servedTier(sub), catalogue.criteria, catalogue.ceilings, mine);
       return {
         ...sub,
         ...feeFor(sub, catalogue.tiers),
@@ -667,7 +674,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       figures,
       figure_history: allFigures.results,
       assessment: subscription
-        ? assess(subscription.tier, catalogue.criteria, catalogue.ceilings, figures)
+        ? assess(servedTier(subscription), catalogue.criteria, catalogue.ceilings, figures)
         : null,
       history: history.results,
       /*
@@ -692,6 +699,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const body = await readJson<{
       tier?: unknown;
+      service_tier?: unknown;
       monthly_fee?: unknown;
       currency?: unknown;
       started_on?: string;
@@ -705,6 +713,20 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     if (!client) throw notFound("There is no such client.");
 
     const tier = requireEnum(body.tier, "tier", CLIENT_TIERS) as ClientTier;
+    /*
+     * The level they are served at, where a Partner has said it is above the package.
+     * Empty, or the package itself, is stored as null: "the same as the package" is
+     * one fact, not two ways of writing it.
+     */
+    const serviceTier =
+      body.service_tier === undefined || body.service_tier === null || body.service_tier === ""
+        ? null
+        : (requireEnum(body.service_tier, "service_tier", CLIENT_TIERS) as ClientTier);
+    if (serviceTier) {
+      const reason = whyNotAServiceLevel(tier, serviceTier);
+      if (reason) throw badRequest(reason);
+    }
+    const storedServiceTier = serviceTier && serviceTier !== tier ? serviceTier : null;
     const fee = optionalAmount(body.monthly_fee, "The fee");
     const status = body.status
       ? requireEnum(body.status, "status", ["active", "paused", "ended"] as const)
@@ -743,11 +765,12 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       statements.push(
         env.DB.prepare(
           `UPDATE client_subscriptions
-              SET tier = ?, monthly_fee = ?, currency = ?, status = ?, note = ?,
-                  started_on = ?, updated_at = ?, updated_by = ?, ended_on = ?
+              SET tier = ?, service_tier = ?, monthly_fee = ?, currency = ?, status = ?,
+                  note = ?, started_on = ?, updated_at = ?, updated_by = ?, ended_on = ?
             WHERE client_id = ?`,
         ).bind(
           tier,
+          storedServiceTier,
           fee,
           currency,
           status,
@@ -808,12 +831,13 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       statements.push(
         env.DB.prepare(
           `INSERT INTO client_subscriptions
-             (client_id, tier, monthly_fee, currency, started_on, status, note,
-              created_at, updated_at, updated_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (client_id, tier, service_tier, monthly_fee, currency, started_on, status,
+              note, created_at, updated_at, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           params.id,
           tier,
+          storedServiceTier,
           fee,
           currency,
           startedOn,

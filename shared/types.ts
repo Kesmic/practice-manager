@@ -1073,6 +1073,11 @@ export interface ResolvedSubscription {
   status: "active" | "paused" | "ended";
   ended_on?: string | null;
   note?: string | null;
+  /**
+   * The level they are served at where it is above the package they are billed for -
+   * a client on Starter given Growth's service. Null means the same as the package.
+   */
+  service_tier: ClientTier | null;
   /** What they actually pay: their own rate if set, otherwise the tier's. */
   fee: number | null;
   negotiated: boolean;
