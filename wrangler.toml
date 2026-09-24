@@ -59,6 +59,12 @@ SESSION_TTL_DAYS = "7"
 # an MX record on a subdomain, and Wix, which holds kesmic.org, only allows MX on the
 # root. SendGrid verifies with CNAME records, which Wix does support.
 EMAIL_PROVIDER = "sendgrid"
+
+# Push notifications. See docs/PUSH.md: run `node scripts/vapid-keys.mjs`, paste the
+# public key here, and put the private key in as the VAPID_PRIVATE_KEY secret. Until
+# both are set the portal pushes nothing and the account page says so.
+VAPID_SUBJECT = "mailto:portal@kesmic.org"
+# VAPID_PUBLIC_KEY = "..."
 # Any mailbox at the domain authenticated in SendGrid. It does not have to be a real
 # inbox to send from, but making it one means replies are not lost.
 EMAIL_FROM = "Kesmic Practice Manager <portal@kesmic.org>"

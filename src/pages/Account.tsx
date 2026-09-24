@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ROLE_LABELS } from "@shared/workflow";
 import { ApiRequestError, api } from "../lib/api";
+import { currentSubscription, disablePush, enablePush, pushSupported } from "../lib/push";
 import { useSession } from "../lib/auth";
 import { DetailRow, ErrorBanner, SuccessBanner } from "../components/ui";
 import { formatDate } from "../lib/format";
@@ -121,6 +122,7 @@ export function Account() {
             reviewing it, created it, or have commented on it.
           </span>
         </label>
+        <PushCard setNotice={setDone} setError={setError} />
         <p className="hint">
           Turning this off never affects the portal inbox, which always shows
           everything. If your firm has not set email up yet, nothing is sent either
@@ -129,6 +131,136 @@ export function Account() {
       </div>
 
       <ChangePasswordForm onChanged={refresh} />
+    </div>
+  );
+}
+
+/**
+ * Push notifications on this device.
+ *
+ * Per device, because that is how browsers do it: a phone and a laptop are enrolled
+ * separately. The card reads the browser's own state - enrolled here or not - rather
+ * than a flag on the account, so it is never out of step with what the device will
+ * actually do.
+ */
+function PushCard({
+  setNotice,
+  setError,
+}: {
+  setNotice: (message: string) => void;
+  setError: (message: string | null) => void;
+}) {
+  const supported = pushSupported();
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [enrolled, setEnrolled] = useState(false);
+  const [devices, setDevices] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const blocked = supported && Notification.permission === "denied";
+
+  const refreshPush = useCallback(async () => {
+    try {
+      const [key, count, subscription] = await Promise.all([
+        api.pushKey(),
+        api.pushDevices(),
+        currentSubscription(),
+      ]);
+      setConfigured(key.configured);
+      setDevices(count.devices);
+      setEnrolled(Boolean(subscription));
+    } catch {
+      setConfigured(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (supported) void refreshPush();
+  }, [supported, refreshPush]);
+
+  const run = async (what: () => Promise<void>, message: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await what();
+      await refreshPush();
+      setNotice(message);
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError || err instanceof Error
+          ? err.message
+          : "Could not change that.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!supported) {
+    return (
+      <p className="hint border-t border-slate-200 pt-3">
+        This browser cannot show push notifications. On an iPhone, add the portal to
+        the home screen first and open it from there.
+      </p>
+    );
+  }
+
+  return (
+    <div className="border-t border-slate-200 pt-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1 text-sm text-slate-700">
+          <strong>Push notifications on this device.</strong>{" "}
+          {configured === false
+            ? "Not set up on this portal yet - an administrator needs to add the push keys."
+            : blocked
+              ? "Blocked in this browser. Allow notifications for the portal in the browser's site settings, then turn it on here."
+              : enrolled
+                ? "On. Anything that lands in your inbox is shown here, even with the portal closed."
+                : "Off. Turn it on to be told here when something lands in your inbox."}
+          {devices > 0 && (
+            <span className="text-slate-500">
+              {" "}
+              {devices} device{devices === 1 ? "" : "s"} enrolled.
+            </span>
+          )}
+        </div>
+        {configured && !blocked && (
+          <div className="flex gap-2">
+            {enrolled ? (
+              <>
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      const { sent } = await api.sendTestPush();
+                      if (!sent) throw new Error("Nothing was sent. Try turning it off and on again.");
+                    }, "A test notification is on its way.")
+                  }
+                >
+                  Send a test
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  disabled={busy}
+                  onClick={() => void run(disablePush, "Push turned off on this device.")}
+                >
+                  Turn off
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="btn-primary btn-sm"
+                disabled={busy}
+                onClick={() => void run(enablePush, "Push turned on for this device.")}
+              >
+                Turn on
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

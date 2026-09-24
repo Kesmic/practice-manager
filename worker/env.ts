@@ -67,4 +67,14 @@ export interface Env {
    * it answers to more than one name.
    */
   PORTAL_URL?: string;
+
+  /**
+   * Push notifications. All optional: with no keys nothing is pushed and the account
+   * page says so. The public key is a plain variable, the private key a secret. See
+   * docs/PUSH.md and scripts/vapid-keys.mjs.
+   */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  /** Who to contact about the pushes, as a mailto: address. */
+  VAPID_SUBJECT?: string;
 }

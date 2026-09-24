@@ -13,9 +13,18 @@
       firm's initial - see public/icon.svg.
     -->
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
-    <meta name="theme-color" content="#255291" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
+    <!--
+      Installable as an app. The manifest names it and gives it icons; the service
+      worker (public/sw.js) is what lets a phone or a laptop keep it on the home screen
+      and what receives push notifications. Apple reads its own tags rather than the
+      manifest, so both are here.
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Kesmic" />
+    <meta name="theme-color" content="#0F2440" />
   </head>
   <body>
     <div id="root"></div>

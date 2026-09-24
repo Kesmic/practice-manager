@@ -26,6 +26,8 @@ import {
   registerPackageServiceRoutes,
   registerSubscriptionRoutes,
 } from "./routes/subscriptions";
+import { registerPushRoutes } from "./routes/push";
+import { dispatchPush } from "./push";
 import { registerClientPortalRoutes } from "./routes/client-portal";
 import { registerInvoiceRoutes } from "./routes/invoices";
 import { registerPartnerRoutes } from "./routes/partners";
@@ -74,6 +76,7 @@ registerStaffFileRoutes(router);
 registerSignatureRoutes(router);
 registerSubscriptionRoutes(router);
 registerPackageServiceRoutes(router);
+registerPushRoutes(router);
 registerClientPortalRoutes(router);
 registerInvoiceRoutes(router);
 registerPartnerRoutes(router);
@@ -219,13 +222,22 @@ export default {
       if (!match) {
         return json({ error: `No API endpoint at ${url.pathname}` }, 404);
       }
-      return await match.handler({
+      const response = await match.handler({
         request,
         env,
         params: match.params,
         url,
         waitUntil: (promise) => ctx.waitUntil(promise),
       });
+      /*
+       * Anything that wrote to the portal may have written to somebody's inbox. The
+       * dispatcher finds what is new and pushes it, after the response and without
+       * any route having to know it exists.
+       */
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        ctx.waitUntil(dispatchPush(env));
+      }
+      return response;
     } catch (err) {
       return errorResponse(err);
     }
