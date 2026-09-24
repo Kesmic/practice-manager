@@ -20,7 +20,6 @@ import {
   describeFee,
   tierAbove,
   type ClientTier,
-  servedTier,
 } from "@shared/subscriptions";
 import type { ClientPortalSubscription } from "@shared/types";
 import { ApiRequestError, api } from "../../lib/api";
@@ -28,6 +27,7 @@ import { TierMeters } from "../../components/TierMeters";
 import { PackageCards } from "../../components/PackageCards";
 import { formatAmount } from "@shared/money";
 import { describeDiscountTerm, discountAmount } from "@shared/discounts";
+import { describeSource, includedTree } from "@shared/package-services";
 import { ErrorBanner, Spinner, SuccessBanner } from "../../components/ui";
 import { formatDate, formatMoney } from "../../lib/format";
 
@@ -69,14 +69,21 @@ export function ClientSubscription() {
     discount.applies_to !== "services"
       ? discountAmount(discount, subscription.fee)
       : null;
+  const next = subscription ? tierAbove(subscription.tier) : null;
   /*
-   * The level they are served at, which is what the meters below measure against and
-   * what "the package above" is above. Where a Partner has set it higher than the
-   * package, the page says so, because a client given Growth's service on a Starter
-   * fee should be able to see it rather than take it on trust.
+   * What they get, as one tree: the package's services with anything given on top
+   * slotted in and marked for the package it came from. The firm's screen draws the
+   * same tree with the same function, so what the client is shown is what was promised.
    */
-  const served = subscription ? servedTier(subscription) : null;
-  const next = served ? tierAbove(served) : null;
+  const included = subscription
+    ? includedTree({
+        tier: subscription.tier,
+        services: data.package_services,
+        inclusions: data.service_inclusions,
+        extras: data.extras,
+      })
+    : [];
+  const extrasCount = data?.extras.length ?? 0;
   const nextTier = next ? tiers.find((t) => t.tier === next) : null;
   const mine = subscription ? tiers.find((t) => t.tier === subscription.tier) : null;
 
@@ -156,9 +163,9 @@ export function ClientSubscription() {
                   <span className="pill bg-brand-50 text-link ring-brand-200">
                     Your package since {formatDate(subscription.started_on)}
                   </span>
-                  {subscription.service_tier && (
+                  {extrasCount > 0 && (
                     <span className="pill bg-teal-50 text-teal-800 ring-teal-200">
-                      Served at {TIER_LABELS[subscription.service_tier]} level
+                      Plus {extrasCount} extra{extrasCount === 1 ? "" : "s"} from other packages
                     </span>
                   )}
                 </span>
@@ -230,21 +237,55 @@ export function ClientSubscription() {
             )}
           </section>
 
-          {assessment && criteria.length > 0 && (
+          {included.length > 0 && (
             <section className="card p-5">
-              <h2 className="card-title">
-                Where you sit against{" "}
-                {subscription.service_tier
-                  ? TIER_LABELS[subscription.service_tier]
-                  : "this package"}
-              </h2>
-              {subscription.service_tier && (
+              <h2 className="card-title">What is included for you</h2>
+              {extrasCount > 0 && (
                 <p className="muted mt-1">
-                  You are on {TIER_LABELS[subscription.tier]}, and we serve you at{" "}
-                  {TIER_LABELS[subscription.service_tier]} level - so these are{" "}
-                  {TIER_LABELS[subscription.service_tier]}&apos;s ceilings.
+                  The ones marked are from a higher package, included for you on top of{" "}
+                  {TIER_LABELS[subscription.tier]}.
                 </p>
               )}
+              <ul className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2">
+                {included.map((branch) => (
+                  <li key={branch.id}>
+                    {branch.extra ? (
+                      <span className="inline-flex flex-wrap items-center gap-2 rounded-md bg-teal-50 px-2 py-1 font-medium text-teal-900 ring-1 ring-inset ring-teal-200">
+                        {branch.name}
+                        <span className="pill bg-white text-teal-800 ring-teal-200">
+                          {describeSource(branch.from)}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="font-medium text-slate-900">{branch.name}</span>
+                    )}
+                    {branch.children.length > 0 && (
+                      <ul className="ml-4 mt-1.5 space-y-1 border-l border-slate-200 pl-3 text-sm">
+                        {branch.children.map((child) => (
+                          <li key={child.id}>
+                            {child.extra ? (
+                              <span className="inline-flex flex-wrap items-center gap-2 rounded-md bg-teal-50 px-2 py-0.5 text-teal-900 ring-1 ring-inset ring-teal-200">
+                                {child.name}
+                                <span className="pill bg-white text-teal-800 ring-teal-200">
+                                  {describeSource(child.from)}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-700">{child.name}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {assessment && criteria.length > 0 && (
+            <section className="card p-5">
+              <h2 className="card-title">Where you sit against this package</h2>
               {data.figures.length > 0 && data.figures[0].as_of && (
                 <p className="muted mb-4 mt-1">
                   Taken from your records to {formatDate(data.figures[0].as_of)}

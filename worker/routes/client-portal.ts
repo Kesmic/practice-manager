@@ -54,9 +54,8 @@ import {
   clientMayMove,
   type ClientTier,
   type ServiceState,
-  servedTier,
 } from "../../shared/subscriptions";
-import { feeFor, readCatalogue } from "./subscriptions";
+import { feeFor, readCatalogue, readExtras } from "./subscriptions";
 import { activeDiscount } from "../discounts";
 import { serveDocument } from "./invoices";
 import { standingOf, type InvoiceState, type PaymentLike } from "../../shared/invoices";
@@ -309,14 +308,13 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
     const catalogue = await readCatalogue(env);
 
     const subscription = await env.DB.prepare(
-      `SELECT client_id, tier, service_tier, monthly_fee, currency, started_on, status
+      `SELECT client_id, tier, monthly_fee, currency, started_on, status
          FROM client_subscriptions WHERE client_id = ?`,
     )
       .bind(actor.client_id)
       .first<{
         client_id: string;
         tier: ClientTier;
-        service_tier: ClientTier | null;
         monthly_fee: number | null;
         currency: string;
         started_on: string;
@@ -350,9 +348,26 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
      * off, of what, and for how long. Not the Partner's reason for granting it.
      */
     const discount = await activeDiscount(env, actor.client_id);
+    /*
+     * What they get on top of their package, live only and without the firm's note.
+     * The page draws it into one tree with the package's own services, each extra
+     * marked and named for the package it comes from.
+     */
+    const extras = (await readExtras(env, actor.client_id, catalogue.service_inclusions))
+      .filter((e) => !e.ended_at)
+      .map((e) => ({
+        id: e.id,
+        service_id: e.service_id,
+        name: e.name,
+        parent_name: e.parent_name,
+        from_tier: e.from_tier,
+      }));
 
     return json({
       client: { name: actor.client_name, code: actor.client_code },
+      package_services: catalogue.package_services,
+      service_inclusions: catalogue.service_inclusions,
+      extras,
       discount: discount
         ? {
             kind: discount.kind,
@@ -381,10 +396,9 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
         ? { ...subscription, ...feeFor(subscription, catalogue.tiers) }
         : null,
       figures,
-      // Measured against the level they are served at, which their page says.
       assessment: subscription
         ? assess(
-            servedTier(subscription),
+            subscription.tier,
             catalogue.criteria,
             catalogue.ceilings,
             figures as never,

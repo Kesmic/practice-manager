@@ -3,6 +3,7 @@
  * These mirror the D1 schema in `migrations/`.
  */
 
+import type { PackageService, ServiceInclusion } from "./package-services";
 import type {
   ClientStatus,
   EngagementStatus,
@@ -1060,7 +1061,32 @@ export interface SubscriptionCatalogue {
   tiers: TierRow[];
   ceilings: Ceiling[];
   services: AdditionalService[];
+  /**
+   * What each package includes, one row per package per service, with the heading of
+   * any included sub-service brought along. Derived from `package_services` and
+   * `service_inclusions`; kept in this shape because the package cards and the
+   * proposal read it.
+   */
   inclusions: TierInclusion[];
+  /** The firm's services and sub-services, the catalogue the packages pick from. */
+  package_services: PackageService[];
+  /** Which package includes which service, as chosen - without implied headings. */
+  service_inclusions: ServiceInclusion[];
+}
+
+/** A service or sub-service a client gets on top of their package. */
+export interface ClientExtraRow {
+  id: string;
+  service_id: string;
+  name: string;
+  parent_name: string | null;
+  /** The cheapest package that includes it, which is what it is named for. */
+  from_tier: ClientTier | null;
+  note: string | null;
+  granted_at: string;
+  granted_by_name: string | null;
+  ended_at: string | null;
+  ended_reason: string | null;
 }
 
 /** A client's subscription with the fee already resolved against the tier. */
@@ -1073,11 +1099,6 @@ export interface ResolvedSubscription {
   status: "active" | "paused" | "ended";
   ended_on?: string | null;
   note?: string | null;
-  /**
-   * The level they are served at where it is above the package they are billed for -
-   * a client on Starter given Growth's service. Null means the same as the package.
-   */
-  service_tier: ClientTier | null;
   /** What they actually pay: their own rate if set, otherwise the tier's. */
   fee: number | null;
   negotiated: boolean;
@@ -1164,6 +1185,8 @@ export interface ClientSubscriptionDetail extends SubscriptionCatalogue {
   logins: ClientLoginRow[];
   /** The live discount first, then the ones that have run their course. */
   discounts: ClientDiscountRow[];
+  /** Services from other packages given to this client, live first. */
+  extras: ClientExtraRow[];
 }
 
 // --------------------------------------------------------------------- tax
@@ -1280,6 +1303,11 @@ export interface ClientPortalSubscription {
   client: { name: string; code: string };
   /** The live discount on the account, if there is one. */
   discount: ClientFacingDiscount | null;
+  /** The firm's services, so the page can draw what this client gets as one tree. */
+  package_services: PackageService[];
+  service_inclusions: ServiceInclusion[];
+  /** What they get on top of their package, live only. */
+  extras: Array<Pick<ClientExtraRow, "id" | "service_id" | "name" | "parent_name" | "from_tier">>;
   criteria: SubscriptionCriterion[];
   tiers: TierRow[];
   ceilings: Ceiling[];
