@@ -29,7 +29,7 @@
 
 import type { Env } from "../env";
 import { requireRole } from "../auth";
-import { newId, nowIso, requireEnum, requireString } from "../db";
+import { newId, notifyMany, nowIso, requireEnum, requireString } from "../db";
 import {
   Router,
   badRequest,
@@ -60,6 +60,7 @@ import {
 import { activeDiscount, consumeDiscount, releaseDiscount } from "../discounts";
 import { accrueCommission, cancelCommission } from "../commissions";
 import { currencyOf } from "../../shared/money";
+import { billingDue, normaliseBillingDay } from "../../shared/billing";
 import {
   balanceDue,
   withholdingOn,
@@ -511,228 +512,27 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       note?: string;
     }>(request);
 
-    const client = await env.DB.prepare(`SELECT id, name, code FROM clients WHERE id = ?`)
-      .bind(params.id)
-      .first<{ id: string; name: string; code: string }>();
-    if (!client) throw notFound("There is no such client.");
-
     const period = body.period?.trim() || null;
     if (period && !/^\d{4}-\d{2}$/.test(period)) {
       throw badRequest("Give the month as YYYY-MM.");
     }
-
-    const catalogue = await readCatalogue(env);
-    const subscription = await env.DB.prepare(
-      `SELECT client_id, tier, monthly_fee, currency, status FROM client_subscriptions
-        WHERE client_id = ?`,
-    )
-      .bind(params.id)
-      .first<{
-        client_id: string;
-        tier: "starter" | "growth" | "enterprise";
-        monthly_fee: number | null;
-        currency: string;
-        status: string;
-      }>();
-
-    const lines: Array<{
-      description: string;
-      quantity: number;
-      unit_amount: number;
-      source: "subscription" | "service";
-      period: string | null;
-      serviceId: string | null;
-    }> = [];
-
-    /*
-     * What this invoice is in, decided once and before any line is added. The client's
-     * subscription where they have one, otherwise cedis. Every line has to be in it.
-     */
-    const invoiceCurrency = currencyOf(subscription?.currency);
-
-    if (period) {
-      if (!subscription) {
-        throw badRequest("That client has no subscription, so there is no month to bill.");
-      }
-      if (subscription.status !== "active") {
-        throw badRequest(
-          `That subscription is ${subscription.status}. Nothing is billed while it is not active.`,
-        );
-      }
-      const { fee } = feeFor(subscription, catalogue.tiers);
-      if (fee === null) {
-        throw badRequest(
-          "No fee is set for that tier. Set it in Portal settings before billing.",
-        );
-      }
-      const tierName =
-        catalogue.tiers.find((t) => t.tier === subscription.tier)?.tier ?? subscription.tier;
-      lines.push({
-        description: `Subscription - ${tierName[0].toUpperCase()}${tierName.slice(1)}, ${period}`,
-        quantity: 1,
-        unit_amount: fee,
-        source: "subscription",
-        period,
-        serviceId: null,
-      });
-    }
-
-    if (body.include_services !== false) {
-      const { results } = await env.DB.prepare(
-        `SELECT cs.id, cs.name, cs.quoted_fee, cs.currency
-           FROM client_services cs
-          WHERE cs.client_id = ? AND cs.status = 'delivered' AND cs.quoted_fee IS NOT NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM invoice_lines l WHERE l.client_service_id = cs.id
-            )`,
-      )
-        .bind(params.id)
-        .all<{ id: string; name: string; quoted_fee: number; currency: string }>();
-      for (const service of results) {
-        /*
-         * An invoice is in one currency. A piece of work quoted in dollars cannot be
-         * added to a cedi invoice as though the figure meant the same thing - nothing
-         * in the portal converts, and putting the number on anyway would bill the
-         * client an amount nobody ever quoted. It is refused, with the two currencies
-         * named, so somebody decides rather than the portal.
-         */
-        if (currencyOf(service.currency) !== currencyOf(invoiceCurrency)) {
-          throw badRequest(
-            `${service.name} is quoted in ${currencyOf(service.currency)} and this invoice is in ${currencyOf(invoiceCurrency)}. Nothing here converts between the two - re-quote that work in ${currencyOf(invoiceCurrency)}, or bill it on its own invoice.`,
-          );
-        }
-        lines.push({
-          description: service.name,
-          quantity: 1,
-          unit_amount: service.quoted_fee,
-          source: "service",
-          period: null,
-          serviceId: service.id,
-        });
-      }
-    }
-
-    if (!lines.length) {
-      throw badRequest("There is nothing to bill: no month given and no delivered work.");
-    }
-
-    const id = newId();
-    const number = await nextInvoiceNumber(env, client.code, period);
-    const timestamp = nowIso();
-    const settings = await readSettings(env);
-    const termDays = Number(settings.invoice_terms_days) || 15;
-    const dueOn = body.due_on?.trim() || addDays(today(), termDays);
-    /*
-     * Copied onto the invoice now, not read at print time. The rate the firm expects
-     * today is the rate this document says, whatever the setting becomes later.
-     */
-    const withholdingRate = Number(settings.withholding_rate) || 0;
-
-    try {
-      await env.DB.batch([
-        env.DB.prepare(
-          `INSERT INTO invoices
-             (id, number, client_id, state, due_on, currency, period_label, note,
-              withholding_rate, created_by, created_at, updated_at)
-           VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).bind(
-          id,
-          number,
-          params.id,
-          dueOn,
-          invoiceCurrency,
-          period,
-          body.note?.trim()?.slice(0, 500) || null,
-          withholdingRate || null,
-          actor.id,
-          timestamp,
-          timestamp,
-        ),
-        ...lines.map((line, index) =>
-          env.DB.prepare(
-            `INSERT INTO invoice_lines
-               (id, invoice_id, client_id, description, quantity, unit_amount, amount,
-                source, subscription_period, client_service_id, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ).bind(
-            newId(),
-            id,
-            params.id,
-            line.description,
-            line.quantity,
-            line.unit_amount,
-            round2(line.quantity * line.unit_amount),
-            line.source,
-            line.period,
-            line.serviceId,
-            index,
-          ),
-        ),
-      ]);
-    } catch (err) {
-      if (/UNIQUE/i.test(String(err))) {
-        throw conflict(
-          period
-            ? `${client.name} has already been invoiced for ${period}.`
-            : "Some of that work has already been invoiced.",
-        );
-      }
-      throw err;
-    }
-
-    await recomputeDraft(env, id);
-    return json({ id, number }, 201);
+    const raised = await raiseInvoice(env, params.id, {
+      period,
+      dueOn: body.due_on?.trim() || null,
+      includeServices: body.include_services !== false,
+      note: body.note?.trim()?.slice(0, 500) || null,
+      actorId: actor.id,
+    });
+    return json(raised, 201);
   });
 
   /** Issues a draft: freezes the figures, sends it, and starts the clock. */
   router.post("/api/invoices/:id/send", async ({ request, env, params }) => {
     await requireRole(env, request, MIN_HR_ADMIN_ROLE);
-    const { invoice } = await fullInvoice(env, params.id);
-    if (invoice.state !== "draft") {
-      throw badRequest("Only a draft can be issued. This one has already been sent.");
-    }
-    if (invoice.gross <= 0) {
-      throw badRequest("An invoice for nothing cannot be issued.");
-    }
-
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const settings = await readSettings(env);
-    const contacts = await billingContacts(env, invoice.client_id);
-    const timestamp = nowIso();
-
-    await env.DB.prepare(
-      `UPDATE invoices SET state = 'sent', issued_on = ?, sent_at = ?, updated_at = ?
-        WHERE id = ? AND state = 'draft'`,
-    )
-      .bind(today(), timestamp, timestamp, params.id)
-      .run();
-
-    // Now, and not before: what the client is holding is what counts against a
-    // discount that only covers so many invoices.
-    await consumeDiscount(env, invoice);
-
-    /*
-     * And what it earns the growth partner who sold this client, if one did. Also here
-     * rather than at draft time: a draft is not a bill, and a cancelled one that had
-     * already earned somebody a commission would have to be unpicked by hand.
-     */
-    await accrueCommission(env, params.id);
-
-    for (const contact of contacts) {
-      await sendToPerson(env, {
-        to: contact,
-        subject: `Invoice ${invoice.number} from ${settings.firm_name}`,
-        headline: `Invoice ${invoice.number} for ${formatMoney(invoice.gross, invoice.currency)} is due on ${invoice.due_on}.`,
-        detail: invoice.period_label
-          ? `This covers your subscription for ${invoice.period_label}.`
-          : null,
-        link: `${portalBase(env)}/client/invoices/${invoice.id}`,
-        linkLabel: "View the invoice",
-        firmName: settings.firm_name,
-        reason: `you are a billing contact for ${settings.firm_name}`,
-      });
-    }
-
-    return json({ sent_to: contacts.map((c) => c.email) });
+    const sent = await issueInvoice(env, params.id, firmCopies(settings, actor.email));
+    return json(sent);
   });
 
   /** Cancels an invoice, keeping its number and freeing anything it billed. */
@@ -959,6 +759,102 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
 
     return json({ considered: results.length, sent: sent.length, skipped: skipped.length });
   });
+
+  /**
+   * Raises and sends the month's subscription invoices.
+   *
+   * Reached by the same scheduled job as the reminders, once a day. Whether today is a
+   * day to bill is decided in shared/billing.ts: the firm's billing day and a few days
+   * after it, so a missed run is made up and a run outside the window does nothing.
+   * Every active subscription that has no invoice yet for the month gets one, built
+   * and issued exactly as a Partner would by hand; a client whose invoice cannot be
+   * raised - no fee set, work quoted in another currency - is reported, not sent, and
+   * the Partners hear about the whole run in their inbox.
+   *
+   * Safe to call twice: the one-month-per-client index is what stops a second bill.
+   */
+  router.post("/api/invoices/run-billing", async ({ request, env }) => {
+    assertRunner(env, request);
+    const settings = await readSettings(env);
+    if (settings.auto_billing !== "on") {
+      return json({ ran: false, why: "Automatic invoicing is off in Portal settings." });
+    }
+    const decision = billingDue(today(), normaliseBillingDay(settings.billing_day));
+    if (!decision.due) return json({ ran: false, period: decision.period, why: decision.why });
+    const { period } = decision;
+
+    const { results: subscriptions } = await env.DB.prepare(
+      `SELECT s.client_id, c.name AS client_name,
+              (SELECT state FROM invoices i WHERE i.client_id = s.client_id AND i.period_label = ?1) AS existing
+         FROM client_subscriptions s JOIN clients c ON c.id = s.client_id
+        WHERE s.status = 'active' AND substr(s.started_on, 1, 7) <= ?1
+        ORDER BY c.name`,
+    )
+      .bind(period)
+      .all<{ client_id: string; client_name: string; existing: string | null }>();
+
+    const sent: Array<{ client: string; number: string; to: string[] }> = [];
+    const skipped: Array<{ client: string; why: string }> = [];
+    /*
+     * A client already invoiced for the month is the normal case on every day of the
+     * window after the first, and is not news. It is reported to the job, so the
+     * Actions log is complete, but does not wake the Partners.
+     */
+    const already: string[] = [];
+    for (const row of subscriptions) {
+      if (row.existing) {
+        already.push(row.client_name);
+        continue;
+      }
+      try {
+        const raised = await raiseInvoice(env, row.client_id, {
+          period,
+          dueOn: null,
+          includeServices: true,
+          note: null,
+          actorId: null,
+        });
+        const { sent_to } = await issueInvoice(env, raised.id, firmCopies(settings));
+        sent.push({ client: row.client_name, number: raised.number, to: sent_to });
+      } catch (err) {
+        skipped.push({
+          client: row.client_name,
+          why: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    /*
+     * The Partners are told what went out and what did not, in their inbox, so a run
+     * that skipped somebody is a thing a person sees rather than a line in a log.
+     */
+    const { results: partners } = await env.DB.prepare(
+      `SELECT id FROM users WHERE status = 'active' AND role IN ('partner', 'admin')`,
+    ).all<{ id: string }>();
+    // Issued, but with nobody at the client to email: it exists, and somebody must chase it by hand.
+    const unaddressed = sent.filter((x) => x.to.length === 0);
+    const summary =
+      `${sent.length} sent` +
+      (sent.length ? `: ${sent.map((x) => `${x.client} (${x.number})`).join(", ")}` : "") +
+      (unaddressed.length
+        ? `. Issued with nobody to email: ${unaddressed.map((x) => x.client).join(", ")} - send these by hand`
+        : "") +
+      (skipped.length
+        ? `. ${skipped.length} not sent: ${skipped.map((x) => `${x.client} - ${x.why}`).join("; ")}`
+        : ".");
+    if (partners.length && (sent.length || skipped.length)) {
+      await env.DB.batch(
+        notifyMany(env, partners.map((p) => p.id), "", {
+          taskId: null,
+          kind: "billing:run",
+          title: `Monthly invoices for ${period}: ${sent.length} sent, ${skipped.length} not`,
+          body: summary.slice(0, 1500),
+        }),
+      );
+    }
+
+    return json({ ran: true, period, sent, skipped, already_invoiced: already });
+  });
 }
 
 /**
@@ -1171,6 +1067,7 @@ async function chase(
       linkLabel: "View the invoice",
       firmName: settings.firm_name,
       reason: `you are a billing contact for ${settings.firm_name}`,
+      cc: firmCopies(settings),
     });
   }
 
@@ -1194,6 +1091,273 @@ async function chase(
   ]);
 
   return { sent: true, step: due.step };
+}
+
+
+// ---------------------------------------------------------------------------
+// Raising and issuing, shared by the routes and the monthly run
+// ---------------------------------------------------------------------------
+
+/**
+ * Raises one draft invoice for a client. The route and the monthly run both come
+ * through here, so an invoice raised on its own is built exactly as one a Partner
+ * raised by hand - same lines, same currency rule, same discount, same numbering.
+ */
+export async function raiseInvoice(
+  env: Env,
+  clientId: string,
+  input: {
+    /** The month to bill the subscription for, YYYY-MM, or null for services only. */
+    period: string | null;
+    dueOn: string | null;
+    includeServices: boolean;
+    note: string | null;
+    /** Null when nobody did it: the monthly run. */
+    actorId: string | null;
+  },
+): Promise<{ id: string; number: string }> {
+    const client = await env.DB.prepare(`SELECT id, name, code FROM clients WHERE id = ?`)
+      .bind(clientId)
+      .first<{ id: string; name: string; code: string }>();
+    if (!client) throw notFound("There is no such client.");
+
+    const period = input.period;
+
+    const catalogue = await readCatalogue(env);
+    const subscription = await env.DB.prepare(
+      `SELECT client_id, tier, monthly_fee, currency, status FROM client_subscriptions
+        WHERE client_id = ?`,
+    )
+      .bind(clientId)
+      .first<{
+        client_id: string;
+        tier: "starter" | "growth" | "enterprise";
+        monthly_fee: number | null;
+        currency: string;
+        status: string;
+      }>();
+
+    const lines: Array<{
+      description: string;
+      quantity: number;
+      unit_amount: number;
+      source: "subscription" | "service";
+      period: string | null;
+      serviceId: string | null;
+    }> = [];
+
+    /*
+     * What this invoice is in, decided once and before any line is added. The client's
+     * subscription where they have one, otherwise cedis. Every line has to be in it.
+     */
+    const invoiceCurrency = currencyOf(subscription?.currency);
+
+    if (period) {
+      if (!subscription) {
+        throw badRequest("That client has no subscription, so there is no month to bill.");
+      }
+      if (subscription.status !== "active") {
+        throw badRequest(
+          `That subscription is ${subscription.status}. Nothing is billed while it is not active.`,
+        );
+      }
+      const { fee } = feeFor(subscription, catalogue.tiers);
+      if (fee === null) {
+        throw badRequest(
+          "No fee is set for that tier. Set it in Portal settings before billing.",
+        );
+      }
+      const tierName =
+        catalogue.tiers.find((t) => t.tier === subscription.tier)?.tier ?? subscription.tier;
+      lines.push({
+        description: `Subscription - ${tierName[0].toUpperCase()}${tierName.slice(1)}, ${period}`,
+        quantity: 1,
+        unit_amount: fee,
+        source: "subscription",
+        period,
+        serviceId: null,
+      });
+    }
+
+    if (input.includeServices) {
+      const { results } = await env.DB.prepare(
+        `SELECT cs.id, cs.name, cs.quoted_fee, cs.currency
+           FROM client_services cs
+          WHERE cs.client_id = ? AND cs.status = 'delivered' AND cs.quoted_fee IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM invoice_lines l WHERE l.client_service_id = cs.id
+            )`,
+      )
+        .bind(clientId)
+        .all<{ id: string; name: string; quoted_fee: number; currency: string }>();
+      for (const service of results) {
+        /*
+         * An invoice is in one currency. A piece of work quoted in dollars cannot be
+         * added to a cedi invoice as though the figure meant the same thing - nothing
+         * in the portal converts, and putting the number on anyway would bill the
+         * client an amount nobody ever quoted. It is refused, with the two currencies
+         * named, so somebody decides rather than the portal.
+         */
+        if (currencyOf(service.currency) !== currencyOf(invoiceCurrency)) {
+          throw badRequest(
+            `${service.name} is quoted in ${currencyOf(service.currency)} and this invoice is in ${currencyOf(invoiceCurrency)}. Nothing here converts between the two - re-quote that work in ${currencyOf(invoiceCurrency)}, or bill it on its own invoice.`,
+          );
+        }
+        lines.push({
+          description: service.name,
+          quantity: 1,
+          unit_amount: service.quoted_fee,
+          source: "service",
+          period: null,
+          serviceId: service.id,
+        });
+      }
+    }
+
+    if (!lines.length) {
+      throw badRequest("There is nothing to bill: no month given and no delivered work.");
+    }
+
+    const id = newId();
+    const number = await nextInvoiceNumber(env, client.code, period);
+    const timestamp = nowIso();
+    const settings = await readSettings(env);
+    const termDays = Number(settings.invoice_terms_days) || 15;
+    const dueOn = input.dueOn || addDays(today(), termDays);
+    /*
+     * Copied onto the invoice now, not read at print time. The rate the firm expects
+     * today is the rate this document says, whatever the setting becomes later.
+     */
+    const withholdingRate = Number(settings.withholding_rate) || 0;
+
+    try {
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO invoices
+             (id, number, client_id, state, due_on, currency, period_label, note,
+              withholding_rate, created_by, created_at, updated_at)
+           VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).bind(
+          id,
+          number,
+          clientId,
+          dueOn,
+          invoiceCurrency,
+          period,
+          input.note,
+          withholdingRate || null,
+          input.actorId,
+          timestamp,
+          timestamp,
+        ),
+        ...lines.map((line, index) =>
+          env.DB.prepare(
+            `INSERT INTO invoice_lines
+               (id, invoice_id, client_id, description, quantity, unit_amount, amount,
+                source, subscription_period, client_service_id, position)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ).bind(
+            newId(),
+            id,
+            clientId,
+            line.description,
+            line.quantity,
+            line.unit_amount,
+            round2(line.quantity * line.unit_amount),
+            line.source,
+            line.period,
+            line.serviceId,
+            index,
+          ),
+        ),
+      ]);
+    } catch (err) {
+      if (/UNIQUE/i.test(String(err))) {
+        throw conflict(
+          period
+            ? `${client.name} has already been invoiced for ${period}.`
+            : "Some of that work has already been invoiced.",
+        );
+      }
+      throw err;
+    }
+
+    await recomputeDraft(env, id);
+    return { id, number };
+}
+
+/**
+ * Who at the firm is copied on an invoice or a chase, visibly.
+ *
+ * The finance address from Portal settings when there is one, and whoever issued it by
+ * hand. Never blind: a client is entitled to see who else read a letter about money,
+ * and a member of staff to be able to point at the copy later.
+ */
+function firmCopies(settings: Record<string, string>, actorEmail?: string | null): string[] {
+  const out = new Set<string>();
+  const finance = (settings.firm_finance_email ?? "").trim();
+  if (finance) out.add(finance);
+  if (actorEmail?.trim()) out.add(actorEmail.trim());
+  return [...out];
+}
+
+/**
+ * Issues one draft: freezes the figures, sends it to every billing contact with the
+ * firm copied, uses up a discount, and earns the growth partner their commission. The
+ * route and the monthly run both come through here.
+ */
+export async function issueInvoice(
+  env: Env,
+  invoiceId: string,
+  copies: string[],
+): Promise<{ sent_to: string[] }> {
+    const { invoice } = await fullInvoice(env, invoiceId);
+    if (invoice.state !== "draft") {
+      throw badRequest("Only a draft can be issued. This one has already been sent.");
+    }
+    if (invoice.gross <= 0) {
+      throw badRequest("An invoice for nothing cannot be issued.");
+    }
+
+    const settings = await readSettings(env);
+    const contacts = await billingContacts(env, invoice.client_id);
+    const timestamp = nowIso();
+
+    await env.DB.prepare(
+      `UPDATE invoices SET state = 'sent', issued_on = ?, sent_at = ?, updated_at = ?
+        WHERE id = ? AND state = 'draft'`,
+    )
+      .bind(today(), timestamp, timestamp, invoiceId)
+      .run();
+
+    // Now, and not before: what the client is holding is what counts against a
+    // discount that only covers so many invoices.
+    await consumeDiscount(env, invoice);
+
+    /*
+     * And what it earns the growth partner who sold this client, if one did. Also here
+     * rather than at draft time: a draft is not a bill, and a cancelled one that had
+     * already earned somebody a commission would have to be unpicked by hand.
+     */
+    await accrueCommission(env, invoiceId);
+
+    for (const contact of contacts) {
+      await sendToPerson(env, {
+        to: contact,
+        subject: `Invoice ${invoice.number} from ${settings.firm_name}`,
+        headline: `Invoice ${invoice.number} for ${formatMoney(invoice.gross, invoice.currency)} is due on ${invoice.due_on}.`,
+        detail: invoice.period_label
+          ? `This covers your subscription for ${invoice.period_label}.`
+          : null,
+        link: `${portalBase(env)}/client/invoices/${invoice.id}`,
+        linkLabel: "View the invoice",
+        firmName: settings.firm_name,
+        reason: `you are a billing contact for ${settings.firm_name}`,
+        cc: copies,
+      });
+    }
+
+    return { sent_to: contacts.map((c) => c.email) };
 }
 
 /**

@@ -1,4 +1,4 @@
-name: Invoice reminders
+name: Invoice reminders and monthly billing
 
 # The portal's nightly chase of overdue invoices.
 #
@@ -55,6 +55,28 @@ jobs:
 
           echo "${response}"
           echo "### Invoice reminders" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```json' >> "${GITHUB_STEP_SUMMARY}"
+          echo "${response}" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
+
+      # The month's subscription invoices, on the firm's billing day. The portal decides
+      # whether today is that day (shared/billing.ts); on any other day this is a no-op
+      # that says so.
+      - name: Raise and send the month's invoices
+        env:
+          PORTAL_URL: ${{ vars.PORTAL_URL || 'https://portal.kesmic.org' }}
+          REMINDER_SECRET: ${{ secrets.REMINDER_SECRET }}
+        run: |
+          set -euo pipefail
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 300 \
+            --request POST \
+            --header "X-Reminder-Secret: ${REMINDER_SECRET}" \
+            --header "Content-Length: 0" \
+            "${PORTAL_URL}/api/invoices/run-billing")
+
+          echo "${response}"
+          echo "### Monthly billing" >> "${GITHUB_STEP_SUMMARY}"
           echo '```json' >> "${GITHUB_STEP_SUMMARY}"
           echo "${response}" >> "${GITHUB_STEP_SUMMARY}"
           echo '```' >> "${GITHUB_STEP_SUMMARY}"
