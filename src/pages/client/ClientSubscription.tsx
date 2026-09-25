@@ -14,7 +14,12 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { TIER_LABELS, tierAbove, type ClientTier } from "@shared/subscriptions";
+import {
+  TIER_LABELS,
+  describeMonthlyFee,
+  tierAbove,
+  type ClientTier,
+} from "@shared/subscriptions";
 import type { ClientPortalSubscription } from "@shared/types";
 import { ApiRequestError, api } from "../../lib/api";
 import { TierMeters } from "../../components/TierMeters";
@@ -305,7 +310,7 @@ export function ClientSubscription() {
                   <p className="mt-1 text-sm text-amber-900">
                     {nextTier.monthly_fee === null
                       ? "We will talk to you about what that would mean."
-                      : `That package is ${formatAmount(nextTier.monthly_fee, nextTier.currency)} a month.`}
+                      : `That package is ${describeMonthlyFee(nextTier, (n) => formatAmount(n, nextTier.currency))} a month.`}
                   </p>
                   <p className="mt-2 text-sm text-amber-900">
                     <strong>Nothing changes on its own.</strong> Crossing a ceiling starts
@@ -319,7 +324,7 @@ export function ClientSubscription() {
                 <p className="hint mt-4">
                   The package above is {TIER_LABELS[next]}
                   {nextTier.monthly_fee !== null &&
-                    `, at ${formatAmount(nextTier.monthly_fee, nextTier.currency)} a month`}
+                    `, at ${describeMonthlyFee(nextTier, (n) => formatAmount(n, nextTier.currency))} a month`}
                   . You would move only after a conversation with us.
                 </p>
               )}

@@ -25,7 +25,7 @@
  */
 
 import { useState } from "react";
-import { TIER_LABELS, type ClientTier } from "@shared/subscriptions";
+import { TIER_LABELS, describeMonthlyFee, type ClientTier } from "@shared/subscriptions";
 import type { TierInclusion, TierRow } from "@shared/types";
 import { formatAmount } from "@shared/money";
 
@@ -90,6 +90,10 @@ export function PackageCards({
         // though six of them did not count.
         const counted = lines.reduce((sum, line) => sum + 1 + line.children.length, 0);
         const turned = pinned === tier || (pinned === null && hovered === tier);
+        const price = describeMonthlyFee(row, (n) =>
+          formatAmount(n, row.currency, { decimals: false }),
+        );
+        const ranged = price !== null && price.includes(" to ");
         const isCurrent = current === tier;
         const isSuggested = suggested === tier && !isCurrent;
 
@@ -141,14 +145,24 @@ export function PackageCards({
                 )}
 
                 <div className="mt-auto">
-                  <div className="text-3xl font-semibold tabular-nums tracking-tight text-slate-900">
-                    {row.monthly_fee === null
-                      ? "On application"
-                      : formatAmount(row.monthly_fee, row.currency, { decimals: false })}
+                  {/*
+                    A range where a starting price is set - "GHS 900 to 1,500" - so the
+                    smallest business sees a number it can afford before anything else,
+                    with the word about who gets the lower end underneath.
+                  */}
+                  <div
+                    className={`font-semibold tabular-nums tracking-tight text-slate-900 ${
+                      ranged ? "text-2xl" : "text-3xl"
+                    }`}
+                  >
+                    {price ?? "On application"}
                   </div>
                   <p className="muted">
                     {row.monthly_fee === null ? "Ask us" : "a month"}
                   </p>
+                  {ranged && row.fee_note && (
+                    <p className="mt-1.5 text-xs leading-5 text-slate-500">{row.fee_note}</p>
+                  )}
 
                   <p className="mt-3 text-xs font-medium text-link">
                     {counted} things included - turn it over

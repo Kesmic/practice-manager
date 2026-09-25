@@ -1027,6 +1027,10 @@ import type { InvoiceState, Standing, TaxBasis, Totals } from "./invoices";
 export interface TierRow {
   tier: ClientTier;
   monthly_fee: number | null;
+  /** A starting price below the list price, for the smallest businesses. Null means no range. */
+  fee_from: number | null;
+  /** A line under the price saying who gets the lower end. */
+  fee_note: string | null;
   currency: string;
   summary: string | null;
   /** Who the package is for, in the proposal's own words. */
