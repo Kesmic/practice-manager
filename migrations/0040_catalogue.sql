@@ -14,7 +14,9 @@
 -- A note on an inclusion: how often, or at what depth, this package gets it.
 ALTER TABLE package_service_inclusions ADD COLUMN note TEXT;
 
-CREATE TEMP TABLE old_services AS SELECT id, name, parent_id FROM package_services;
+-- A scratch copy of the old rows, so the remapping below can still see their names once
+-- they are gone. An ordinary table, dropped at the end: D1 refuses TEMP tables.
+CREATE TABLE old_services_0040 AS SELECT id, name, parent_id FROM package_services;
 
 INSERT OR IGNORE INTO package_services (id, name, parent_id, position, active, created_at, updated_at) VALUES
   ('svc_book', 'Bookkeeping', NULL, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
@@ -65,38 +67,38 @@ INSERT OR IGNORE INTO package_services (id, name, parent_id, position, active, c
 
 -- Extras already given follow their service by name.
 UPDATE client_service_extras SET service_id = 'svc_book'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'Bookkeeping');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'Bookkeeping');
 UPDATE client_service_extras SET service_id = 'svc_pay'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'Payroll administration');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'Payroll administration');
 UPDATE client_service_extras SET service_id = 'svc_tax'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'Tax services');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'Tax services');
 UPDATE client_service_extras SET service_id = 'svc_reg_orc'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'Annual filings with the ORC');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'Annual filings with the ORC');
 UPDATE client_service_extras SET service_id = 'svc_adv_deals'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'Transactions advisory & client representation');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'Transactions advisory & client representation');
 UPDATE client_service_extras SET service_id = 'svc_tax_vat'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'VAT & levies');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'VAT & levies');
 UPDATE client_service_extras SET service_id = 'svc_tax_wht'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'Withholding tax');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'Withholding tax');
 UPDATE client_service_extras SET service_id = 'svc_pay_paye'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'PAYE');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'PAYE');
 UPDATE client_service_extras SET service_id = 'svc_tax_pit'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'Directors'' PIT compliance');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'Directors'' PIT compliance');
 UPDATE client_service_extras SET service_id = 'svc_tax_emp'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'Annual employer tax compliance');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'Annual employer tax compliance');
 UPDATE client_service_extras SET service_id = 'svc_tax_cit'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'Corporate tax compliance');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'Corporate tax compliance');
 UPDATE client_service_extras SET service_id = 'svc_tax_tp'
- WHERE service_id IN (SELECT id FROM old_services WHERE name = 'Transfer pricing compliance');
+ WHERE service_id IN (SELECT id FROM old_services_0040 WHERE name = 'Transfer pricing compliance');
 
 -- The old rows: their inclusions go, and so do they unless a client still points at one.
-DELETE FROM package_service_inclusions WHERE service_id IN (SELECT id FROM old_services);
+DELETE FROM package_service_inclusions WHERE service_id IN (SELECT id FROM old_services_0040);
 DELETE FROM package_services
- WHERE id IN (SELECT id FROM old_services)
+ WHERE id IN (SELECT id FROM old_services_0040)
    AND id NOT IN (SELECT service_id FROM client_service_extras);
 UPDATE package_services SET active = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
- WHERE id IN (SELECT id FROM old_services);
-DROP TABLE old_services;
+ WHERE id IN (SELECT id FROM old_services_0040);
+DROP TABLE old_services_0040;
 
 -- What each package includes.
 INSERT OR IGNORE INTO package_service_inclusions (tier, service_id, note) VALUES
