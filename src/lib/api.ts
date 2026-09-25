@@ -1104,6 +1104,11 @@ export const api = {
   ) => request<void>(`/api/package-services/${id}`, { method: "PATCH", body }),
   deletePackageService: (id: string) =>
     request<void>(`/api/package-services/${id}`, { method: "DELETE" }),
+  reorderPackageServices: (parentId: string | null, ids: string[]) =>
+    request<void>("/api/package-services/order", {
+      method: "PUT",
+      body: { parent_id: parentId, ids },
+    }),
   savePackageServices: (tier: ClientTier, services: Array<{ id: string; note: string | null }>) =>
     request<void>(`/api/subscription-tiers/${tier}/services`, {
       method: "PUT",

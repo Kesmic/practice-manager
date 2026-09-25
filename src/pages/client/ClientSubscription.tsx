@@ -9,26 +9,20 @@
  * A fee that has not been set reads as "not set", never as zero or as blank. A client
  * seeing nothing where a fee should be will assume the worst of it.
  *
- * Asking for additional work is one click and then it is with the firm. The client is
- * never asked to agree a price they have not been quoted.
+ * Asking for additional work is a short note and then it is with the firm. The client
+ * is never asked to agree a price they have not been quoted.
  */
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  SERVICE_STATE_CLIENT_LABELS,
-  TIER_LABELS,
-  describeFee,
-  tierAbove,
-  type ClientTier,
-} from "@shared/subscriptions";
+import { TIER_LABELS, tierAbove, type ClientTier } from "@shared/subscriptions";
 import type { ClientPortalSubscription } from "@shared/types";
 import { ApiRequestError, api } from "../../lib/api";
 import { TierMeters } from "../../components/TierMeters";
 import { PackageCards } from "../../components/PackageCards";
+import { ClientServiceCatalogue, ClientServiceRequests } from "../../components/ClientServiceCatalogue";
 import { formatAmount } from "@shared/money";
 import { describeDiscountTerm, discountAmount } from "@shared/discounts";
 import { describeSource, includedTree } from "@shared/package-services";
-import { SERVICE_LINES, SERVICE_LINE_LABELS, type ServiceLine } from "@shared/workflow";
 import { ErrorBanner, Spinner, SuccessBanner } from "../../components/ui";
 import { formatDate, formatMoney } from "../../lib/format";
 
@@ -88,11 +82,11 @@ export function ClientSubscription() {
   const nextTier = next ? tiers.find((t) => t.tier === next) : null;
   const mine = subscription ? tiers.find((t) => t.tier === subscription.tier) : null;
 
-  const ask = async (serviceId: string, name: string) => {
+  const ask = async (serviceId: string, name: string, note?: string) => {
     setBusy(serviceId);
     setError(null);
     try {
-      await api.clientAskForService(serviceId);
+      await api.clientAskForService(serviceId, note);
       setNotice(`We have your request for ${name}. We will come back to you with a fee.`);
       await load();
     } catch (err) {
@@ -361,140 +355,14 @@ export function ClientSubscription() {
         </section>
       )}
 
-      {available.length > 0 && (
-        <section className="card p-5">
-          <h2 className="card-title">Additional services</h2>
-          <p className="muted mb-3 mt-1">
-            Not part of your subscription. Ask for any of these and we will confirm the
-            fee before starting anything.
-          </p>
-          {SERVICE_LINES.filter((line) => available.some((s) => s.service_line === line)).map((line) => (
-            <div key={line} className="mt-4 first:mt-0">
-              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {SERVICE_LINE_LABELS[line]}
-              </h3>
-              <div className="divide-y divide-slate-100">
-                {available.filter((s) => s.service_line === line).map((service) => (
-                  <ServiceRow key={service.id} service={service} busy={busy} ask={ask} />
-                ))}
-              </div>
-            </div>
-          ))}
-          {available.some((s) => !SERVICE_LINES.includes(s.service_line as ServiceLine)) && (
-          <div className="divide-y divide-slate-100">
-            {available.filter((s) => !SERVICE_LINES.includes(s.service_line as ServiceLine)).map((service) => (
-              <div key={service.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
-                <span className="text-sm font-medium text-slate-800">{service.name}</span>
-                {service.summary && (
-                  <span className="order-last w-full text-xs text-slate-500">
-                    {service.summary}
-                  </span>
-                )}
-                <span className="ml-auto text-sm font-semibold tabular-nums text-slate-800">
-                  {describeFee(service.fee, service.fee_basis, (n) =>
-                    formatMoney(n, service.currency),
-                  )}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  disabled={busy === service.id}
-                  onClick={() => void ask(service.id, service.name)}
-                >
-                  {busy === service.id ? "Sending..." : "Ask about this"}
-                </button>
-              </div>
-            ))}
-          </div>
-          )}
-        </section>
-      )}
+      <ClientServiceCatalogue
+        available={available}
+        services={services}
+        busy={busy}
+        onAsk={ask}
+      />
 
-      {services.length > 0 && (
-        <section className="card p-5">
-          <h2 className="card-title">Work outside your package</h2>
-          <p className="muted mt-1">
-            What you have asked us for, and what we have proposed to you. A quote waits for
-            your answer; nothing starts, and nothing is charged, until you accept it.
-          </p>
-          <div className="mt-2 divide-y divide-slate-100">
-            {services.map((service) => (
-              <div key={service.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
-                <span className="text-sm font-medium text-slate-800">{service.name}</span>
-                <span className="pill bg-slate-100 text-slate-700 ring-slate-200">
-                  {SERVICE_STATE_CLIENT_LABELS[service.status]}
-                </span>
-                {service.quoted_fee !== null && (
-                  <span className="text-sm tabular-nums text-slate-700">
-                    {formatMoney(service.quoted_fee, service.currency)}
-                  </span>
-                )}
-                {/*
-                  The only decision a client makes here. Everything else on a request is
-                  ours, and the fee is not read from anything they send.
-                */}
-                {service.requested_at === null && service.status !== "declined" && (
-                  <span className="pill bg-teal-50 text-teal-800 ring-teal-200">Proposed by us</span>
-                )}
-                {service.note && (
-                  <span className="order-last w-full text-xs text-slate-600">{service.note}</span>
-                )}
-                {service.status === "quoted" && (
-                  <span className="ml-auto flex gap-2">
-                    <button
-                      type="button"
-                      className="btn-primary btn-sm"
-                      disabled={busy === service.id}
-                      onClick={() => void decide(service.id, "agreed")}
-                    >
-                      Go ahead
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      disabled={busy === service.id}
-                      onClick={() => void decide(service.id, "declined")}
-                    >
-                      Not now
-                    </button>
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-    </div>
-  );
-}
-
-/** One piece of one-off work the firm offers, with what it costs and a way to ask. */
-function ServiceRow({
-  service,
-  busy,
-  ask,
-}: {
-  service: ClientPortalSubscription["available"][number];
-  busy: string | null;
-  ask: (id: string, name: string) => Promise<void>;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
-      <span className="text-sm font-medium text-slate-800">{service.name}</span>
-      {service.summary && (
-        <span className="order-last w-full text-xs text-slate-500">{service.summary}</span>
-      )}
-      <span className="ml-auto text-sm font-semibold tabular-nums text-slate-800">
-        {describeFee(service.fee, service.fee_basis, (n) => formatMoney(n, service.currency))}
-      </span>
-      <button
-        type="button"
-        className="btn btn-secondary btn-sm"
-        disabled={busy === service.id}
-        onClick={() => void ask(service.id, service.name)}
-      >
-        {busy === service.id ? "Sending..." : "Ask about this"}
-      </button>
+      <ClientServiceRequests services={services} busy={busy} onDecide={decide} />
     </div>
   );
 }
