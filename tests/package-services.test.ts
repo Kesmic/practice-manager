@@ -34,10 +34,10 @@ const SERVICES: PackageService[] = [
 
 const INCLUSIONS: ServiceInclusion[] = [
   { tier: "starter", service_id: "book" },
-  { tier: "starter", service_id: "vat" },
+  { tier: "starter", service_id: "vat", note: "quarterly" },
   { tier: "growth", service_id: "book" },
   { tier: "growth", service_id: "vat" },
-  { tier: "growth", service_id: "pit" },
+  { tier: "growth", service_id: "pit", note: "monthly" },
   { tier: "growth", service_id: "corp" },
   { tier: "growth", service_id: "orc" },
   { tier: "firm", service_id: "orc" },
@@ -113,4 +113,20 @@ test("nothing already included, retired, or already given can be an extra", () =
   assert.match(whyNotAnExtra({ ...base, serviceId: "old" }) ?? "", /retired/);
   assert.match(whyNotAnExtra({ ...base, serviceId: "nope" }) ?? "", /no such service/);
   assert.equal(whyNotAnExtra({ ...base, serviceId: "corp" }), null);
+});
+
+test("a note travels with the inclusion: the package's own, or the extra's source", () => {
+  const tree = includedTree({
+    tier: "starter",
+    services: SERVICES,
+    inclusions: INCLUSIONS,
+    extras: [{ service_id: "pit" }],
+  });
+  const tax = tree.find((b) => b.name === "Tax services");
+  assert.ok(tax);
+  assert.deepEqual(
+    tax.children.map((c) => [c.name, c.note]),
+    [["VAT & levies", "quarterly"], ["Directors' PIT compliance", "monthly"]],
+  );
+  assert.equal(tree.find((b) => b.name === "Bookkeeping")?.note, null);
 });

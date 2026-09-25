@@ -75,7 +75,7 @@ import {
   type PackageService,
   type ServiceInclusion,
 } from "../../shared/package-services";
-import { CURRENCIES, DEFAULT_CURRENCY, currencyOf } from "../../shared/money";
+import { CURRENCIES, DEFAULT_CURRENCY, currencyOf, formatAmount } from "../../shared/money";
 import { sendToPerson } from "../email";
 
 // ---------------------------------------------------------------------------
@@ -128,7 +128,9 @@ export async function readCatalogue(env: Env) {
      * heading. Derived from the catalogue below, never stored in this shape.
      */
     env.DB.prepare(
-      `SELECT s.id, i.tier, s.name AS label, s.parent_id,
+      `SELECT s.id, i.tier,
+              s.name || CASE WHEN i.note IS NOT NULL AND i.note <> '' THEN ' - ' || i.note ELSE '' END AS label,
+              s.parent_id,
               COALESCE(p.position * 1000 + s.position + 1, s.position * 1000) AS position
          FROM package_service_inclusions i
          JOIN package_services s ON s.id = i.service_id
@@ -146,7 +148,7 @@ export async function readCatalogue(env: Env) {
       `SELECT id, name, parent_id, position, active FROM package_services
         ORDER BY parent_id IS NOT NULL, position, name`,
     ),
-    env.DB.prepare(`SELECT tier, service_id FROM package_service_inclusions`),
+    env.DB.prepare(`SELECT tier, service_id, note FROM package_service_inclusions`),
   ]);
 
   return {
@@ -911,7 +913,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
   // Additional work on a client
   // -------------------------------------------------------------------------
 
-  router.post("/api/clients/:id/services", async ({ request, env, params }) => {
+  router.post("/api/clients/:id/services", async ({ request, env, params, waitUntil }) => {
     const actor = await requireRole(env, request, MIN_SUPERVISOR_ROLE);
     const body = await readJson<{
       service_id?: string;
@@ -947,6 +949,14 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const status = body.status
       ? requireEnum(body.status, "status", SERVICE_STATES)
       : "agreed";
+    const quotedFee = optionalAmount(body.quoted_fee, "The fee");
+    /*
+     * A quote with no number is not a quote: the client would be asked to agree to
+     * nothing. Recording work as already agreed may leave the fee for later.
+     */
+    if (status === "quoted" && quotedFee === null) {
+      throw badRequest("Give the fee. The client is being asked to accept it.");
+    }
     const timestamp = nowIso();
     const id = newId();
 
@@ -962,7 +972,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         serviceId,
         name.slice(0, 120),
         status,
-        optionalAmount(body.quoted_fee, "The fee"),
+        quotedFee,
         quotedIn,
         body.note?.trim()?.slice(0, 500) || null,
         timestamp,
@@ -972,21 +982,41 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       )
       .run();
 
+    // Proposed to the client rather than recorded: they are told, and asked to decide.
+    if (status === "quoted") {
+      notifyClientOfQuote(env, waitUntil, params.id, {
+        name: name.slice(0, 120),
+        fee: quotedFee as number,
+        currency: quotedIn,
+        note: body.note?.trim()?.slice(0, 500) || null,
+        proposed: true,
+      });
+    }
+
     return json({ id }, 201);
   });
 
   /** Quotes, agrees, delivers or declines a piece of additional work. */
-  router.patch("/api/client-services/:id", async ({ request, env, params }) => {
+  router.patch("/api/client-services/:id", async ({ request, env, params, waitUntil }) => {
     await requireRole(env, request, MIN_SUPERVISOR_ROLE);
     const body = await readJson<{ status?: unknown; quoted_fee?: unknown; note?: string }>(
       request,
     );
 
     const existing = await env.DB.prepare(
-      `SELECT id, client_id, status FROM client_services WHERE id = ?`,
+      `SELECT id, client_id, status, name, quoted_fee, currency, note
+         FROM client_services WHERE id = ?`,
     )
       .bind(params.id)
-      .first<{ id: string; client_id: string; status: ServiceState }>();
+      .first<{
+        id: string;
+        client_id: string;
+        status: ServiceState;
+        name: string;
+        quoted_fee: number | null;
+        currency: string;
+        note: string | null;
+      }>();
     if (!existing) throw notFound("There is no such request.");
 
     const status = requireEnum(body.status, "status", SERVICE_STATES);
@@ -1020,6 +1050,19 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
         params.id,
       )
       .run();
+
+    // Quoted: the client is told, and asked to accept or decline in their portal.
+    if (status === "quoted" && existing.status !== "quoted") {
+      const fee = optionalAmount(body.quoted_fee, "The fee") ?? existing.quoted_fee;
+      if (fee === null) throw badRequest("Give the fee. The client is being asked to accept it.");
+      notifyClientOfQuote(env, waitUntil, existing.client_id, {
+        name: existing.name,
+        fee,
+        currency: existing.currency,
+        note: body.note?.trim()?.slice(0, 500) || existing.note,
+        proposed: false,
+      });
+    }
 
     return noContent();
   });
@@ -1489,26 +1532,33 @@ export function registerPackageServiceRoutes(router: Router<Env>): void {
   router.put("/api/subscription-tiers/:tier/services", async ({ request, env, params }) => {
     await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const tier = requireEnum(params.tier, "tier", CLIENT_TIERS);
-    const body = await readJson<{ service_ids?: unknown }>(request);
-    if (!Array.isArray(body.service_ids)) {
-      throw badRequest("Send the services as a list of ids.");
+    const body = await readJson<{ services?: unknown }>(request);
+    if (!Array.isArray(body.services)) {
+      throw badRequest("Send the services as a list of { id, note }.");
     }
-    const ids = [...new Set(body.service_ids.map((v) => String(v)))];
+    // Each service once, with a short note or none: "monthly", "weekly", "full IFRS".
+    const chosen = new Map<string, string | null>();
+    for (const item of body.services as Array<{ id?: unknown; note?: unknown }>) {
+      const id = String(item?.id ?? "").trim();
+      if (!id) continue;
+      const note = String(item?.note ?? "").trim().slice(0, 60) || null;
+      chosen.set(id, note);
+    }
 
     const { results } = await env.DB.prepare(
       `SELECT id FROM package_services WHERE active = 1`,
     ).all<{ id: string }>();
     const live = new Set(results.map((r) => r.id));
-    if (ids.some((id) => !live.has(id))) {
+    if ([...chosen.keys()].some((id) => !live.has(id))) {
       throw badRequest("One of those services does not exist or has been retired.");
     }
 
     await env.DB.batch([
       env.DB.prepare(`DELETE FROM package_service_inclusions WHERE tier = ?`).bind(tier),
-      ...ids.map((id) =>
+      ...[...chosen].map(([id, note]) =>
         env.DB.prepare(
-          `INSERT INTO package_service_inclusions (tier, service_id) VALUES (?, ?)`,
-        ).bind(tier, id),
+          `INSERT INTO package_service_inclusions (tier, service_id, note) VALUES (?, ?, ?)`,
+        ).bind(tier, id, note),
       ),
     ]);
     return noContent();
@@ -1568,4 +1618,50 @@ export function registerPackageServiceRoutes(router: Router<Env>): void {
     if (!result.meta.changes) throw notFound("There is no such live extra.");
     return noContent();
   });
+}
+
+/**
+ * Tells everyone who signs in for a client that there is a quote waiting for them.
+ *
+ * Proposed by the firm, or quoted in answer to something they asked for - either way
+ * the next move is theirs, and a quote that sits in a portal nobody has opened is not
+ * a quote anybody can accept. After the response, never able to fail it, and to every
+ * active login on the account rather than one person: a business, not an inbox.
+ */
+function notifyClientOfQuote(
+  env: Env,
+  waitUntil: (promise: Promise<unknown>) => void,
+  clientId: string,
+  quote: { name: string; fee: number; currency: string; note: string | null; proposed: boolean },
+): void {
+  waitUntil(
+    (async () => {
+      const [settings, { results: people }] = await Promise.all([
+        readSettings(env),
+        env.DB.prepare(
+          `SELECT email, full_name FROM client_users WHERE client_id = ? AND status = 'active'`,
+        )
+          .bind(clientId)
+          .all<{ email: string; full_name: string }>(),
+      ]);
+      const amount = formatAmount(quote.fee, currencyOf(quote.currency));
+      const base = (env.PORTAL_URL ?? "").trim().replace(/\/+$/, "");
+      for (const person of people) {
+        await sendToPerson(env, {
+          to: person,
+          subject: `${quote.name} - a quote from ${settings.firm_name}`,
+          headline: quote.proposed
+            ? `${settings.firm_name} has proposed ${quote.name} for ${amount}.`
+            : `${settings.firm_name} has quoted ${amount} for ${quote.name}.`,
+          detail:
+            (quote.note ? `${quote.note}\n\n` : "") +
+            "Nothing starts until you say so. Accept it in your portal and we will begin; decline it and nothing is charged.",
+          link: `${base}/client`,
+          linkLabel: "Review the quote",
+          firmName: settings.firm_name,
+          reason: `you sign in to ${settings.firm_name}'s portal for your business`,
+        });
+      }
+    })().catch((err) => console.error("Quote email failed:", err)),
+  );
 }
