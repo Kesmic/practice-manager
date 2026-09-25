@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PracticeTool, ToolCertification } from "@shared/types";
 import { COMMON_VALIDITY, describeValidity } from "@shared/certifications";
+import { useDialogs } from "../lib/dialogs";
 import { ApiRequestError, api } from "../lib/api";
 import {
   EmptyState,
@@ -22,6 +23,7 @@ import {
 } from "./ui";
 
 export function ToolCatalogueCard({ canEdit }: { canEdit: boolean }) {
+  const dialogs = useDialogs();
   const [tools, setTools] = useState<PracticeTool[] | null>(null);
   const [certs, setCerts] = useState<ToolCertification[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export function ToolCatalogueCard({ canEdit }: { canEdit: boolean }) {
       mine.length > 0
         ? `Remove ${tool.name}? Its ${mine.length} certification${mine.length === 1 ? "" : "s"} go with it, and so does everybody's progress on them.`
         : `Remove ${tool.name}?`;
-    if (!window.confirm(warning)) return;
+    if (!await dialogs.confirm(warning, { danger: true, confirmLabel: "Remove" })) return;
     try {
       await api.removeTool(tool.id);
       await load();
@@ -64,7 +66,7 @@ export function ToolCatalogueCard({ canEdit }: { canEdit: boolean }) {
   };
 
   const removeCert = async (cert: ToolCertification) => {
-    if (!window.confirm(`Remove ${cert.name}? Everybody's progress on it goes too.`)) return;
+    if (!await dialogs.confirm(`Remove ${cert.name}? Everybody's progress on it goes too.`, { danger: true, confirmLabel: "Remove" })) return;
     try {
       await api.removeCertification(cert.id);
       await load();

@@ -49,6 +49,7 @@ import {
   currencyOf,
   type Currency,
 } from "@shared/money";
+import { useDialogs } from "../lib/dialogs";
 import { ApiRequestError, api, type ManualInvoiceLine } from "../lib/api";
 import { MAX_INVOICE_LINES, whyNotALine } from "@shared/invoices";
 import { TierMeters } from "./TierMeters";
@@ -71,6 +72,7 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const dialogs = useDialogs();
   const [moving, setMoving] = useState(false);
   const [recording, setRecording] = useState(false);
   const [inviting, setInviting] = useState(false);
@@ -237,17 +239,14 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
                           type="button"
                           className="btn-ghost btn-sm"
                           disabled={busy}
-                          onClick={() => {
+                          onClick={async () => {
                             /*
                              * Quoting asks for the fee, because a quote with no number
                              * is not a quote - the client would be asked to agree to
                              * nothing.
                              */
                             if (next === "quoted") {
-                              const fee = window.prompt(
-                                `What is the fee for ${service.name}?`,
-                                service.quoted_fee?.toString() ?? "",
-                              );
+                              const fee = await dialogs.ask(`What is the fee for ${service.name}?`, { initial: service.quoted_fee?.toString() ?? "", inputMode: "decimal", confirmLabel: "Quote it" });
                               if (!fee?.trim()) return;
                               void act(
                                 () =>
@@ -286,7 +285,7 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
                 type="button"
                 className="btn-secondary btn-sm"
                 disabled={busy}
-                onClick={() => setOffering(true)}
+                onClick={async () => setOffering(true)}
               >
                 Offer a service
               </button>
@@ -302,11 +301,8 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
             partner={partner}
             busy={busy}
             onGive={() => setGiving(true)}
-            onEnd={(extra) => {
-              const reason = window.prompt(
-                `Why is ${extra.name} being taken away? The client is not shown this.`,
-                "",
-              );
+            onEnd={async (extra) => {
+              const reason = await dialogs.ask(`Why is ${extra.name} being taken away? The client is not shown this.`, { multiline: true, danger: true, confirmLabel: "Take it away" });
               if (!reason?.trim()) return;
               void act(
                 () => api.endExtra(extra.id, reason.trim()),
@@ -323,16 +319,13 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
             currency={currency}
             busy={busy}
             onIssue={() => setDiscounting(true)}
-            onEnd={(discount) => {
+            onEnd={async (discount) => {
               /*
                * A reason is asked for rather than optional. A discount that simply
                * stopped, with nothing saying why, is the thing a client asks about six
                * months later and nobody can answer.
                */
-              const reason = window.prompt(
-                "Why is this discount ending? The client is not shown this.",
-                "",
-              );
+              const reason = await dialogs.ask("Why is this discount ending? The client is not shown this.", { multiline: true, danger: true, confirmLabel: "End the discount" });
               if (!reason?.trim()) return;
               void act(
                 () => api.endDiscount(discount.id, reason.trim()),
@@ -410,12 +403,9 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
                           onClick={() =>
                             void act(async () => {
                               const { invitation_url } = await api.reinviteClientUser(login.id);
-                              window.prompt(
-                                login.status === "invited"
+                              await dialogs.show(login.status === "invited"
                                   ? "A fresh invitation has been emailed. You can also hand it over directly:"
-                                  : "A link to set a new password has been emailed. You can also hand it over directly:",
-                                invitation_url,
-                              );
+                                  : "A link to set a new password has been emailed. You can also hand it over directly:", { title: "A link to hand over", link: invitation_url });
                             }, login.status === "invited"
                               ? "A fresh invitation has gone out."
                               : "A link to set a new password has gone out. Their old one still works until they use it.")
@@ -565,10 +555,7 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
               email,
               full_name: fullName,
             });
-            window.prompt(
-              "Invitation emailed. You can also hand this link over directly - it works once:",
-              invitation_url,
-            );
+            await dialogs.show("Invitation emailed. You can also hand this link over directly - it works once:", { title: "A link to hand over", link: invitation_url });
           }, `${fullName} invited.`);
           setInviting(false);
         }}

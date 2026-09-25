@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { SessionProvider } from "./lib/auth";
+import { DialogsProvider } from "./lib/dialogs";
 import { FirmProvider } from "./lib/firm";
 import { ThemeProvider, applyTheme, readStoredTheme } from "./lib/theme";
 import "./index.css";
@@ -32,7 +33,9 @@ createRoot(container).render(
       <ThemeProvider>
         <FirmProvider>
           <SessionProvider>
-            <App />
+            <DialogsProvider>
+              <App />
+            </DialogsProvider>
           </SessionProvider>
         </FirmProvider>
       </ThemeProvider>
