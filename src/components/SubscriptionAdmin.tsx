@@ -26,6 +26,8 @@ import {
 import type { SubscriptionCatalogue } from "@shared/types";
 import {
   PACKAGE_COLUMNS,
+  dropAt,
+  moveWithin,
   serviceTree,
   whyNotAServiceName,
   type PackageService,
@@ -442,6 +444,40 @@ function PackageServicesCard({
     setDirty(false);
   }, [saved]);
 
+  /*
+   * The order as dragged, per heading ("" for the headings themselves), shown at once
+   * and sent to the server. Cleared when the catalogue reloads, by which time the
+   * server has it. Dragging is a mouse thing; the handle also takes the arrow keys, so
+   * the order can be set from the keyboard and, through it, on a tablet.
+   */
+  const [order, setOrder] = useState<Record<string, string[]>>({});
+  const [dragging, setDragging] = useState<{ id: string; parent: string } | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  useEffect(() => setOrder({}), [data.package_services]);
+  const arranged = <T extends PackageService>(parent: string, list: T[]): T[] => {
+    const ids = order[parent];
+    if (!ids) return list;
+    const byId = new Map(list.map((s) => [s.id, s]));
+    const placed = ids.map((id) => byId.get(id)).filter((s): s is T => !!s);
+    return [...placed, ...list.filter((s) => !ids.includes(s.id))];
+  };
+  const place = (parent: string, ids: string[]) => {
+    setOrder((prev) => ({ ...prev, [parent]: ids }));
+    void guard(() => api.reorderPackageServices(parent || null, ids), "Order saved.");
+  };
+  const nudge = (parent: string, siblings: PackageService[], id: string, delta: -1 | 1) => {
+    const ids = siblings.map((s) => s.id);
+    const next = moveWithin(ids, id, delta);
+    if (next !== ids) place(parent, next);
+  };
+  const dropOn = (parent: string, siblings: PackageService[], targetId: string) => {
+    setOver(null);
+    if (!dragging || dragging.parent !== parent || dragging.id === targetId) return;
+    const ids = siblings.map((s) => s.id);
+    place(parent, dropAt(ids, dragging.id, targetId));
+    setDragging(null);
+  };
+
   const tree = serviceTree(data.package_services);
   const retired = data.package_services.filter((s) => s.active !== 1);
   const ticked = (tier: ClientTier, id: string) => ticks[tier]?.has(id) ?? false;
@@ -495,9 +531,60 @@ function PackageServicesCard({
   const restore = (id: string, name: string) =>
     void guard(() => api.updatePackageService(id, { active: true }), `${name} is back.`);
 
-  const row = (service: PackageService, sub: boolean) => (
-    <tr key={service.id} className={sub ? "" : "bg-slate-50/60"}>
-      <td className={`py-1.5 pr-3 ${sub ? "pl-7 text-slate-700" : "font-medium text-slate-900"}`}>
+  const row = (service: PackageService, sub: boolean, siblings: PackageService[], parent: string) => (
+    <tr
+      key={service.id}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        setDragging({ id: service.id, parent });
+      }}
+      onDragEnd={() => {
+        setDragging(null);
+        setOver(null);
+      }}
+      onDragOver={(e) => {
+        // Only a sibling can land here; a sub-service dragged onto a heading is refused.
+        if (!dragging || dragging.parent !== parent) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (over !== service.id) setOver(service.id);
+      }}
+      onDragLeave={() => {
+        if (over === service.id) setOver(null);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        dropOn(parent, siblings, service.id);
+      }}
+      className={`${sub ? "" : "bg-slate-50/60"} ${
+        dragging?.id === service.id ? "opacity-40" : ""
+      } ${over === service.id && dragging?.id !== service.id ? "outline outline-2 -outline-offset-2 outline-brand-400" : ""}`}
+    >
+      <td className={`w-6 py-1.5 ${sub ? "pl-7" : "pl-1"}`}>
+        <button
+          type="button"
+          className="cursor-grab rounded text-slate-300 hover:text-slate-600 focus:text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-400 active:cursor-grabbing"
+          aria-label={`Move ${service.name}. Drag it, or use the up and down arrow keys.`}
+          title="Drag to reorder, or use the arrow keys"
+          disabled={busy}
+          onKeyDown={(e) => {
+            if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+            e.preventDefault();
+            nudge(parent, siblings, service.id, e.key === "ArrowUp" ? -1 : 1);
+          }}
+        >
+          <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4" fill="currentColor">
+            <circle cx="5.5" cy="3.5" r="1.4" />
+            <circle cx="10.5" cy="3.5" r="1.4" />
+            <circle cx="5.5" cy="8" r="1.4" />
+            <circle cx="10.5" cy="8" r="1.4" />
+            <circle cx="5.5" cy="12.5" r="1.4" />
+            <circle cx="10.5" cy="12.5" r="1.4" />
+          </svg>
+        </button>
+      </td>
+      <td className={`py-1.5 pr-3 ${sub ? "text-slate-700" : "font-medium text-slate-900"}`}>
         <span>{service.name}</span>
         <span className="ml-2 whitespace-nowrap text-xs">
           <button type="button" className="link" disabled={busy} onClick={() => rename(service.id, service.name)}>
@@ -555,7 +642,8 @@ function PackageServicesCard({
           it - VAT returns. Tick what each package includes; ticking a sub-service brings
           its service along as the heading. The small box under a tick is a note that
           prints after the name - &ldquo;monthly&rdquo; for one package and &ldquo;weekly&rdquo;
-          for the next. Rename, retire or remove any line; a retired one stays on the
+          for the next. Drag the dotted handle to put the lines in the order you want
+          them read. Rename, retire or remove any line; a retired one stays on the
           record of a client who was given it.
         </p>
 
@@ -566,6 +654,7 @@ function PackageServicesCard({
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="w-6 py-1.5" aria-label="Order" />
                   <th className="py-1.5 pr-3 font-medium">Service</th>
                   {PACKAGE_COLUMNS.map((tier) => (
                     <th key={tier} className="py-1.5 text-center font-medium">
@@ -575,12 +664,14 @@ function PackageServicesCard({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {tree.map((service) => (
+                {arranged("", tree).map((service) => (
                   <Fragment key={service.id}>
-                    {row(service, false)}
-                    {service.children.map((child) => row(child, true))}
+                    {row(service, false, tree, "")}
+                    {arranged(service.id, service.children).map((child) =>
+                      row(child, true, service.children, service.id),
+                    )}
                     <tr>
-                      <td className="py-1.5 pl-7 pr-3" colSpan={1 + PACKAGE_COLUMNS.length}>
+                      <td className="py-1.5 pl-7 pr-3" colSpan={2 + PACKAGE_COLUMNS.length}>
                         <form
                           className="flex max-w-md gap-2"
                           onSubmit={(e) => {

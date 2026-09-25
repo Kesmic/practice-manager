@@ -13,7 +13,9 @@ import assert from "node:assert/strict";
 import {
   cheapestPackageWith,
   describeSource,
+  dropAt,
   extraCandidates,
+  moveWithin,
   includedIn,
   includedTree,
   serviceTree,
@@ -129,4 +131,18 @@ test("a note travels with the inclusion: the package's own, or the extra's sourc
     [["VAT & levies", "quarterly"], ["Directors' PIT compliance", "monthly"]],
   );
   assert.equal(tree.find((b) => b.name === "Bookkeeping")?.note, null);
+});
+
+test("a line moves one place among its siblings, and stays put at the ends", () => {
+  assert.deepEqual(moveWithin(["a", "b", "c"], "b", 1), ["a", "c", "b"]);
+  assert.deepEqual(moveWithin(["a", "b", "c"], "b", -1), ["b", "a", "c"]);
+  assert.deepEqual(moveWithin(["a", "b", "c"], "a", -1), ["a", "b", "c"]);
+  assert.deepEqual(moveWithin(["a", "b", "c"], "c", 1), ["a", "b", "c"]);
+  assert.deepEqual(moveWithin(["a", "b", "c"], "zzz", 1), ["a", "b", "c"]);
+});
+
+test("a dropped line takes the place of the one it landed on", () => {
+  assert.deepEqual(dropAt(["a", "b", "c", "d"], "a", "c"), ["b", "c", "a", "d"]);
+  assert.deepEqual(dropAt(["a", "b", "c", "d"], "d", "b"), ["a", "d", "b", "c"]);
+  assert.deepEqual(dropAt(["a", "b", "c", "d"], "b", "b"), ["a", "b", "c", "d"]);
 });

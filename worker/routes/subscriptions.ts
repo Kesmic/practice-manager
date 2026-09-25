@@ -1457,6 +1457,42 @@ export function registerPackageServiceRoutes(router: Router<Env>): void {
     return json({ id }, 201);
   });
 
+  /**
+   * The order of the lines under one heading (or of the headings themselves, with no
+   * parent), as the admin dragged them. Positions are rewritten 0..n-1 in the order
+   * sent; anything under the same parent that was not sent keeps its own position,
+   * which only matters for a retired line that is later restored.
+   */
+  router.put("/api/package-services/order", async ({ request, env }) => {
+    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ parent_id?: unknown; ids?: unknown }>(request);
+    const parentId = body.parent_id ? String(body.parent_id) : null;
+    if (!Array.isArray(body.ids) || body.ids.some((id) => typeof id !== "string")) {
+      throw badRequest("Send the ids in the order wanted.");
+    }
+    const ids = [...new Set(body.ids as string[])];
+    if (ids.length === 0) throw badRequest("Nothing to order.");
+
+    const { results } = await env.DB.prepare(
+      `SELECT id FROM package_services WHERE parent_id IS ?`,
+    )
+      .bind(parentId)
+      .all<{ id: string }>();
+    const siblings = new Set(results.map((r) => r.id));
+    if (ids.some((id) => !siblings.has(id))) {
+      throw badRequest("Those lines are not all under the same service.");
+    }
+
+    const timestamp = nowIso();
+    await env.DB.batch(
+      ids.map((id, position) =>
+        env.DB.prepare(`UPDATE package_services SET position = ?, updated_at = ? WHERE id = ?`)
+          .bind(position, timestamp, id),
+      ),
+    );
+    return noContent();
+  });
+
   /** Renames, reorders, or retires one. */
   router.patch("/api/package-services/:id", async ({ request, env, params }) => {
     await requireRole(env, request, MIN_HR_ADMIN_ROLE);

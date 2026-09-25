@@ -194,6 +194,31 @@ export const PACKAGE_COLUMNS: ClientTier[] = [...TIER_ORDER];
 // Refusals, worded once so the form and the server say the same thing
 // ---------------------------------------------------------------------------
 
+/**
+ * One line moved up or down among its siblings, for the arrow keys on the drag handle.
+ * The same list back means there was nowhere to go.
+ */
+export function moveWithin(ids: string[], id: string, delta: -1 | 1): string[] {
+  const from = ids.indexOf(id);
+  const to = from + delta;
+  if (from === -1 || to < 0 || to >= ids.length) return ids;
+  const next = [...ids];
+  next.splice(from, 1);
+  next.splice(to, 0, id);
+  return next;
+}
+
+/** One line dropped where another was, the rest shuffling round it. */
+export function dropAt(ids: string[], id: string, targetId: string): string[] {
+  const from = ids.indexOf(id);
+  const to = ids.indexOf(targetId);
+  if (from === -1 || to === -1 || from === to) return ids;
+  const next = [...ids];
+  next.splice(from, 1);
+  next.splice(to, 0, id);
+  return next;
+}
+
 export function whyNotAServiceName(name: string): string | null {
   const trimmed = name.trim();
   if (!trimmed) return "Give the service a name.";
