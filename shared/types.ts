@@ -1244,6 +1244,8 @@ export interface InvoiceLineRow {
   amount: number;
   source: "subscription" | "service" | "manual";
   subscription_period: string | null;
+  /** A fee (1) or a reimbursable passed on at cost (0). Absent on rows a client reads. */
+  taxable?: 0 | 1;
 }
 
 export interface InvoiceTaxRow {

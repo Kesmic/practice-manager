@@ -14,6 +14,9 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_REMINDER_DAYS,
   computeTotals,
+  isFee,
+  taxableNetOf,
+  whyNotALine,
   daysBetween,
   lineTotal,
   netOf,
@@ -487,4 +490,31 @@ test("an invoice with no balance recorded is asked for in full", () => {
   const s = standingOf(zeroed, [], "2026-10-20");
   assert.equal(s.outstanding, 5485.5);
   assert.equal(s.overdue, true, "and it is still chased");
+});
+
+test("tax is charged on the fees, not on what was paid out for the client", () => {
+  const lines = [
+    { amount: 4500, taxable: 1 as const },
+    { amount: 350, taxable: 0 as const },
+    { amount: 120, taxable: 0 as const },
+  ];
+  assert.equal(taxableNetOf(lines, 0), 4500);
+  // A discount comes off the fee base, and the base never goes below nothing.
+  assert.equal(taxableNetOf(lines, 500), 4000);
+  assert.equal(taxableNetOf(lines, 9000), 0);
+  // A line with no flag is a fee: everything on file before the flag existed was one.
+  assert.equal(taxableNetOf([{ amount: 100 }], 0), 100);
+  assert.equal(isFee({ taxable: 0 }), false);
+  assert.equal(isFee({ taxable: true }), true);
+  assert.equal(isFee({}), true);
+});
+
+test("a line needs a description, a positive quantity and an amount that is a number", () => {
+  assert.equal(whyNotALine({ description: "ORC filing fee", quantity: 1, unit_amount: 350 }), null);
+  assert.equal(whyNotALine({ description: "No charge", quantity: 1, unit_amount: 0 }), null);
+  assert.equal(whyNotALine({ description: "  ", quantity: 1, unit_amount: 350 }), "Say what the line is for.");
+  assert.equal(whyNotALine({ description: "Courier", quantity: 0, unit_amount: 50 }), "The quantity must be more than nothing.");
+  assert.equal(whyNotALine({ description: "Courier", quantity: 1, unit_amount: "" }), "That is not an amount.");
+  assert.equal(whyNotALine({ description: "Courier", quantity: 1, unit_amount: "fifty" }), "That is not an amount.");
+  assert.equal(whyNotALine({ description: "Courier", quantity: 1, unit_amount: -5 }), "An amount cannot be negative.");
 });

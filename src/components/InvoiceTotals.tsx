@@ -6,6 +6,7 @@
  */
 
 import type { InvoiceLineRow, InvoiceTaxRow } from "@shared/types";
+import { isFee } from "@shared/invoices";
 import { formatMoneyExact } from "../lib/format";
 
 export function InvoiceTotals({
@@ -19,6 +20,7 @@ export function InvoiceTotals({
   withholdingLabel = "Withholding tax",
   discount = 0,
   discountLabel,
+  onRemove,
 }: {
   lines: InvoiceLineRow[];
   taxes: InvoiceTaxRow[];
@@ -36,7 +38,10 @@ export function InvoiceTotals({
    */
   discount?: number;
   discountLabel?: string | null;
+  /** On a draft: takes a line off. Absent once the invoice is a document somebody holds. */
+  onRemove?: (lineId: string) => void;
 }) {
+  const reimbursed = lines.some((line) => !isFee(line));
   return (
     <div className="scroll-x">
       <table className="table">
@@ -46,17 +51,36 @@ export function InvoiceTotals({
             <th className="text-right">Quantity</th>
             <th className="text-right">Unit</th>
             <th className="text-right">Amount</th>
+            {onRemove && <th aria-label="Remove" />}
           </tr>
         </thead>
         <tbody>
           {lines.map((line) => (
             <tr key={line.id}>
-              <td>{line.description}</td>
+              <td>
+                {line.description}
+                {/* The one line tax was not charged on says so, next to the words. */}
+                {!isFee(line) && (
+                  <span className="pill ml-2 bg-slate-100 text-slate-600 ring-slate-200">at cost</span>
+                )}
+              </td>
               <td className="text-right tabular-nums">{line.quantity}</td>
               <td className="text-right tabular-nums">
                 {formatMoneyExact(line.unit_amount, currency)}
               </td>
               <td className="text-right tabular-nums">{formatMoneyExact(line.amount, currency)}</td>
+              {onRemove && (
+                <td className="text-right">
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm text-rose-700"
+                    aria-label={`Remove ${line.description}`}
+                    onClick={() => onRemove(line.id)}
+                  >
+                    Remove
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
 
@@ -69,7 +93,7 @@ export function InvoiceTotals({
           {discount > 0 && (
             <>
               <tr>
-                <td colSpan={3} className="text-right font-medium">
+                <td colSpan={onRemove ? 4 : 3} className="text-right font-medium">
                   Subtotal
                 </td>
                 <td className="text-right tabular-nums font-medium">
@@ -77,7 +101,7 @@ export function InvoiceTotals({
                 </td>
               </tr>
               <tr>
-                <td colSpan={3} className="text-right text-emerald-700">
+                <td colSpan={onRemove ? 4 : 3} className="text-right text-emerald-700">
                   {discountLabel || "Discount"}
                 </td>
                 <td className="text-right tabular-nums text-emerald-700">
@@ -88,8 +112,13 @@ export function InvoiceTotals({
           )}
 
           <tr>
-            <td colSpan={3} className="text-right font-medium">
+            <td colSpan={onRemove ? 4 : 3} className="text-right font-medium">
               Before tax
+              {reimbursed && (
+                <span className="ml-2 text-xs font-normal text-slate-500">
+                  tax is charged on the fees; lines at cost are passed on as paid
+                </span>
+              )}
             </td>
             <td className="text-right tabular-nums font-medium">
               {formatMoneyExact(net, currency)}
@@ -98,7 +127,7 @@ export function InvoiceTotals({
 
           {taxes.map((tax) => (
             <tr key={tax.name}>
-              <td colSpan={3} className="text-right text-slate-500">
+              <td colSpan={onRemove ? 4 : 3} className="text-right text-slate-500">
                 {tax.name} {tax.rate}%
               </td>
               <td className="text-right tabular-nums text-slate-600">
@@ -108,7 +137,7 @@ export function InvoiceTotals({
           ))}
 
           <tr>
-            <td colSpan={3} className="text-right font-semibold">
+            <td colSpan={onRemove ? 4 : 3} className="text-right font-semibold">
               Total
             </td>
             <td className="text-right font-semibold tabular-nums">
@@ -124,7 +153,7 @@ export function InvoiceTotals({
           {withheld > 0 && (
             <>
               <tr>
-                <td colSpan={3} className="text-right text-rose-700">
+                <td colSpan={onRemove ? 4 : 3} className="text-right text-rose-700">
                   {withholdingLabel} withheld
                 </td>
                 <td className="text-right tabular-nums text-rose-700">
@@ -132,7 +161,7 @@ export function InvoiceTotals({
                 </td>
               </tr>
               <tr>
-                <td colSpan={3} className="text-right text-base font-semibold">
+                <td colSpan={onRemove ? 4 : 3} className="text-right text-base font-semibold">
                   Balance due
                 </td>
                 <td className="text-right text-base font-semibold tabular-nums">

@@ -59,16 +59,18 @@ import {
 } from "../../shared/discounts";
 import { activeDiscount, consumeDiscount, releaseDiscount } from "../discounts";
 import { accrueCommission, cancelCommission } from "../commissions";
-import { currencyOf } from "../../shared/money";
+import { CURRENCIES, currencyOf } from "../../shared/money";
 import { billingDue, normaliseBillingDay } from "../../shared/billing";
 import {
   balanceDue,
   withholdingOn,
   DEFAULT_REMINDER_DAYS,
-
+  MAX_INVOICE_LINES,
   TAX_BASES,
   computeTotals,
   netOf,
+  taxableNetOf,
+  whyNotALine,
   reminderDue,
   reminderTone,
   round2,
@@ -87,6 +89,24 @@ import {
  * One function so no caller reaches for `gross` and leaves an invoice looking short by
  * exactly the tax the client remitted on the firm's behalf.
  */
+/** A line typed by hand. `taxable` false is a reimbursable passed on at cost. */
+interface ManualLine {
+  description: string;
+  quantity: number | string;
+  unit_amount: number | string;
+  taxable?: boolean;
+}
+
+/** The shape of a typed line as it arrives, with nothing trusted about it yet. */
+function readManualLine(raw: ManualLine): ManualLine {
+  return {
+    description: String(raw?.description ?? ""),
+    quantity: raw?.quantity === undefined || raw?.quantity === "" ? 1 : String(raw.quantity),
+    unit_amount: raw?.unit_amount === undefined ? "" : String(raw.unit_amount),
+    taxable: raw?.taxable !== false,
+  };
+}
+
 function askedFor(invoice: { gross: number; balance_due?: number | null }): number {
   // Zero means unset, for the reason standingOf gives.
   return invoice.balance_due && invoice.balance_due > 0 ? invoice.balance_due : invoice.gross;
@@ -198,7 +218,8 @@ async function recomputeDraft(env: Env, invoiceId: string): Promise<void> {
 
   const [lines, taxes, discount] = await Promise.all([
     env.DB.prepare(
-      `SELECT quantity, unit_amount, amount, source FROM invoice_lines WHERE invoice_id = ?`,
+      `SELECT quantity, unit_amount, amount, source, taxable FROM invoice_lines
+        WHERE invoice_id = ?`,
     )
       .bind(invoiceId)
       .all(),
@@ -211,6 +232,7 @@ async function recomputeDraft(env: Env, invoiceId: string): Promise<void> {
     unit_amount: number;
     amount: number;
     source: string;
+    taxable: 0 | 1;
   }>;
   const subtotal = netOf(rows);
 
@@ -226,7 +248,20 @@ async function recomputeDraft(env: Env, invoiceId: string): Promise<void> {
       ? discountAmount(discount, discountableBase(rows, discount.applies_to))
       : 0;
   const net = round2(subtotal - taken);
-  const totals = computeTotals(net, taxes);
+  /*
+   * Tax is charged on the fees. A reimbursable - a filing fee paid at the ORC, a courier
+   * - is passed on at cost and is not the firm's fee, so it sits on the invoice below
+   * the tax base rather than inside it. The gross is the whole net plus the tax on the
+   * fee part.
+   */
+  const feeNet = taxableNetOf(rows, taken);
+  const taxed = computeTotals(feeNet, taxes);
+  const totals = {
+    net,
+    taxes: taxed.taxes,
+    tax_total: taxed.tax_total,
+    gross: round2(net + taxed.tax_total),
+  };
 
   /*
    * Withholding is charged on the amount before tax, which is how it works on services
@@ -237,7 +272,7 @@ async function recomputeDraft(env: Env, invoiceId: string): Promise<void> {
    * lines are frozen: a rate change must not alter a document already in a client's
    * hands.
    */
-  const withheld = withholdingOn(totals.net, invoice.withholding_rate ?? 0);
+  const withheld = withholdingOn(feeNet, invoice.withholding_rate ?? 0);
 
   const statements = [
     env.DB.prepare(`DELETE FROM invoice_taxes WHERE invoice_id = ?`).bind(invoiceId),
@@ -283,7 +318,8 @@ async function fullInvoice(env: Env, id: string) {
 
   const [lines, taxes, payments, reminders] = await env.DB.batch([
     env.DB.prepare(
-      `SELECT id, description, quantity, unit_amount, amount, source, subscription_period
+      `SELECT id, description, quantity, unit_amount, amount, source, subscription_period,
+              taxable
          FROM invoice_lines WHERE invoice_id = ? ORDER BY position`,
     ).bind(id),
     env.DB.prepare(
@@ -510,11 +546,16 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       due_on?: string;
       include_services?: unknown;
       note?: string;
+      lines?: unknown;
+      currency?: unknown;
     }>(request);
 
     const period = body.period?.trim() || null;
     if (period && !/^\d{4}-\d{2}$/.test(period)) {
       throw badRequest("Give the month as YYYY-MM.");
+    }
+    if (body.lines !== undefined && !Array.isArray(body.lines)) {
+      throw badRequest("Send the lines as a list.");
     }
     const raised = await raiseInvoice(env, params.id, {
       period,
@@ -522,8 +563,80 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       includeServices: body.include_services !== false,
       note: body.note?.trim()?.slice(0, 500) || null,
       actorId: actor.id,
+      lines: (body.lines as ManualLine[] | undefined)?.map(readManualLine),
+      currency: body.currency ? requireEnum(body.currency, "currency", CURRENCIES) : null,
     });
     return json(raised, 201);
+  });
+
+  /**
+   * Adds a typed line to a draft. A draft is the one state where the document can still
+   * change; once issued, a wrong line means a cancellation and a fresh invoice, so that
+   * the firm's copy and the client's never disagree.
+   */
+  router.post("/api/invoices/:id/lines", async ({ request, env, params }) => {
+    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const invoice = await env.DB.prepare(
+      `SELECT id, client_id, state FROM invoices WHERE id = ?`,
+    )
+      .bind(params.id)
+      .first<{ id: string; client_id: string; state: string }>();
+    if (!invoice) throw notFound("There is no such invoice.");
+    if (invoice.state !== "draft") {
+      throw badRequest("Only a draft can be changed. Cancel this one and raise it again.");
+    }
+    const line = readManualLine(await readJson<ManualLine>(request));
+    const reason = whyNotALine(line);
+    if (reason) throw badRequest(reason);
+
+    const count = await env.DB.prepare(
+      `SELECT COUNT(*) AS n, COALESCE(MAX(position), -1) AS last FROM invoice_lines WHERE invoice_id = ?`,
+    )
+      .bind(invoice.id)
+      .first<{ n: number; last: number }>();
+    if ((count?.n ?? 0) >= MAX_INVOICE_LINES) {
+      throw badRequest(`An invoice takes up to ${MAX_INVOICE_LINES} lines.`);
+    }
+    const quantity = Number(line.quantity);
+    const unit = round2(Number(line.unit_amount));
+    await env.DB.prepare(
+      `INSERT INTO invoice_lines
+         (id, invoice_id, client_id, description, quantity, unit_amount, amount,
+          source, subscription_period, client_service_id, position, taxable)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'manual', NULL, NULL, ?, ?)`,
+    )
+      .bind(
+        newId(),
+        invoice.id,
+        invoice.client_id,
+        line.description.trim(),
+        quantity,
+        unit,
+        round2(quantity * unit),
+        (count?.last ?? -1) + 1,
+        line.taxable === false ? 0 : 1,
+      )
+      .run();
+    await recomputeDraft(env, invoice.id);
+    return json(await fullInvoice(env, invoice.id), 201);
+  });
+
+  /** Takes a line off a draft. A subscription month or a piece of work it billed is freed. */
+  router.delete("/api/invoice-lines/:id", async ({ request, env, params }) => {
+    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const line = await env.DB.prepare(
+      `SELECT l.id, l.invoice_id, i.state FROM invoice_lines l
+         JOIN invoices i ON i.id = l.invoice_id WHERE l.id = ?`,
+    )
+      .bind(params.id)
+      .first<{ id: string; invoice_id: string; state: string }>();
+    if (!line) throw notFound("There is no such line.");
+    if (line.state !== "draft") {
+      throw badRequest("Only a draft can be changed. Cancel this one and raise it again.");
+    }
+    await env.DB.prepare(`DELETE FROM invoice_lines WHERE id = ?`).bind(line.id).run();
+    await recomputeDraft(env, line.invoice_id);
+    return json(await fullInvoice(env, line.invoice_id));
   });
 
   /** Issues a draft: freezes the figures, sends it, and starts the clock. */
@@ -888,7 +1001,8 @@ export async function serveDocument(env: Env, invoiceId: string): Promise<Respon
 
   const [lines, taxes, payments] = await env.DB.batch([
     env.DB.prepare(
-      `SELECT description, quantity, unit_amount, amount, source, subscription_period
+      `SELECT description, quantity, unit_amount, amount, source, subscription_period,
+              taxable
          FROM invoice_lines WHERE invoice_id = ? ORDER BY position`,
     ).bind(invoiceId),
     env.DB.prepare(
@@ -936,15 +1050,17 @@ export async function serveDocument(env: Env, invoiceId: string): Promise<Respon
       amount: number;
       source: string;
       subscription_period: string | null;
+      taxable: 0 | 1;
     }>).map((line) => ({
       date: issued,
-      // The firm's own invoices carry a short "activity" beside the description.
+      // The firm's own invoices carry a short "activity" beside the description. A
+      // reimbursable says so, because it is the one line tax was not charged on.
       activity:
-        line.source === "subscription"
-          ? "Consultancy services"
-          : line.source === "service"
-            ? "Professional services"
-            : "Services",
+        line.taxable === 0
+          ? "Reimbursable at cost"
+          : line.source === "subscription"
+            ? "Consultancy services"
+            : "Professional services",
       description: line.description,
       quantity: line.quantity,
       unit_amount: line.unit_amount,
@@ -1114,6 +1230,10 @@ export async function raiseInvoice(
     note: string | null;
     /** Null when nobody did it: the monthly run. */
     actorId: string | null;
+    /** Lines typed by hand: a reimbursable, a one-off fee, anything the catalogue does not carry. */
+    lines?: ManualLine[];
+    /** For an invoice made only of typed lines: what it is in. Otherwise the subscription decides. */
+    currency?: string | null;
   },
 ): Promise<{ id: string; number: string }> {
     const client = await env.DB.prepare(`SELECT id, name, code FROM clients WHERE id = ?`)
@@ -1141,16 +1261,27 @@ export async function raiseInvoice(
       description: string;
       quantity: number;
       unit_amount: number;
-      source: "subscription" | "service";
+      source: "subscription" | "service" | "manual";
       period: string | null;
       serviceId: string | null;
+      taxable: 0 | 1;
     }> = [];
 
     /*
      * What this invoice is in, decided once and before any line is added. The client's
      * subscription where they have one, otherwise cedis. Every line has to be in it.
+     * An invoice made only of typed lines may name its own currency - a dollar
+     * disbursement for a client billed in cedis goes on its own invoice, in dollars -
+     * but one that also bills the subscription or delivered work is in the
+     * subscription's currency, whatever was asked.
      */
-    const invoiceCurrency = currencyOf(subscription?.currency);
+    const typedOnly = !period && !input.includeServices;
+    if (input.currency && !typedOnly && currencyOf(input.currency) !== currencyOf(subscription?.currency)) {
+      throw badRequest(
+        `This client is billed in ${currencyOf(subscription?.currency)}. Put a ${currencyOf(input.currency)} line on an invoice of its own.`,
+      );
+    }
+    const invoiceCurrency = currencyOf(typedOnly && input.currency ? input.currency : subscription?.currency);
 
     if (period) {
       if (!subscription) {
@@ -1163,8 +1294,13 @@ export async function raiseInvoice(
       }
       const { fee } = feeFor(subscription, catalogue.tiers);
       if (fee === null) {
+        const listed = catalogue.tiers.find((t) => t.tier === subscription.tier);
         throw badRequest(
-          "No fee is set for that tier. Set it in Portal settings before billing.",
+          listed?.monthly_fee !== null &&
+            listed !== undefined &&
+            currencyOf(listed.currency) !== currencyOf(subscription.currency)
+            ? `${listed.tier[0].toUpperCase()}${listed.tier.slice(1)} is listed in ${currencyOf(listed.currency)} and this client is billed in ${currencyOf(subscription.currency)}. Enter their fee in ${currencyOf(subscription.currency)} under Move tier or fee before billing.`
+            : "No fee is set for that tier. Set it in Portal settings before billing.",
         );
       }
       const tierName =
@@ -1176,6 +1312,7 @@ export async function raiseInvoice(
         source: "subscription",
         period,
         serviceId: null,
+        taxable: 1,
       });
     }
 
@@ -1210,12 +1347,32 @@ export async function raiseInvoice(
           source: "service",
           period: null,
           serviceId: service.id,
+          taxable: 1,
         });
       }
     }
 
+    for (const typed of input.lines ?? []) {
+      const reason = whyNotALine(typed);
+      if (reason) throw badRequest(reason);
+      lines.push({
+        description: typed.description.trim(),
+        quantity: Number(typed.quantity),
+        unit_amount: round2(Number(typed.unit_amount)),
+        source: "manual",
+        period: null,
+        serviceId: null,
+        taxable: typed.taxable === false ? 0 : 1,
+      });
+    }
+    if (lines.length > MAX_INVOICE_LINES) {
+      throw badRequest(`An invoice takes up to ${MAX_INVOICE_LINES} lines.`);
+    }
+
     if (!lines.length) {
-      throw badRequest("There is nothing to bill: no month given and no delivered work.");
+      throw badRequest(
+        "There is nothing to bill: no month given, no delivered work, and no lines typed.",
+      );
     }
 
     const id = newId();
@@ -1254,8 +1411,8 @@ export async function raiseInvoice(
           env.DB.prepare(
             `INSERT INTO invoice_lines
                (id, invoice_id, client_id, description, quantity, unit_amount, amount,
-                source, subscription_period, client_service_id, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                source, subscription_period, client_service_id, position, taxable)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           ).bind(
             newId(),
             id,
@@ -1268,6 +1425,7 @@ export async function raiseInvoice(
             line.period,
             line.serviceId,
             index,
+            line.taxable,
           ),
         ),
       ]);

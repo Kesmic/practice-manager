@@ -664,7 +664,7 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
 
     const [lines, taxes, payments] = await env.DB.batch([
       env.DB.prepare(
-        `SELECT description, quantity, unit_amount, amount FROM invoice_lines
+        `SELECT description, quantity, unit_amount, amount, taxable FROM invoice_lines
           WHERE invoice_id = ? ORDER BY position`,
       ).bind(params.id),
       env.DB.prepare(

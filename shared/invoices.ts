@@ -376,6 +376,54 @@ export interface InvoiceLine {
   quantity: number;
   unit_amount: number;
   source: LineSource;
+  /** A fee (1) or a reimbursable passed on at cost (0). Tax and withholding apply to fees only. */
+  taxable?: 0 | 1 | boolean;
+}
+
+/** Whether a line is a fee, which is what tax and withholding are charged on. */
+export function isFee(line: { taxable?: 0 | 1 | boolean | null }): boolean {
+  return line.taxable === undefined || line.taxable === null || Boolean(line.taxable);
+}
+
+/**
+ * What tax is charged on: the fee lines, less the discount, never below nothing. A
+ * reimbursable passed on at cost is not the firm's fee, so it sits outside this and
+ * outside the withholding the client deducts. The discount only ever covers
+ * subscription and service lines, which are fees, so it comes off this base whole.
+ */
+export function taxableNetOf(
+  lines: Array<{ amount: number; taxable?: 0 | 1 | boolean | null }>,
+  discountTaken: number,
+): number {
+  const fees = lines.filter(isFee).reduce((sum, l) => sum + l.amount, 0);
+  return round2(Math.max(0, fees - discountTaken));
+}
+
+/** The most lines one invoice takes: past this it is a statement, not an invoice. */
+export const MAX_INVOICE_LINES = 40;
+
+/**
+ * Why this line cannot go on an invoice, or null. A description somebody can read on a
+ * statement, a positive quantity, and an amount that is a number. Zero is allowed for
+ * the amount - a line saying "no charge" is a real thing to print - but the invoice as
+ * a whole is refused at issue when it comes to nothing.
+ */
+export function whyNotALine(line: {
+  description: string;
+  quantity: string | number;
+  unit_amount: string | number;
+}): string | null {
+  const description = line.description.trim();
+  if (!description) return "Say what the line is for.";
+  if (description.length > 200) return "Keep the description under 200 characters.";
+  const quantity = Number(line.quantity);
+  if (!Number.isFinite(quantity) || quantity <= 0) return "The quantity must be more than nothing.";
+  if (quantity > 100_000) return "That quantity is implausibly large.";
+  const unit = Number(String(line.unit_amount).trim());
+  if (String(line.unit_amount).trim() === "" || !Number.isFinite(unit)) return "That is not an amount.";
+  if (unit < 0) return "An amount cannot be negative.";
+  if (unit > 1_000_000_000) return "That amount is implausibly large.";
+  return null;
 }
 
 export function lineTotal(line: { quantity: number; unit_amount: number }): number {
