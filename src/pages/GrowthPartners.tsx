@@ -26,6 +26,7 @@ import {
 } from "@shared/growth-partners";
 import type { GrowthPartnerOverview } from "@shared/types";
 import { formatAmount } from "@shared/money";
+import { useDialogs } from "../lib/dialogs";
 import { ApiRequestError, api } from "../lib/api";
 import { useSession } from "../lib/auth";
 import {
@@ -45,6 +46,7 @@ export function GrowthPartners() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const dialogs = useDialogs();
   const [adding, setAdding] = useState(false);
   const [winning, setWinning] = useState<string | null>(null);
   const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
@@ -167,10 +169,7 @@ export function GrowthPartners() {
                         onClick={() =>
                           void act(async () => {
                             const { invitation_url } = await api.invitePartner(row.id);
-                            window.prompt(
-                              "Emailed. You can also hand this over directly:",
-                              invitation_url,
-                            );
+                            await dialogs.show("Emailed. You can also hand this over directly:", { title: "A link to hand over", link: invitation_url });
                           }, "A link has gone out.")
                         }
                       >
@@ -180,11 +179,8 @@ export function GrowthPartners() {
                         type="button"
                         className="btn-ghost btn-sm"
                         disabled={busy}
-                        onClick={() => {
-                          const reason = window.prompt(
-                            `Why is ${row.full_name} being suspended?`,
-                            "",
-                          );
+                        onClick={async () => {
+                          const reason = await dialogs.ask(`Why is ${row.full_name} being suspended?`, { multiline: true, required: false, danger: true, confirmLabel: "Suspend" });
                           if (reason === null) return;
                           void act(
                             () => api.setPartnerStatus(row.id, "suspended", reason),
@@ -244,16 +240,10 @@ export function GrowthPartners() {
                           type="button"
                           className="btn-ghost btn-sm"
                           disabled={busy}
-                          onClick={() => {
-                            const days = window.prompt(
-                              `Extend the hold on ${prospect.business_name} by how many days?`,
-                              "90",
-                            );
+                          onClick={async () => {
+                            const days = await dialogs.ask(`Extend the hold on ${prospect.business_name} by how many days?`, { initial: "90", inputMode: "numeric", confirmLabel: "Next" });
                             if (!days) return;
-                            const reason = window.prompt(
-                              "Why? A hold extended with nothing said about why is one nobody can judge later.",
-                              "",
-                            );
+                            const reason = await dialogs.ask("Why? A hold extended with nothing said about why is one nobody can judge later.", { multiline: true, confirmLabel: "Extend the hold" });
                             if (!reason?.trim()) return;
                             void act(
                               () =>
@@ -350,11 +340,8 @@ export function GrowthPartners() {
                                 type="button"
                                 className="btn-ghost btn-sm ml-2"
                                 disabled={busy}
-                                onClick={() => {
-                                  const reference = window.prompt(
-                                    "Payment reference, if you have one:",
-                                    "",
-                                  );
+                                onClick={async () => {
+                                  const reference = await dialogs.ask("Payment reference, if you have one:", { initial: "", required: false, confirmLabel: "Mark paid" });
                                   if (reference === null) return;
                                   void act(
                                     () =>
@@ -384,10 +371,7 @@ export function GrowthPartners() {
           onSave={async (body) => {
             await act(async () => {
               const { invitation_url } = await api.addPartner(body);
-              window.prompt(
-                "Emailed to them. You can also hand this link over directly:",
-                invitation_url,
-              );
+              await dialogs.show("Emailed to them. You can also hand this link over directly:", { title: "A link to hand over", link: invitation_url });
             }, "Added, and a link to set a password has gone out.");
             setAdding(false);
           }}

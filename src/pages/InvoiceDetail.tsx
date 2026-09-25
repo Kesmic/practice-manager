@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { INVOICE_STATE_LABELS, whyNotALine } from "@shared/invoices";
 import type { InvoiceDetail as Detail } from "@shared/types";
+import { useDialogs } from "../lib/dialogs";
 import { ApiRequestError, api } from "../lib/api";
 import { InvoiceStatePill, InvoiceTotals } from "../components/InvoiceTotals";
 import {
@@ -31,6 +32,7 @@ export function InvoiceDetail() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const dialogs = useDialogs();
   const [paying, setPaying] = useState(false);
 
   const load = useCallback(async () => {
@@ -141,8 +143,8 @@ export function InvoiceDetail() {
             type="button"
             className="btn-ghost text-rose-700"
             disabled={busy}
-            onClick={() => {
-              const reason = window.prompt("Why is this being cancelled?");
+            onClick={async () => {
+              const reason = await dialogs.ask("Why is this being cancelled?", { multiline: true, danger: true, confirmLabel: "Cancel the invoice" });
               if (reason?.trim()) {
                 void act(
                   () => api.voidInvoice(invoice.id, reason.trim()),

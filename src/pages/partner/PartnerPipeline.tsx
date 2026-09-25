@@ -25,6 +25,7 @@ import {
 } from "@shared/growth-partners";
 import type { PartnerPipeline as Pipeline, ProspectRow } from "@shared/types";
 import { formatAmount } from "@shared/money";
+import { useDialogs } from "../../lib/dialogs";
 import { ApiRequestError, api } from "../../lib/api";
 import { usePartnerSession } from "../../lib/partner-auth";
 import {
@@ -64,6 +65,7 @@ export function PartnerPipeline() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const dialogs = useDialogs();
   const [registering, setRegistering] = useState(false);
   const [proposing, setProposing] = useState<ProspectRow | null>(null);
 
@@ -284,10 +286,7 @@ export function PartnerPipeline() {
                     onClick={() =>
                       void act(async () => {
                         const { link } = await api.sendProposal(latest.id);
-                        window.prompt(
-                          "Emailed to them. You can also send this link yourself:",
-                          link,
-                        );
+                        await dialogs.show("Emailed to them. You can also send this link yourself:", { title: "A link to hand over", link: link });
                       }, `${latest.reference} is with them.`)
                     }
                   >
@@ -300,11 +299,8 @@ export function PartnerPipeline() {
                     type="button"
                     className="btn-ghost btn-sm ml-auto"
                     disabled={busy}
-                    onClick={() => {
-                      const reason = window.prompt(
-                        `Why is ${prospect.business_name} not proceeding? Only we see this.`,
-                        "",
-                      );
+                    onClick={async () => {
+                      const reason = await dialogs.ask(`Why is ${prospect.business_name} not proceeding? Only we see this.`, { multiline: true, required: false, danger: true, confirmLabel: "Close it" });
                       if (reason === null) return;
                       void act(
                         () =>

@@ -40,6 +40,7 @@ import {
   currencyOf,
   formatAmount,
 } from "@shared/money";
+import { useDialogs } from "../lib/dialogs";
 import { ApiRequestError, api } from "../lib/api";
 import {
   ErrorBanner,
@@ -116,6 +117,7 @@ function CriteriaCard({
   const [name, setName] = useState("");
   const [unit, setUnit] = useState<CriterionUnit>("count");
   const [how, setHow] = useState("");
+  const dialogs = useDialogs();
 
   return (
     <section className="card">
@@ -159,7 +161,7 @@ function CriteriaCard({
                         if (
                           err instanceof ApiRequestError &&
                           err.status === 409 &&
-                          window.confirm(`${err.message}\n\nRemove it anyway?`)
+                          await dialogs.confirm(`${err.message}\n\nRemove it anyway?`, { danger: true, confirmLabel: "Remove it anyway" })
                         ) {
                           await api.removeCriterion(criterion.id, true);
                         } else {
@@ -316,7 +318,7 @@ function TiersCard({
                   type="button"
                   className="btn-secondary btn-sm ml-auto"
                   disabled={busy}
-                  onClick={() => save(tier)}
+                  onClick={async () => save(tier)}
                 >
                   Save
                 </button>
@@ -473,6 +475,7 @@ function PackageServicesCard({
    */
   const [ticks, setTicks] = useState<Record<string, Map<string, string>>>({});
   const [dirty, setDirty] = useState(false);
+  const dialogs = useDialogs();
   const saved = useMemo(() => {
     const out: Record<string, Map<string, string>> = {};
     for (const tier of PACKAGE_COLUMNS) out[tier] = new Map();
@@ -552,18 +555,18 @@ function PackageServicesCard({
         ),
       "What each package includes is saved.",
     );
-  const rename = (id: string, current: string) => {
-    const name = window.prompt("Rename it to:", current);
+  const rename = async (id: string, current: string) => {
+    const name = await dialogs.ask("Rename it to:", { initial: current, confirmLabel: "Rename" });
     if (name === null || name.trim() === current) return;
     const reason = whyNotAServiceName(name);
     if (reason) {
-      window.alert(reason);
+      await dialogs.show(reason, { title: "That name will not do" });
       return;
     }
     void guard(() => api.updatePackageService(id, { name: name.trim() }), "Renamed.");
   };
-  const remove = (id: string, name: string) => {
-    if (!window.confirm(`Remove ${name} from the catalogue and from every package?`)) return;
+  const remove = async (id: string, name: string) => {
+    if (!await dialogs.confirm(`Remove ${name} from the catalogue and from every package?`, { danger: true, confirmLabel: "Remove" })) return;
     void guard(() => api.deletePackageService(id), `${name} removed.`);
   };
   const retire = (id: string, name: string) =>

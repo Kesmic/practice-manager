@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ToolCatalogue, TrainingView } from "@shared/types";
 import { describeValidity } from "@shared/certifications";
 import { describeSize } from "@shared/staff-files";
+import { useDialogs } from "../lib/dialogs";
 import { ApiRequestError, api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { CertStatus } from "./CertStatus";
@@ -31,6 +32,7 @@ export function StaffTrainingCard({
   userId: string;
   fullName: string;
 }) {
+  const dialogs = useDialogs();
   const [view, setView] = useState<TrainingView | null>(null);
   const [catalogue, setCatalogue] = useState<ToolCatalogue | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +80,7 @@ export function StaffTrainingCard({
   };
 
   const unassign = async (id: string, name: string) => {
-    if (!window.confirm(`Stop asking ${first} to take ${name}?`)) return;
+    if (!await dialogs.confirm(`Stop asking ${first} to take ${name}?`, { danger: true, confirmLabel: "Stop asking" })) return;
     try {
       await api.unassignCertification(id);
       await load();
