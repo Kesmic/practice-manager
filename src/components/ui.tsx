@@ -324,12 +324,21 @@ export function Modal({
   wide?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  /*
+   * The close handler is read through a ref so the effect below runs only when the
+   * dialog opens or closes. Depending on the handler itself meant that a parent which
+   * re-rendered on every keystroke - because the field's state lived there - handed
+   * in a new function each time, the effect re-ran, and focus was pulled out of the
+   * field after every letter.
+   */
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
-  // Escape closes; focus moves into the dialog so keyboard users land inside it.
+  // Escape closes; focus moves into the dialog once, when it opens, so keyboard users land inside it.
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") closeRef.current();
     };
     document.addEventListener("keydown", onKeyDown);
     panelRef.current?.focus();
@@ -339,7 +348,7 @@ export function Modal({
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
