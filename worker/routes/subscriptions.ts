@@ -56,6 +56,8 @@ import {
   type Figure,
   type ServiceState,
   whyNotAStartDate,
+  feeFor,
+  whyNotABillingCurrency,
 } from "../../shared/subscriptions";
 import {
   DISCOUNT_KINDS,
@@ -170,20 +172,7 @@ export async function readCatalogue(env: Env) {
  * firm's list, the client's page and the invoice list cannot each resolve it slightly
  * differently.
  */
-export function feeFor(
-  subscription: { monthly_fee: number | null; currency: string; tier: ClientTier },
-  tiers: TierRow[],
-): { fee: number | null; currency: string; negotiated: boolean } {
-  if (subscription.monthly_fee !== null && subscription.monthly_fee !== undefined) {
-    return { fee: subscription.monthly_fee, currency: subscription.currency, negotiated: true };
-  }
-  const tier = tiers.find((t) => t.tier === subscription.tier);
-  return {
-    fee: tier?.monthly_fee ?? null,
-    currency: tier?.currency ?? subscription.currency,
-    negotiated: false,
-  };
-}
+export { feeFor };
 
 /** The newest figure for each criterion, which is what an assessment reads. */
 async function latestFigures(env: Env, clientId: string): Promise<Figure[]> {
@@ -754,8 +743,11 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     }
 
     const catalogue = await readCatalogue(env);
+    const listed = catalogue.tiers.find((t) => t.tier === tier);
+    const currencyProblem = whyNotABillingCurrency(fee, currency, listed, TIER_LABELS[tier]);
+    if (currencyProblem) throw badRequest(currencyProblem);
     const before = existing ? feeFor(existing, catalogue.tiers).fee : null;
-    const after = feeFor({ tier, monthly_fee: fee, currency: "GHS" }, catalogue.tiers).fee;
+    const after = feeFor({ tier, monthly_fee: fee, currency }, catalogue.tiers).fee;
 
     const statements = [];
     if (existing) {

@@ -338,6 +338,47 @@ export const FEE_BASIS_LABELS: Record<FeeBasis, string> = {
 
 /** How a fee reads to somebody being asked to pay it. */
 /**
+ * What a client actually pays a month: their own rate if one is set, otherwise the
+ * package's listed fee - but only when the package is listed in the currency the client
+ * is billed in. Nothing converts, so a client billed in cedis on a package listed in
+ * dollars has no usable listed fee: the answer is "no fee set", never a dollar figure
+ * with a cedi sign on it. The currency returned is always the client's own, because
+ * that is the one their invoices and discounts are in.
+ */
+export function feeFor(
+  subscription: { monthly_fee: number | null; currency: string; tier: ClientTier },
+  tiers: Array<{ tier: ClientTier; monthly_fee: number | null; currency: string }>,
+): { fee: number | null; currency: string; negotiated: boolean } {
+  if (subscription.monthly_fee !== null && subscription.monthly_fee !== undefined) {
+    return { fee: subscription.monthly_fee, currency: subscription.currency, negotiated: true };
+  }
+  const tier = tiers.find((t) => t.tier === subscription.tier);
+  const listedInTheirCurrency =
+    tier !== undefined && tier.currency.toUpperCase() === subscription.currency.toUpperCase();
+  return {
+    fee: listedInTheirCurrency ? (tier.monthly_fee ?? null) : null,
+    currency: subscription.currency,
+    negotiated: false,
+  };
+}
+
+/**
+ * Why this fee and currency cannot be saved on a client, or null. The one refusal: no
+ * fee of their own on a package listed in another currency, which would leave them
+ * with nothing to bill and a figure on screen that means the wrong money.
+ */
+export function whyNotABillingCurrency(
+  fee: number | null,
+  currency: string,
+  listed: { monthly_fee: number | null; currency: string } | undefined,
+  tierLabel: string,
+): string | null {
+  if (fee !== null || !listed || listed.monthly_fee === null) return null;
+  if (listed.currency.toUpperCase() === currency.toUpperCase()) return null;
+  return `${tierLabel} is listed in ${listed.currency.toUpperCase()}. To bill this client in ${currency.toUpperCase()}, enter their fee in ${currency.toUpperCase()}; or bill them in ${listed.currency.toUpperCase()} at the listed fee.`;
+}
+
+/**
  * A package's monthly price as the card prints it: "GHS 1,500", or "GHS 900 to 1,500"
  * when a starting price sits below the list price. Null when no price is set. A
  * starting price at or above the list price is ignored rather than printed backwards.

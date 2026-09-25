@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { INVOICE_STATE_LABELS } from "@shared/invoices";
+import { INVOICE_STATE_LABELS, whyNotALine } from "@shared/invoices";
 import type { InvoiceDetail as Detail } from "@shared/types";
 import { ApiRequestError, api } from "../lib/api";
 import { InvoiceStatePill, InvoiceTotals } from "../components/InvoiceTotals";
@@ -167,7 +167,24 @@ export function InvoiceDetail() {
           balanceDue={invoice.balance_due}
           discount={invoice.discount_amount}
           discountLabel={invoice.discount_label}
+          onRemove={
+            partner && invoice.state === "draft"
+              ? (lineId) => void act(() => api.removeInvoiceLine(lineId), "Line removed.")
+              : undefined
+          }
         />
+        {/*
+          A draft can still change. Once issued it is a document somebody is holding, and
+          a wrong line means cancelling it and raising another - so the form is here and
+          nowhere later.
+        */}
+        {partner && invoice.state === "draft" && (
+          <AddLine
+            busy={busy}
+            currency={invoice.currency}
+            onAdd={(line) => act(() => api.addInvoiceLine(invoice.id, line), "Line added.")}
+          />
+        )}
         <dl className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-sm">
           <div className="flex font-semibold">
             <dt>Outstanding</dt>
@@ -387,5 +404,87 @@ function PaymentModal({
         )}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * A line typed onto a draft: what it is, how many, what each costs, and whether it is
+ * the firm's fee or something paid out for the client and passed on at cost. The
+ * distinction is the whole point - tax and withholding are charged on fees only.
+ */
+function AddLine({
+  busy,
+  currency,
+  onAdd,
+}: {
+  busy: boolean;
+  currency: string;
+  onAdd: (line: {
+    description: string;
+    quantity: number;
+    unit_amount: number;
+    taxable: boolean;
+  }) => Promise<void>;
+}) {
+  const [description, setDescription] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [unit, setUnit] = useState("");
+  const [kind, setKind] = useState<"fee" | "cost">("fee");
+  const reason = whyNotALine({ description, quantity, unit_amount: unit });
+  return (
+    <form
+      className="mt-4 border-t border-slate-200 pt-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (reason) return;
+        void onAdd({
+          description: description.trim(),
+          quantity: Number(quantity),
+          unit_amount: Number(unit),
+          taxable: kind === "fee",
+        }).then(() => {
+          setDescription("");
+          setQuantity("1");
+          setUnit("");
+          setKind("fee");
+        });
+      }}
+    >
+      <h3 className="mb-2 text-sm font-semibold text-slate-900">Add a line</h3>
+      <div className="grid gap-3 sm:grid-cols-[1fr_6rem_9rem_11rem_auto] sm:items-end">
+        <Field label="What for">
+          {(id) => (
+            <TextInput
+              id={id}
+              value={description}
+              placeholder="ORC filing fee paid on your behalf"
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label="Quantity">
+          {(id) => (
+            <TextInput id={id} inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+          )}
+        </Field>
+        <Field label={`Each, in ${currency}`}>
+          {(id) => (
+            <TextInput id={id} inputMode="decimal" value={unit} onChange={(e) => setUnit(e.target.value)} />
+          )}
+        </Field>
+        <Field label="Charged as">
+          {(id) => (
+            <select id={id} className="input" value={kind} onChange={(e) => setKind(e.target.value as "fee" | "cost")}>
+              <option value="fee">Our fee - tax applies</option>
+              <option value="cost">Reimbursable at cost - no tax</option>
+            </select>
+          )}
+        </Field>
+        <button type="submit" className="btn-secondary" disabled={busy || !!reason}>
+          Add
+        </button>
+      </div>
+      {reason && description.trim() && <p className="hint mt-1 text-amber-800">{reason}</p>}
+    </form>
   );
 }

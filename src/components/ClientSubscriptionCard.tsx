@@ -18,6 +18,7 @@ import {
   TIER_ORDER,
   describeFee,
   nextStates,
+  whyNotABillingCurrency,
   type ClientTier,
   whyNotAStartDate,
 } from "@shared/subscriptions";
@@ -48,7 +49,8 @@ import {
   currencyOf,
   type Currency,
 } from "@shared/money";
-import { ApiRequestError, api } from "../lib/api";
+import { ApiRequestError, api, type ManualInvoiceLine } from "../lib/api";
+import { MAX_INVOICE_LINES, whyNotALine } from "@shared/invoices";
 import { TierMeters } from "./TierMeters";
 import {
   ErrorBanner,
@@ -140,6 +142,9 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
                 {subscription.fee === null
                   ? "no fee set"
                   : `${formatMoney(subscription.fee, currency)} a month`}
+              </span>
+              <span className="pill bg-slate-100 text-slate-600 ring-slate-200">
+                Billed in {currencyOf(currency)}
               </span>
               {subscription.negotiated && (
                 <span className="pill bg-slate-100 text-slate-600 ring-slate-200">
@@ -338,10 +343,16 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
         )}
 
         {/* --- billing ----------------------------------------------------- */}
-        {partner && subscription && (
+        {partner && (
           <div className="border-t border-slate-200 pt-4">
             <h3 className="mb-2 text-sm font-semibold text-slate-900">Billing</h3>
-            <RaiseInvoice clientId={clientId} busy={busy} act={act} />
+            <RaiseInvoice
+              clientId={clientId}
+              busy={busy}
+              act={act}
+              hasSubscription={!!subscription}
+              currency={currencyOf(currency)}
+            />
           </div>
         )}
 
@@ -987,7 +998,14 @@ function DiscountModal({
               </Select>
             )}
           </Field>
-          <Field label={kind === "percentage" ? "Per cent off" : `Amount off (${currency})`}>
+          <Field
+            label={kind === "percentage" ? "Per cent off" : `Amount off (${currency})`}
+            hint={
+              kind === "percentage"
+                ? undefined
+                : `In ${currency}, the currency this client is billed in. To change that, use Move tier or fee.`
+            }
+          >
             {(id) => (
               <TextInput
                 id={id}
@@ -1205,40 +1223,266 @@ function RaiseInvoice({
   clientId,
   busy,
   act,
+  hasSubscription,
+  currency,
 }: {
   clientId: string;
   busy: boolean;
   act: (what: () => Promise<unknown>, message: string) => Promise<void>;
+  hasSubscription: boolean;
+  currency: Currency;
 }) {
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [raised, setRaised] = useState<{ id: string; number: string } | null>(null);
+  const [byHand, setByHand] = useState(false);
 
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <Field label="Bill the month" hint="Delivered work not yet invoiced is picked up too.">
-        {(id) => (
-          <TextInput id={id} type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
-        )}
-      </Field>
-      <button
-        type="button"
-        className="btn-secondary"
-        disabled={busy}
-        onClick={() =>
-          void act(async () => {
-            const r = await api.raiseInvoice(clientId, { period });
-            setRaised(r);
-          }, "Draft invoice raised.")
-        }
-      >
-        Raise a draft
+      {hasSubscription && (
+        <>
+          <Field label="Bill the month" hint="Delivered work not yet invoiced is picked up too.">
+            {(id) => (
+              <TextInput id={id} type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+            )}
+          </Field>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={busy}
+            onClick={() =>
+              void act(async () => {
+                const r = await api.raiseInvoice(clientId, { period });
+                setRaised(r);
+              }, "Draft invoice raised.")
+            }
+          >
+            Raise a draft
+          </button>
+        </>
+      )}
+      {/*
+        Anything the month does not cover: a filing fee paid on the client's behalf, a
+        courier, a one-off piece of work the catalogue does not carry. Typed line by
+        line, as a draft, so it can be read over before it goes.
+      */}
+      <button type="button" className="btn-secondary" disabled={busy} onClick={() => setByHand(true)}>
+        Raise one by hand
       </button>
       {raised && (
         <Link className="link text-sm" to={`/invoices/${raised.id}`}>
           {raised.number} →
         </Link>
       )}
+      <ManualInvoiceModal
+        open={byHand}
+        currency={currency}
+        onClose={() => setByHand(false)}
+        onSave={(body) =>
+          act(async () => {
+            const r = await api.raiseInvoice(clientId, body);
+            setRaised(r);
+            setByHand(false);
+          }, "Draft invoice raised. Read it over, then issue it.")
+        }
+      />
     </div>
+  );
+}
+
+/** One line being typed: strings until they are checked, so a half-typed amount is not a number yet. */
+interface DraftLine {
+  description: string;
+  quantity: string;
+  unit_amount: string;
+  taxable: boolean;
+}
+
+const EMPTY_LINE: DraftLine = { description: "", quantity: "1", unit_amount: "", taxable: true };
+
+/**
+ * An invoice typed by hand.
+ *
+ * Each line is either the firm's fee or a reimbursable - something paid out for the
+ * client and passed on at cost. Tax and withholding are charged on fees only, which is
+ * why the choice sits on every line rather than on the invoice. The currency is the
+ * client's own unless somebody says otherwise, and a dollar disbursement for a client
+ * billed in cedis goes on an invoice of its own: nothing here converts.
+ */
+function ManualInvoiceModal({
+  open,
+  currency,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  currency: Currency;
+  onClose: () => void;
+  onSave: (body: {
+    lines: ManualInvoiceLine[];
+    currency: Currency;
+    include_services: false;
+    due_on?: string;
+    note?: string;
+  }) => Promise<void>;
+}) {
+  const [lines, setLines] = useState<DraftLine[]>([{ ...EMPTY_LINE }]);
+  const [chosen, setChosen] = useState<Currency>(currency);
+  const [dueOn, setDueOn] = useState("");
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setLines([{ ...EMPTY_LINE }]);
+    setChosen(currency);
+    setDueOn("");
+    setNote("");
+  }, [open, currency]);
+
+  const edit = (index: number, patch: Partial<DraftLine>) =>
+    setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+  const reasons = lines.map((line) => whyNotALine(line));
+  const blocked = reasons.some((r) => r !== null);
+  const total = lines.reduce((sum, line) => {
+    const n = Number(line.quantity) * Number(line.unit_amount);
+    return Number.isFinite(n) ? sum + n : sum;
+  }, 0);
+
+  return (
+    <Modal
+      open={open}
+      title="Raise an invoice by hand"
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={blocked}
+            onClick={() =>
+              void onSave({
+                lines: lines.map((line) => ({
+                  description: line.description.trim(),
+                  quantity: Number(line.quantity),
+                  unit_amount: Number(line.unit_amount),
+                  taxable: line.taxable,
+                })),
+                currency: chosen,
+                include_services: false,
+                due_on: dueOn || undefined,
+                note: note.trim() || undefined,
+              })
+            }
+          >
+            Raise the draft
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="muted">
+          For anything the month does not cover: a filing fee paid on the client&rsquo;s behalf,
+          a courier, a one-off piece of work. A reimbursable is passed on at cost, with no
+          tax and nothing withheld. It is raised as a draft to read over before it goes.
+        </p>
+
+        <div className="space-y-3">
+          {lines.map((line, index) => (
+            <div
+              key={index}
+              className="grid gap-2 rounded-md bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-[1fr_5rem_8rem_12rem_auto] sm:items-end"
+            >
+              <Field label="What for">
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={line.description}
+                    placeholder="ORC filing fee paid on your behalf"
+                    onChange={(e) => edit(index, { description: e.target.value })}
+                  />
+                )}
+              </Field>
+              <Field label="Qty">
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    inputMode="decimal"
+                    value={line.quantity}
+                    onChange={(e) => edit(index, { quantity: e.target.value })}
+                  />
+                )}
+              </Field>
+              <Field label={`Each, ${chosen}`}>
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    inputMode="decimal"
+                    value={line.unit_amount}
+                    onChange={(e) => edit(index, { unit_amount: e.target.value })}
+                  />
+                )}
+              </Field>
+              <Field label="Charged as">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={line.taxable ? "fee" : "cost"}
+                    onChange={(e) => edit(index, { taxable: e.target.value === "fee" })}
+                  >
+                    <option value="fee">Our fee - tax applies</option>
+                    <option value="cost">Reimbursable at cost</option>
+                  </Select>
+                )}
+              </Field>
+              <button
+                type="button"
+                className="btn-ghost btn-sm text-rose-700"
+                disabled={lines.length === 1}
+                aria-label="Remove this line"
+                onClick={() => setLines((prev) => prev.filter((_, i) => i !== index))}
+              >
+                Remove
+              </button>
+              {reasons[index] && line.description.trim() && (
+                <p className="text-xs text-amber-800 sm:col-span-5">{reasons[index]}</p>
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={lines.length >= MAX_INVOICE_LINES}
+            onClick={() => setLines((prev) => [...prev, { ...EMPTY_LINE }])}
+          >
+            Another line
+          </button>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="In" hint="Nothing converts. A dollar cost for a cedi client goes on its own invoice.">
+            {(id) => (
+              <Select id={id} value={chosen} onChange={(e) => setChosen(currencyOf(e.target.value))}>
+                {options(CURRENCIES, CURRENCY_LABELS)}
+              </Select>
+            )}
+          </Field>
+          <Field label="Due on" hint="Blank uses the firm's usual terms.">
+            {(id) => <TextInput id={id} type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} />}
+          </Field>
+          <Field label="A note on the invoice" hint="Optional. Printed at the foot.">
+            {(id) => <TextInput id={id} value={note} onChange={(e) => setNote(e.target.value)} />}
+          </Field>
+        </div>
+
+        <p className="text-sm text-slate-600">
+          Before tax: <span className="font-semibold tabular-nums">{formatMoneyExact(total, chosen)}</span>
+          . Tax is worked out on the fee lines when the draft is raised.
+        </p>
+      </div>
+    </Modal>
   );
 }
 
@@ -1281,6 +1525,12 @@ function MoveTierModal({
   const [currency, setCurrency] = useState<Currency>(
     currencyOf(current?.currency ?? listed?.currency),
   );
+  const currencyProblem = whyNotABillingCurrency(
+    fee.trim() === "" ? null : Number(fee),
+    currency,
+    listed,
+    TIER_LABELS[tier],
+  );
 
   return (
     <Modal
@@ -1295,7 +1545,7 @@ function MoveTierModal({
           <button
             type="button"
             className="btn-primary"
-            disabled={startProblem !== null}
+            disabled={startProblem !== null || currencyProblem !== null}
             onClick={() =>
               void onSave({
                 tier,
@@ -1340,9 +1590,10 @@ function MoveTierModal({
         <Field
           label="Billed in"
           hint={
-            listed?.currency && currencyOf(listed.currency) !== currency
-              ? `${TIER_LABELS[tier]} is listed in ${CURRENCY_LABELS[currencyOf(listed.currency)]}. Nothing is converted, so this client is billed in what you choose here.`
-              : "Nothing is ever converted between the two."
+            currencyProblem ??
+            (listed?.currency && currencyOf(listed.currency) !== currency
+              ? `${TIER_LABELS[tier]} is listed in ${CURRENCY_LABELS[currencyOf(listed.currency)]}. Nothing is converted: this client is billed in ${currency} at the fee above.`
+              : "Nothing is ever converted between the two.")
           }
         >
           {(id) => (

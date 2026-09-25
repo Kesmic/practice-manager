@@ -13,6 +13,15 @@ import type { StaffAttachment, StaffFileKind } from "@shared/staff-files";
 import type { SignatureSpecimen } from "@shared/signatures";
 import type { CriterionUnit, FeeBasis, ServiceState } from "@shared/subscriptions";
 import type { TaxBasis, Totals } from "@shared/invoices";
+
+/** A line typed onto an invoice by hand. */
+export interface ManualInvoiceLine {
+  description: string;
+  quantity: number;
+  unit_amount: number;
+  /** False for a reimbursable passed on at cost: no tax, nothing withheld. */
+  taxable: boolean;
+}
 import type { DiscountKind, DiscountRun, DiscountScope } from "@shared/discounts";
 import type { Currency } from "@shared/money";
 import type { ProspectStage, PartnerState } from "@shared/growth-partners";
@@ -1218,11 +1227,24 @@ export const api = {
   invoice: (id: string) => request<InvoiceDetail>(`/api/invoices/${id}`),
   raiseInvoice: (
     clientId: string,
-    body: { period?: string; due_on?: string; include_services?: boolean; note?: string },
+    body: {
+      period?: string;
+      due_on?: string;
+      include_services?: boolean;
+      note?: string;
+      /** Lines typed by hand. `taxable` false is a reimbursable passed on at cost. */
+      lines?: ManualInvoiceLine[];
+      /** For an invoice made only of typed lines: what it is in. */
+      currency?: Currency;
+    },
   ) => request<{ id: string; number: string }>(`/api/clients/${clientId}/invoices`, {
     method: "POST",
     body,
   }),
+  addInvoiceLine: (id: string, line: ManualInvoiceLine) =>
+    request<InvoiceDetail>(`/api/invoices/${id}/lines`, { method: "POST", body: line }),
+  removeInvoiceLine: (lineId: string) =>
+    request<InvoiceDetail>(`/api/invoice-lines/${lineId}`, { method: "DELETE" }),
   sendInvoice: (id: string) =>
     request<{ sent_to: string[] }>(`/api/invoices/${id}/send`, { method: "POST" }),
   voidInvoice: (id: string, reason: string) =>

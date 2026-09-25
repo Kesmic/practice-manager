@@ -22,6 +22,7 @@ import {
   clientMayMove,
   describeFee,
   describeMonthlyFee,
+  feeFor,
   fractionOfCeiling,
   nextStates,
   standingOf,
@@ -30,6 +31,7 @@ import {
   tierBelow,
   tierCovers,
   tierRank,
+  whyNotABillingCurrency,
   whyNotACeiling,
   whyNotAFee,
   whyNotAFigure,
@@ -339,4 +341,27 @@ test("a package prints as a range only when a starting price sits below the list
   assert.equal(describeMonthlyFee({ monthly_fee: 1500, fee_from: 1500 }, money), "GHS 1500");
   assert.equal(describeMonthlyFee({ monthly_fee: 1500, fee_from: 2000 }, money), "GHS 1500");
   assert.equal(describeMonthlyFee({ monthly_fee: null, fee_from: 900 }, money), null);
+});
+
+test("a client's money is their own currency, and a listed fee only counts in it", () => {
+  const tiers = [
+    { tier: "firm" as const, monthly_fee: 1250, currency: "USD" },
+    { tier: "starter" as const, monthly_fee: 1500, currency: "GHS" },
+  ];
+  // Their own rate, in their own currency, whatever the package is listed in.
+  assert.deepEqual(feeFor({ tier: "firm", monthly_fee: 9000, currency: "GHS" }, tiers), {
+    fee: 9000, currency: "GHS", negotiated: true,
+  });
+  // No rate of their own: the listed fee, because the package is listed in their currency.
+  assert.deepEqual(feeFor({ tier: "firm", monthly_fee: null, currency: "USD" }, tiers), {
+    fee: 1250, currency: "USD", negotiated: false,
+  });
+  // No rate of their own and the package listed in the other currency: nothing to bill,
+  // and never USD 1,250 with a cedi sign on it.
+  assert.deepEqual(feeFor({ tier: "firm", monthly_fee: null, currency: "GHS" }, tiers), {
+    fee: null, currency: "GHS", negotiated: false,
+  });
+  assert.equal(whyNotABillingCurrency(9000, "GHS", tiers[0], "Firm"), null);
+  assert.equal(whyNotABillingCurrency(null, "USD", tiers[0], "Firm"), null);
+  assert.match(whyNotABillingCurrency(null, "GHS", tiers[0], "Firm") ?? "", /listed in USD/);
 });
