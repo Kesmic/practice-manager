@@ -1431,10 +1431,26 @@ export async function raiseInvoice(
       ]);
     } catch (err) {
       if (/UNIQUE/i.test(String(err))) {
+        /*
+         * Named, with its id in the detail, so the screen can offer the invoice that
+         * already covers the month rather than a refusal with nowhere to go. The
+         * monthly run bills on its own now, so this is the usual answer to "Raise a
+         * draft" for the current month, not an accident.
+         */
+        const existing = period
+          ? await env.DB.prepare(
+              `SELECT i.id, i.number FROM invoice_lines l
+                 JOIN invoices i ON i.id = l.invoice_id
+                WHERE l.client_id = ? AND l.subscription_period = ?`,
+            )
+              .bind(clientId, period)
+              .first<{ id: string; number: string }>()
+          : null;
         throw conflict(
           period
-            ? `${client.name} has already been invoiced for ${period}.`
+            ? `${client.name} has already been invoiced for ${period}${existing ? ` on ${existing.number}` : ""}. Cancel that invoice if the month needs billing again.`
             : "Some of that work has already been invoiced.",
+          existing?.id,
         );
       }
       throw err;
