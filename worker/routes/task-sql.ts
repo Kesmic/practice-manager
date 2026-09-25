@@ -42,6 +42,9 @@ export const TASK_SELECT = `
          c.name AS client_name,
          c.code AS client_code,
          e.name AS engagement_name,
+         ps.name AS package_service_name,
+         pp.name AS package_service_parent,
+         cs.name AS client_service_name,
          ua.full_name AS assignee_name,
          ur.full_name AS reviewer_name,
          (SELECT COUNT(*) FROM review_points rp
@@ -55,6 +58,9 @@ export const TASK_SELECT = `
     FROM tasks t
     JOIN clients c ON c.id = t.client_id
     LEFT JOIN engagements e ON e.id = t.engagement_id
+    LEFT JOIN package_services ps ON ps.id = t.package_service_id
+    LEFT JOIN package_services pp ON pp.id = ps.parent_id
+    LEFT JOIN client_services cs ON cs.id = t.client_service_id
     LEFT JOIN users ua ON ua.id = t.assignee_id
     LEFT JOIN users ur ON ur.id = t.reviewer_id
 `;

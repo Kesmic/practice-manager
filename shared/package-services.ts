@@ -195,6 +195,27 @@ export const PACKAGE_COLUMNS: ClientTier[] = [...TIER_ORDER];
 // ---------------------------------------------------------------------------
 
 /**
+ * What a job can be covered by, as a flat list for a picker: every line the client
+ * gets, with the heading it sits under. A heading that is included on its own, with no
+ * lines under it, is offered as itself.
+ */
+export function coverLines(
+  branches: ServiceBranch[],
+): Array<{ id: string; name: string; parent_name: string | null; note: string | null; extra: boolean }> {
+  const out: Array<{ id: string; name: string; parent_name: string | null; note: string | null; extra: boolean }> = [];
+  for (const branch of branches) {
+    if (branch.children.length === 0) {
+      out.push({ id: branch.id, name: branch.name, parent_name: null, note: branch.note ?? null, extra: branch.extra });
+      continue;
+    }
+    for (const child of branch.children) {
+      out.push({ id: child.id, name: child.name, parent_name: branch.name, note: child.note ?? null, extra: child.extra });
+    }
+  }
+  return out;
+}
+
+/**
  * One line moved up or down among its siblings, for the arrow keys on the drag handle.
  * The same list back means there was nowhere to go.
  */

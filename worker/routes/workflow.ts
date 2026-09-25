@@ -50,6 +50,8 @@ interface WorkflowRow {
   recurrence: keyof typeof RECURRENCE_MONTHS;
   template_id: string | null;
   engagement_id: string | null;
+  package_service_id: string | null;
+  client_service_id: string | null;
   service_line: string;
   task_type: string | null;
   priority: string;
@@ -430,17 +432,20 @@ async function createNextOccurrence(
 
   const statements: D1PreparedStatement[] = [
     env.DB.prepare(
-      `INSERT INTO tasks (id, ref, client_id, engagement_id, title, description, service_line,
+      `INSERT INTO tasks (id, ref, client_id, engagement_id, package_service_id,
+                          client_service_id, title, description, service_line,
                           task_type, priority, status, review_round, assignee_id, reviewer_id,
                           period_label, period_end, planned_start_date, internal_due_date,
                           statutory_due_date, budget_hours, recurrence, template_id, created_by,
                           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_started', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_started', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       id,
       ref,
       task.client_id,
       task.engagement_id,
+      task.package_service_id,
+      task.client_service_id,
       task.title,
       task.description,
       task.service_line,

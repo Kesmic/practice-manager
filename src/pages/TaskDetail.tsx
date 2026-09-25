@@ -163,6 +163,22 @@ export function TaskDetail() {
                 <span>{task.engagement_name}</span>
               </>
             )}
+            {/* What covers it: a line of their package, or the work they asked for. */}
+            {task.package_service_name && (
+              <>
+                <span>·</span>
+                <span title="Inside the client's package">
+                  {task.package_service_parent ? `${task.package_service_parent} - ` : ""}
+                  {task.package_service_name}
+                </span>
+              </>
+            )}
+            {task.client_service_name && (
+              <>
+                <span>·</span>
+                <span title="One-off work the client asked for">{task.client_service_name}</span>
+              </>
+            )}
           </div>
           <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
             {task.title}

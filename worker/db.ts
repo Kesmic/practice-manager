@@ -240,7 +240,13 @@ export function normaliseEmail(value: unknown): string {
 /** Confirms a referenced row exists, so we return 400 rather than an FK error. */
 export async function assertExists(
   env: Env,
-  table: "users" | "clients" | "engagements" | "task_templates",
+  table:
+    | "users"
+    | "clients"
+    | "engagements"
+    | "task_templates"
+    | "package_services"
+    | "client_services",
   id: string | null,
   label: string,
 ): Promise<void> {
