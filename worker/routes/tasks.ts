@@ -74,6 +74,8 @@ export function registerTaskRoutes(router: Router<Env>): void {
     for (const [param, column] of [
       ["client_id", "t.client_id"],
       ["engagement_id", "t.engagement_id"],
+      ["package_service_id", "t.package_service_id"],
+      ["client_service_id", "t.client_service_id"],
       ["assignee_id", "t.assignee_id"],
       ["reviewer_id", "t.reviewer_id"],
     ] as const) {
@@ -261,6 +263,7 @@ export function registerTaskRoutes(router: Router<Env>): void {
     const serviceLine = requireEnum(body.service_line, "service_line", SERVICE_LINES);
     const fields = await readTaskFields(env, body);
     await assertEngagementBelongsToClient(env, fields.engagement_id, clientId);
+    await assertServiceBelongsToClient(env, fields.client_service_id, clientId);
 
     // Only manager grade and above may release work directly; everyone else
     // creates a draft that a supervisor then releases.
@@ -277,17 +280,20 @@ export function registerTaskRoutes(router: Router<Env>): void {
 
     const statements: D1PreparedStatement[] = [
       env.DB.prepare(
-        `INSERT INTO tasks (id, ref, client_id, engagement_id, title, description, service_line,
+        `INSERT INTO tasks (id, ref, client_id, engagement_id, package_service_id,
+                            client_service_id, title, description, service_line,
                             task_type, priority, status, review_round, assignee_id, reviewer_id,
                             period_label, period_end, planned_start_date, internal_due_date,
                             statutory_due_date, budget_hours, recurrence, template_id, created_by,
                             created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         id,
         ref,
         clientId,
         fields.engagement_id,
+        fields.package_service_id,
+        fields.client_service_id,
         title,
         fields.description,
         serviceLine,
@@ -402,6 +408,9 @@ export function registerTaskRoutes(router: Router<Env>): void {
         fields.engagement_id,
         existing.client_id,
       );
+    }
+    if (body.client_service_id !== undefined) {
+      await assertServiceBelongsToClient(env, fields.client_service_id, existing.client_id);
     }
 
     // Segregation of duties has to hold after the edit, not just at creation.
@@ -533,10 +542,18 @@ async function readTaskFields(env: Env, body: Record<string, unknown>) {
   const assignee_id = optionalId(body.assignee_id, "assignee_id");
   const reviewer_id = optionalId(body.reviewer_id, "reviewer_id");
   const engagement_id = optionalId(body.engagement_id, "engagement_id");
+  const package_service_id = optionalId(body.package_service_id, "package_service_id");
+  const client_service_id = optionalId(body.client_service_id, "client_service_id");
   const template_id = optionalId(body.template_id, "template_id");
 
   await assertExists(env, "users", assignee_id, "The selected assignee");
   await assertExists(env, "engagements", engagement_id, "The selected engagement");
+  await assertExists(env, "package_services", package_service_id, "The selected package line");
+  await assertExists(env, "client_services", client_service_id, "The selected piece of work");
+  // One or the other: a job is inside the package or it is work they asked for, not both.
+  if (package_service_id && client_service_id) {
+    throw badRequest("A job is covered by a package line or by a one-off request, not both.");
+  }
   await assertExists(env, "task_templates", template_id, "The selected template");
 
   if (assignee_id && reviewer_id && assignee_id === reviewer_id) {
@@ -556,6 +573,8 @@ async function readTaskFields(env: Env, body: Record<string, unknown>) {
 
   return {
     engagement_id,
+    package_service_id,
+    client_service_id,
     description: optionalString(body.description, "description", 8000),
     task_type: optionalString(body.task_type, "task_type", 60),
     priority: optionalEnum(body.priority, "priority", PRIORITIES),
@@ -588,6 +607,22 @@ export async function assertReviewerGrade(env: Env, userId: string): Promise<voi
       `${row.full_name} is a ${ROLE_LABELS[row.role]} and cannot be named as reviewer. ` +
         `Reviewers must be ${ROLE_LABELS[MIN_REVIEWER_ROLE]} grade or above.`,
     );
+  }
+}
+
+/** A one-off request is the client's own; a job cannot deliver another client's. */
+async function assertServiceBelongsToClient(
+  env: Env,
+  clientServiceId: string | null,
+  clientId: string,
+): Promise<void> {
+  if (!clientServiceId) return;
+  const row = await env.DB.prepare(`SELECT client_id FROM client_services WHERE id = ?`)
+    .bind(clientServiceId)
+    .first<{ client_id: string }>();
+  if (!row) throw badRequest("The selected piece of work does not exist.");
+  if (row.client_id !== clientId) {
+    throw forbidden("That piece of work belongs to a different client.");
   }
 }
 

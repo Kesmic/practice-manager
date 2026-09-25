@@ -33,6 +33,7 @@ import type {
   ClientPortalSubscription,
   ClientPortalUser,
   ClientSubscriptionDetail,
+  WorkCover,
   GrowthPartnerOverview,
   InvoiceDetail,
   InvoiceList,
@@ -1172,6 +1173,9 @@ export const api = {
     request<void>(`/api/discounts/${id}/end`, { method: "POST", body: { reason } }),
 
   subscriptions: () => request<SubscriptionsOverview>("/api/subscriptions"),
+  /** What a job for this client can be covered by. Open to anybody who can raise a job. */
+  workCover: (clientId: string) =>
+    request<WorkCover>(`/api/clients/${clientId}/work-cover`),
   clientSubscription: (clientId: string) =>
     request<ClientSubscriptionDetail>(`/api/clients/${clientId}/subscription`),
   saveClientSubscription: (

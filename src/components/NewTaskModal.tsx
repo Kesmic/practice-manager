@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ClientSummary, EngagementSummary, TaskTemplate, User } from "@shared/types";
+import type { ClientSummary, TaskTemplate, User, WorkCover } from "@shared/types";
+import { SERVICE_STATE_LABELS } from "@shared/subscriptions";
 import {
   MIN_REVIEWER_ROLE,
   PRIORITIES,
@@ -29,7 +30,8 @@ interface Props {
 
 const blank = {
   client_id: "",
-  engagement_id: "",
+  /** "p:<package line id>" or "s:<client service id>", or nothing. */
+  cover: "",
   template_id: "",
   title: "",
   description: "",
@@ -59,7 +61,7 @@ export function NewTaskModal({
 }: Props) {
   const { can } = useSession();
   const [form, setForm] = useState({ ...blank, client_id: fixedClientId ?? "" });
-  const [engagements, setEngagements] = useState<EngagementSummary[]>([]);
+  const [cover, setCover] = useState<WorkCover | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -69,20 +71,24 @@ export function NewTaskModal({
     if (open) setForm({ ...blank, client_id: fixedClientId ?? "" });
   }, [open, fixedClientId]);
 
-  // Engagements are per-client, so reload whenever the client changes.
+  /*
+   * What the job can be covered by is per client - their package's lines and their
+   * own requests - so it reloads whenever the client changes, and the choice resets.
+   */
   useEffect(() => {
+    setForm((prev) => ({ ...prev, cover: "" }));
     if (!form.client_id) {
-      setEngagements([]);
+      setCover(null);
       return;
     }
     let cancelled = false;
     api
-      .engagements({ client_id: form.client_id })
+      .workCover(form.client_id)
       .then((res) => {
-        if (!cancelled) setEngagements(res.engagements);
+        if (!cancelled) setCover(res);
       })
       .catch(() => {
-        if (!cancelled) setEngagements([]);
+        if (!cancelled) setCover(null);
       });
     return () => {
       cancelled = true;
@@ -124,7 +130,8 @@ export function NewTaskModal({
     try {
       const { task } = await api.createTask({
         client_id: form.client_id,
-        engagement_id: form.engagement_id || null,
+        package_service_id: form.cover.startsWith("p:") ? form.cover.slice(2) : null,
+        client_service_id: form.cover.startsWith("s:") ? form.cover.slice(2) : null,
         template_id: form.template_id || null,
         title: form.title,
         description: form.description || null,
@@ -208,20 +215,49 @@ export function NewTaskModal({
             </Field>
           )}
 
-          <Field label="Engagement" hint="Optional - links the job to a signed engagement.">
+          {/*
+            Inside the package, or work they asked for. The distinction is what decides
+            whether the job is billed, so it is asked here rather than worked out later.
+          */}
+          <Field
+            label="Covered by"
+            hint={
+              !form.client_id
+                ? "Choose the client first."
+                : cover && !cover.subscription && cover.services.length === 0
+                  ? "This client is not on a package and has asked for nothing, so there is nothing to cover it."
+                  : "Optional - a line of their package, or a piece of work they asked for."
+            }
+          >
             {(id) => (
               <Select
                 id={id}
-                value={form.engagement_id}
-                onChange={(e) => set("engagement_id")(e.target.value)}
+                value={form.cover}
+                onChange={(e) => set("cover")(e.target.value)}
                 disabled={!form.client_id}
               >
-                <option value="">No engagement</option>
-                {engagements.map((engagement) => (
-                  <option key={engagement.id} value={engagement.id}>
-                    {engagement.code} - {engagement.name}
-                  </option>
-                ))}
+                <option value="">Not linked</option>
+                {cover?.subscription && cover.included.length > 0 && (
+                  <optgroup label={`Included in ${cover.subscription.label}`}>
+                    {cover.included.map((line) => (
+                      <option key={line.id} value={`p:${line.id}`}>
+                        {line.parent_name ? `${line.parent_name} - ` : ""}
+                        {line.name}
+                        {line.note ? ` (${line.note})` : ""}
+                        {line.extra ? " - given as an extra" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {cover && cover.services.length > 0 && (
+                  <optgroup label="One-off work they asked for">
+                    {cover.services.map((service) => (
+                      <option key={service.id} value={`s:${service.id}`}>
+                        {service.name} - {SERVICE_STATE_LABELS[service.status].toLowerCase()}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </Select>
             )}
           </Field>

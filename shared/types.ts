@@ -201,6 +201,10 @@ export interface Task {
   ref: string;
   client_id: string;
   engagement_id: string | null;
+  /** The package line this job is delivering, when it is inside what the client pays for. */
+  package_service_id: string | null;
+  /** The one-off request this job is delivering, when it is work the client asked for. */
+  client_service_id: string | null;
   title: string;
   description: string | null;
   service_line: ServiceLine;
@@ -232,6 +236,9 @@ export interface TaskSummary extends Task {
   client_name: string;
   client_code: string;
   engagement_name: string | null;
+  package_service_name: string | null;
+  package_service_parent: string | null;
+  client_service_name: string | null;
   assignee_name: string | null;
   reviewer_name: string | null;
   open_review_points: number;
@@ -1191,6 +1198,13 @@ export interface ClientSubscriptionDetail extends SubscriptionCatalogue {
   discounts: ClientDiscountRow[];
   /** Services from other packages given to this client, live first. */
   extras: ClientExtraRow[];
+}
+
+/** What a job for this client can be covered by: their package's lines, or their own requests. */
+export interface WorkCover {
+  subscription: { tier: ClientTier; label: string } | null;
+  included: Array<{ id: string; name: string; parent_name: string | null; note: string | null; extra: boolean }>;
+  services: Array<{ id: string; name: string; status: ServiceState }>;
 }
 
 // --------------------------------------------------------------------- tax

@@ -76,6 +76,8 @@ import {
   whyNotAnExtra,
   type PackageService,
   type ServiceInclusion,
+  coverLines,
+  includedTree,
 } from "../../shared/package-services";
 import { CURRENCIES, DEFAULT_CURRENCY, currencyOf, formatAmount } from "../../shared/money";
 import { sendToPerson } from "../email";
@@ -603,6 +605,41 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
   // -------------------------------------------------------------------------
   // One client
   // -------------------------------------------------------------------------
+
+  /**
+   * What a job for this client can be covered by, for the New deliverable form: the
+   * lines of their package (extras included), and the one-off work they have asked
+   * for or agreed to. Open to anybody who can raise a job, which is below the grade
+   * that sees the client's fees - so no money is in it.
+   */
+  router.get("/api/clients/:id/work-cover", async ({ request, env, params }) => {
+    await requireRole(env, request, "senior_associate");
+    const catalogue = await readCatalogue(env);
+    const subscription = await loadSubscription(env, params.id);
+    const extras = subscription ? await readExtras(env, params.id, catalogue.service_inclusions) : [];
+    const included = subscription
+      ? coverLines(
+          includedTree({
+            tier: subscription.tier,
+            services: catalogue.package_services,
+            inclusions: catalogue.service_inclusions,
+            extras: extras.filter((e) => e.ended_at === null),
+          }),
+        )
+      : [];
+    const { results: services } = await env.DB.prepare(
+      `SELECT id, name, status FROM client_services
+        WHERE client_id = ? AND status IN ('requested', 'quoted', 'agreed')
+        ORDER BY created_at DESC`,
+    )
+      .bind(params.id)
+      .all<{ id: string; name: string; status: ServiceState }>();
+    return json({
+      subscription: subscription ? { tier: subscription.tier, label: TIER_LABELS[subscription.tier] } : null,
+      included,
+      services,
+    });
+  });
 
   router.get("/api/clients/:id/subscription", async ({ request, env, params }) => {
     await requireRole(env, request, MIN_SUPERVISOR_ROLE);
