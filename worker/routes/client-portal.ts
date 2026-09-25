@@ -41,9 +41,10 @@ import {
   clearAccountFailures,
   recordFailure,
 } from "../throttle";
-import { newId, notificationStatement, nowIso, requireEnum, requireString } from "../db";
+import { newId, notificationStatement, notifyMany, nowIso, requireEnum, requireString } from "../db";
 import { newToken } from "../auth";
 import { readSettings } from "./settings";
+import { currencyOf, formatAmount } from "../../shared/money";
 import { sendToPerson } from "../email";
 import { Router, badRequest, json, noContent, notFound, readJson, unauthorized } from "../http";
 import {
@@ -518,10 +519,18 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
     const status = requireEnum(body.status, "status", SERVICE_STATES) as ServiceState;
 
     const existing = await env.DB.prepare(
-      `SELECT id, status FROM client_services WHERE id = ? AND client_id = ?`,
+      `SELECT id, status, name, quoted_fee, currency, created_by
+         FROM client_services WHERE id = ? AND client_id = ?`,
     )
       .bind(params.id, actor.client_id)
-      .first<{ id: string; status: ServiceState }>();
+      .first<{
+        id: string;
+        status: ServiceState;
+        name: string;
+        quoted_fee: number | null;
+        currency: string;
+        created_by: string | null;
+      }>();
     // Scoped to their own client, so another client's request is simply not found.
     if (!existing) throw notFound("There is no such request on your account.");
 
@@ -534,11 +543,35 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
     }
 
     const timestamp = nowIso();
-    await env.DB.prepare(
-      `UPDATE client_services SET status = ?, decided_at = ?, updated_at = ? WHERE id = ?`,
-    )
-      .bind(status, timestamp, timestamp, params.id)
-      .run();
+    /*
+     * The decision, and the firm told about it: whoever proposed or quoted the work,
+     * and every Partner. An accepted quote is work to start; a declined one is a
+     * conversation to have. Neither should wait for somebody to open the record.
+     */
+    const { results: partners } = await env.DB.prepare(
+      `SELECT id FROM users WHERE status = 'active' AND role IN ('partner', 'admin')`,
+    ).all<{ id: string }>();
+    const fee =
+      existing.quoted_fee === null
+        ? ""
+        : ` at ${formatAmount(existing.quoted_fee, currencyOf(existing.currency))}`;
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE client_services SET status = ?, decided_at = ?, updated_at = ? WHERE id = ?`,
+      ).bind(status, timestamp, timestamp, params.id),
+      ...notifyMany(env, [existing.created_by, ...partners.map((p) => p.id)], "", {
+        taskId: null,
+        kind: status === "agreed" ? "service:accepted" : "service:declined",
+        title:
+          status === "agreed"
+            ? `${actor.client_name} accepted ${existing.name}${fee}`
+            : `${actor.client_name} declined ${existing.name}`,
+        body:
+          status === "agreed"
+            ? `${actor.full_name} accepted the quote. It is now agreed work on their record.`
+            : `${actor.full_name} declined it. Nothing is charged.`,
+      }),
+    ]);
 
     return noContent();
   });

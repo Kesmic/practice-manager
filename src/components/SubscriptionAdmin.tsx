@@ -424,27 +424,41 @@ function PackageServicesCard({
    * The matrix as edited. Seeded from what is saved and reset whenever the catalogue
    * reloads, so a save elsewhere on the page never leaves stale ticks here.
    */
-  const [ticks, setTicks] = useState<Record<string, Set<string>>>({});
+  /*
+   * The matrix as edited: per package, the services ticked, each with its note. A tick
+   * with an empty note is "included, plainly"; a note says how often or how deep -
+   * "monthly", "weekly", "full IFRS" - and prints after the name on the package card.
+   */
+  const [ticks, setTicks] = useState<Record<string, Map<string, string>>>({});
   const [dirty, setDirty] = useState(false);
   const saved = useMemo(() => {
-    const out: Record<string, Set<string>> = {};
-    for (const tier of PACKAGE_COLUMNS) out[tier] = new Set();
-    for (const i of data.service_inclusions) out[i.tier]?.add(i.service_id);
+    const out: Record<string, Map<string, string>> = {};
+    for (const tier of PACKAGE_COLUMNS) out[tier] = new Map();
+    for (const i of data.service_inclusions) out[i.tier]?.set(i.service_id, i.note ?? "");
     return out;
   }, [data.service_inclusions]);
   useEffect(() => {
-    setTicks(Object.fromEntries(Object.entries(saved).map(([t, set]) => [t, new Set(set)])));
+    setTicks(Object.fromEntries(Object.entries(saved).map(([t, m]) => [t, new Map(m)])));
     setDirty(false);
   }, [saved]);
 
   const tree = serviceTree(data.package_services);
   const retired = data.package_services.filter((s) => s.active !== 1);
   const ticked = (tier: ClientTier, id: string) => ticks[tier]?.has(id) ?? false;
+  const noteOf = (tier: ClientTier, id: string) => ticks[tier]?.get(id) ?? "";
   const toggle = (tier: ClientTier, id: string) => {
     setTicks((prev) => {
-      const next = { ...prev, [tier]: new Set(prev[tier] ?? []) };
+      const next = { ...prev, [tier]: new Map(prev[tier] ?? []) };
       if (next[tier].has(id)) next[tier].delete(id);
-      else next[tier].add(id);
+      else next[tier].set(id, "");
+      return next;
+    });
+    setDirty(true);
+  };
+  const annotate = (tier: ClientTier, id: string, note: string) => {
+    setTicks((prev) => {
+      const next = { ...prev, [tier]: new Map(prev[tier] ?? []) };
+      next[tier].set(id, note);
       return next;
     });
     setDirty(true);
@@ -453,7 +467,12 @@ function PackageServicesCard({
     void guard(
       () =>
         Promise.all(
-          PACKAGE_COLUMNS.map((tier) => api.savePackageServices(tier, [...(ticks[tier] ?? [])])),
+          PACKAGE_COLUMNS.map((tier) =>
+            api.savePackageServices(
+              tier,
+              [...(ticks[tier] ?? [])].map(([id, note]) => ({ id, note: note.trim() || null })),
+            ),
+          ),
         ),
       "What each package includes is saved.",
     );
@@ -495,13 +514,23 @@ function PackageServicesCard({
         </span>
       </td>
       {PACKAGE_COLUMNS.map((tier) => (
-        <td key={tier} className="py-1.5 text-center">
+        <td key={tier} className="py-1.5 text-center align-top">
           <input
             type="checkbox"
             aria-label={`${service.name} in ${TIER_LABELS[tier]}`}
             checked={ticked(tier, service.id)}
             onChange={() => toggle(tier, service.id)}
           />
+          {ticked(tier, service.id) && sub && (
+            <input
+              type="text"
+              aria-label={`Note on ${service.name} in ${TIER_LABELS[tier]}`}
+              placeholder="note"
+              value={noteOf(tier, service.id)}
+              onChange={(e) => annotate(tier, service.id, e.target.value)}
+              className="mt-1 block w-24 rounded border border-slate-200 px-1.5 py-0.5 text-center text-[11px] text-slate-700 placeholder:text-slate-300"
+            />
+          )}
         </td>
       ))}
     </tr>
@@ -522,10 +551,12 @@ function PackageServicesCard({
       </div>
       <div className="space-y-5 p-4">
         <p className="muted">
-          A service is a thing the firm does - Tax services; a sub-service is a part of it
-          - VAT &amp; levies. Tick what each package includes. Ticking a sub-service brings
-          its service along as the heading. A client on one package can then be given a
-          single service or sub-service from a higher one, on their record.
+          A service is a thing the firm does - Tax compliance; a sub-service is a part of
+          it - VAT returns. Tick what each package includes; ticking a sub-service brings
+          its service along as the heading. The small box under a tick is a note that
+          prints after the name - &ldquo;monthly&rdquo; for one package and &ldquo;weekly&rdquo;
+          for the next. Rename, retire or remove any line; a retired one stays on the
+          record of a client who was given it.
         </p>
 
         {tree.length === 0 ? (

@@ -26,6 +26,8 @@ export interface PackageService {
 export interface ServiceInclusion {
   tier: ClientTier;
   service_id: string;
+  /** How often, or at what depth, this package gets it: "monthly", "weekly", "full IFRS". */
+  note?: string | null;
 }
 
 /** One branch of the tree a screen draws: a service, with its sub-services under it. */
@@ -36,7 +38,26 @@ export interface ServiceBranch {
   extra: boolean;
   /** Where an extra comes from: the cheapest package that includes it. */
   from: ClientTier | null;
-  children: Array<{ id: string; name: string; extra: boolean; from: ClientTier | null }>;
+  /** The note on the inclusion this client gets - their package's, or the extra's source. */
+  note: string | null;
+  children: Array<{
+    id: string;
+    name: string;
+    extra: boolean;
+    from: ClientTier | null;
+    note: string | null;
+  }>;
+}
+
+/** The note a package puts on a service, if any. */
+export function inclusionNote(
+  tier: ClientTier | null,
+  serviceId: string,
+  inclusions: ServiceInclusion[],
+): string | null {
+  if (!tier) return null;
+  const row = inclusions.find((i) => i.tier === tier && i.service_id === serviceId);
+  return row?.note?.trim() || null;
 }
 
 /** The live services, as parents with their children in order. */
@@ -103,6 +124,8 @@ export function includedTree(input: {
   const from = (id: string) => cheapestPackageWith(id, input.inclusions);
   const branches: ServiceBranch[] = [];
 
+  const note = (id: string, extra: boolean) =>
+    inclusionNote(extra ? from(id) : input.tier, id, input.inclusions);
   for (const top of serviceTree(input.services)) {
     const topIn = included.has(top.id);
     const topExtra = !topIn && extraIds.has(top.id);
@@ -113,6 +136,7 @@ export function includedTree(input: {
         name: c.name,
         extra: !included.has(c.id),
         from: !included.has(c.id) ? from(c.id) : null,
+        note: note(c.id, !included.has(c.id)),
       }));
     if (!topIn && !topExtra && children.length === 0) continue;
     branches.push({
@@ -120,6 +144,7 @@ export function includedTree(input: {
       name: top.name,
       extra: topExtra,
       from: topExtra ? from(top.id) : null,
+      note: note(top.id, topExtra),
       children,
     });
   }

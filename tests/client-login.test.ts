@@ -272,17 +272,17 @@ test("retiring a service from the catalogue does not erase what was sold", () =>
   const db = freshDb();
   seed(db);
   db.exec(`INSERT INTO additional_services (id,name,fee,fee_basis,created_at)
-           VALUES ('svc1','Tax health check',4500,'fixed','${NOW}')`);
+           VALUES ('svc1','Forensic review of the petty cash',4500,'fixed','${NOW}')`);
   db.exec(`INSERT INTO client_services
              (id,client_id,service_id,name,status,quoted_fee,created_at,updated_at)
-           VALUES ('cs1','c1','svc1','Tax health check','delivered',4500,'${NOW}','${NOW}')`);
+           VALUES ('cs1','c1','svc1','Forensic review of the petty cash','delivered',4500,'${NOW}','${NOW}')`);
   db.exec(`DELETE FROM additional_services WHERE id='svc1'`);
   const row = db.prepare("SELECT name, quoted_fee, service_id FROM client_services WHERE id='cs1'").get() as {
     name: string;
     quoted_fee: number;
     service_id: string | null;
   };
-  assert.equal(row.name, "Tax health check", "the name was copied at the time, not joined");
+  assert.equal(row.name, "Forensic review of the petty cash", "the name was copied at the time, not joined");
   assert.equal(row.quoted_fee, 4500);
   assert.equal(row.service_id, null);
   db.close();

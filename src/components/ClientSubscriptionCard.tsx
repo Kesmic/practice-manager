@@ -74,6 +74,7 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
   const [inviting, setInviting] = useState(false);
   const [discounting, setDiscounting] = useState(false);
   const [giving, setGiving] = useState(false);
+  const [offering, setOffering] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -275,17 +276,15 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
             </div>
           )}
           {data.services.filter((s) => s.active).length > 0 && (
-            <div className="mt-3 flex flex-wrap items-end gap-2">
-              <AddService
-                services={data.services.filter((s) => s.active)}
-                busy={busy}
-                onAdd={(serviceId, name) =>
-                  act(
-                    () => api.addClientService(clientId, { service_id: serviceId }),
-                    `${name} added.`,
-                  )
-                }
-              />
+            <div className="mt-3">
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                disabled={busy}
+                onClick={() => setOffering(true)}
+              >
+                Offer a service
+              </button>
             </div>
           )}
         </div>
@@ -513,6 +512,17 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
         }}
       />
 
+      {offering && (
+        <OfferServiceModal
+          services={data.services.filter((s) => s.active)}
+          onClose={() => setOffering(false)}
+          onSave={async (body, message) => {
+            await act(() => api.addClientService(clientId, body), message);
+            setOffering(false);
+          }}
+        />
+      )}
+
       {giving && subscription && (
         <ExtraModal
           tier={subscription.tier}
@@ -616,7 +626,7 @@ function Included({
           {tree.map((branch) => (
             <li key={branch.id}>
               <ExtraLine
-                name={branch.name}
+                name={branch.note ? `${branch.name} - ${branch.note}` : branch.name}
                 extra={branch.extra}
                 from={branch.from}
                 row={branch.extra ? extraFor(branch.id) : undefined}
@@ -630,7 +640,7 @@ function Included({
                   {branch.children.map((child) => (
                     <li key={child.id}>
                       <ExtraLine
-                        name={child.name}
+                        name={child.note ? `${child.name} - ${child.note}` : child.name}
                         extra={child.extra}
                         from={child.from}
                         row={child.extra ? extraFor(child.id) : undefined}
@@ -1061,41 +1071,133 @@ function DiscountModal({
   );
 }
 
-function AddService({
+/**
+ * Offering a client a piece of one-off work.
+ *
+ * Two ways, and the difference matters. Proposed: the client is emailed a quote and
+ * decides in their portal - nothing starts, and nothing is charged, until they accept.
+ * Agreed: it was settled in conversation and this is the record. A proposal needs a
+ * fee, because a quote with no number is nothing to accept; a record may leave it for
+ * later.
+ */
+function OfferServiceModal({
   services,
-  busy,
-  onAdd,
+  onClose,
+  onSave,
 }: {
   services: ClientSubscriptionDetail["services"];
-  busy: boolean;
-  onAdd: (id: string, name: string) => Promise<void>;
+  onClose: () => void;
+  onSave: (
+    body: { service_id: string; quoted_fee: number | null; status: "quoted" | "agreed"; note?: string },
+    message: string,
+  ) => Promise<void>;
 }) {
-  const [chosen, setChosen] = useState("");
+  const [chosen, setChosen] = useState(services[0]?.id ?? "");
   const service = services.find((s) => s.id === chosen);
+  const [fee, setFee] = useState(service?.fee?.toString() ?? "");
+  const [note, setNote] = useState("");
+  const [how, setHow] = useState<"quoted" | "agreed">("quoted");
+  const feeNumber = fee.trim() === "" ? null : Number(fee);
+  const feeBad = fee.trim() !== "" && (!Number.isFinite(feeNumber) || (feeNumber as number) < 0);
+  const refusal = !service
+    ? "Choose the service."
+    : feeBad
+      ? "The fee has to be a number."
+      : how === "quoted" && feeNumber === null
+        ? "Give the fee. The client is being asked to accept it."
+        : null;
+
   return (
-    <>
-      <Field label="Add a service">
-        {(id) => (
-          <Select id={id} value={chosen} onChange={(e) => setChosen(e.target.value)}>
-            <option value="">Choose one</option>
-            {services.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ·{" "}
-                {describeFee(s.fee, s.fee_basis, (n) => formatMoney(n, s.currency))}
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
-      <button
-        type="button"
-        className="btn-secondary"
-        disabled={busy || !service}
-        onClick={() => service && void onAdd(service.id, service.name).then(() => setChosen(""))}
-      >
-        Add
-      </button>
-    </>
+    <Modal
+      open
+      title="Offer a service"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={refusal !== null}
+            onClick={() =>
+              service &&
+              void onSave(
+                {
+                  service_id: service.id,
+                  quoted_fee: feeNumber,
+                  status: how,
+                  note: note.trim() || undefined,
+                },
+                how === "quoted"
+                  ? `${service.name} proposed. They have been emailed and can accept it in their portal.`
+                  : `${service.name} recorded as agreed.`,
+              )
+            }
+          >
+            {how === "quoted" ? "Send the proposal" : "Record it"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Service">
+          {(id) => (
+            <Select
+              id={id}
+              value={chosen}
+              onChange={(e) => {
+                const next = services.find((s) => s.id === e.target.value);
+                setChosen(e.target.value);
+                setFee(next?.fee?.toString() ?? "");
+              }}
+            >
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} · {describeFee(s.fee, s.fee_basis, (n) => formatMoney(n, s.currency))}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field
+          label={`Fee${service ? ` (${currencyOf(service.currency)})` : ""}`}
+          hint={
+            service?.fee !== null && service?.fee !== undefined
+              ? "The catalogue's figure, which you can change for this client."
+              : "Quoted on request, so this is the quote."
+          }
+        >
+          {(id) => (
+            <TextInput id={id} inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} />
+          )}
+        </Field>
+        <Field label="A word to the client" hint="Shown with the quote. What it covers, when it would happen.">
+          {(id) => <TextInput id={id} value={note} onChange={(e) => setNote(e.target.value)} />}
+        </Field>
+        <fieldset className="space-y-2 text-sm text-slate-700">
+          <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            How
+          </legend>
+          <label className="flex cursor-pointer items-start gap-2">
+            <input type="radio" className="mt-1" checked={how === "quoted"} onChange={() => setHow("quoted")} />
+            <span>
+              <strong>Propose it to the client.</strong> They are emailed and accept or decline in
+              their portal. Nothing starts, and nothing is charged, until they accept.
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2">
+            <input type="radio" className="mt-1" checked={how === "agreed"} onChange={() => setHow("agreed")} />
+            <span>
+              <strong>Already agreed with them.</strong> This is the record; it goes straight
+              to agreed work.
+            </span>
+          </label>
+        </fieldset>
+        {refusal && <p className="text-xs text-amber-800">{refusal}</p>}
+      </div>
+    </Modal>
   );
 }
 
