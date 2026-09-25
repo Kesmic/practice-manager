@@ -1088,6 +1088,8 @@ export const api = {
     tier: ClientTier,
     body: {
       monthly_fee: number | null;
+      fee_from: number | null;
+      fee_note: string;
       currency: Currency;
       summary: string;
       ideal_for: string;

@@ -337,6 +337,30 @@ export const FEE_BASIS_LABELS: Record<FeeBasis, string> = {
 };
 
 /** How a fee reads to somebody being asked to pay it. */
+/**
+ * A package's monthly price as the card prints it: "GHS 1,500", or "GHS 900 to 1,500"
+ * when a starting price sits below the list price. Null when no price is set. A
+ * starting price at or above the list price is ignored rather than printed backwards.
+ */
+export function describeMonthlyFee(
+  row: { monthly_fee: number | null; fee_from?: number | null },
+  money: (amount: number) => string,
+): string | null {
+  if (row.monthly_fee === null) return null;
+  const from = row.fee_from ?? null;
+  if (from !== null && from > 0 && from < row.monthly_fee) {
+    const low = money(from);
+    const high = money(row.monthly_fee);
+    // "GHS 900 to 1,500", not "GHS 900 to GHS 1,500": the currency is said once.
+    let shared = 0;
+    while (shared < low.length && shared < high.length && low[shared] === high[shared] && !/\d/.test(low[shared])) {
+      shared += 1;
+    }
+    return `${low} to ${high.slice(shared)}`;
+  }
+  return money(row.monthly_fee);
+}
+
 export function describeFee(
   fee: number | null | undefined,
   basis: FeeBasis,

@@ -21,6 +21,7 @@ import {
   ceilingsFor,
   clientMayMove,
   describeFee,
+  describeMonthlyFee,
   fractionOfCeiling,
   nextStates,
   standingOf,
@@ -327,4 +328,15 @@ test("a package may have started before today, but not on a day that does not ex
   assert.match(whyNotAStartDate("1999-12-31", today) ?? "", /before the firm/);
   assert.match(whyNotAStartDate("2027-09-24", today) ?? "", /more than a year ahead/);
   assert.equal(whyNotAStartDate("2027-09-23", today), null); // exactly a year is allowed
+});
+
+test("a package prints as a range only when a starting price sits below the list price", () => {
+  const money = (n: number) => `GHS ${n}`;
+  assert.equal(describeMonthlyFee({ monthly_fee: 1500, fee_from: 900 }, money), "GHS 900 to 1500");
+  assert.equal(describeMonthlyFee({ monthly_fee: 5000, fee_from: 3400 }, (n) => `US$${n}`), "US$3400 to 5000");
+  assert.equal(describeMonthlyFee({ monthly_fee: 1500, fee_from: null }, money), "GHS 1500");
+  assert.equal(describeMonthlyFee({ monthly_fee: 1500 }, money), "GHS 1500");
+  assert.equal(describeMonthlyFee({ monthly_fee: 1500, fee_from: 1500 }, money), "GHS 1500");
+  assert.equal(describeMonthlyFee({ monthly_fee: 1500, fee_from: 2000 }, money), "GHS 1500");
+  assert.equal(describeMonthlyFee({ monthly_fee: null, fee_from: 900 }, money), null);
 });

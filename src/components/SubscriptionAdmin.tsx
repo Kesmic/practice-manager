@@ -19,6 +19,7 @@ import {
   TIER_LABELS,
   TIER_ORDER,
   describeFee,
+  describeMonthlyFee,
   type ClientTier,
   type CriterionUnit,
   type FeeBasis,
@@ -254,6 +255,8 @@ function TiersCard({
   const save = (tier: ClientTier) => {
     const row = data.tiers.find((t) => t.tier === tier);
     const fee = valueOf(tier, "fee", row?.monthly_fee?.toString() ?? "").trim();
+    const feeFrom = valueOf(tier, "fee_from", row?.fee_from?.toString() ?? "").trim();
+    const feeNote = valueOf(tier, "fee_note", row?.fee_note ?? "");
     const summary = valueOf(tier, "summary", row?.summary ?? "");
     const idealFor = valueOf(tier, "ideal_for", row?.ideal_for ?? "");
     const currency = valueOf(tier, "currency", row?.currency ?? DEFAULT_CURRENCY);
@@ -269,6 +272,8 @@ function TiersCard({
       () =>
         api.saveTier(tier, {
           monthly_fee: fee === "" ? null : Number(fee),
+          fee_from: feeFrom === "" ? null : Number(feeFrom),
+          fee_note: feeNote,
           currency: currencyOf(currency),
           summary,
           ideal_for: idealFor,
@@ -303,9 +308,9 @@ function TiersCard({
               <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-2.5">
                 <h3 className="text-sm font-semibold text-slate-900">{TIER_LABELS[tier]}</h3>
                 <span className="text-xs text-slate-500">
-                  {row?.monthly_fee === null || row?.monthly_fee === undefined
+                  {!row || row.monthly_fee === null
                     ? "No price set"
-                    : `${formatAmount(row.monthly_fee, row.currency)} a month`}
+                    : `${describeMonthlyFee(row, (n) => formatAmount(n, row.currency))} a month`}
                 </span>
                 <button
                   type="button"
@@ -344,6 +349,41 @@ function TiersCard({
                     >
                       {options(CURRENCIES, CURRENCY_LABELS)}
                     </Select>
+                  )}
+                </Field>
+
+                {/*
+                  A range for the smallest businesses. The card prints "from" the
+                  starting price "to" the list price, with the note underneath, and
+                  what a client actually pays is still set on their own subscription.
+                */}
+                <Field
+                  label="Price from"
+                  hint="Optional. A starting price below the list price, so a very small business sees a number it can afford. Blank means no range."
+                >
+                  {(id) => (
+                    <TextInput
+                      id={id}
+                      inputMode="decimal"
+                      value={valueOf(tier, "fee_from", row?.fee_from?.toString() ?? "")}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, [key(tier, "fee_from")]: e.target.value }))
+                      }
+                    />
+                  )}
+                </Field>
+                <Field
+                  label="A word under the price"
+                  hint="Who gets the lower end. Shown only when a starting price is set."
+                >
+                  {(id) => (
+                    <TextInput
+                      id={id}
+                      value={valueOf(tier, "fee_note", row?.fee_note ?? "")}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, [key(tier, "fee_note")]: e.target.value }))
+                      }
+                    />
                   )}
                 </Field>
 

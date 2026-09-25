@@ -113,7 +113,8 @@ export async function readCatalogue(env: Env) {
          FROM subscription_criteria ORDER BY position, name`,
     ),
     env.DB.prepare(
-      `SELECT tier, monthly_fee, currency, summary, ideal_for, position, active
+      `SELECT tier, monthly_fee, fee_from, fee_note, currency, summary, ideal_for,
+              position, active
          FROM subscription_tiers ORDER BY position`,
     ),
     env.DB.prepare(`SELECT tier, criterion_id, ceiling FROM tier_ceilings`),
@@ -381,14 +382,25 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const tier = requireEnum(params.tier, "tier", CLIENT_TIERS) as ClientTier;
     const body = await readJson<{
       monthly_fee?: unknown;
+      fee_from?: unknown;
+      fee_note?: string;
       currency?: unknown;
       summary?: string;
       ideal_for?: string;
       ceilings?: Record<string, unknown>;
-      /** The whole list for this package, in order. Replaces what is there. */
     }>(request);
 
     const fee = optionalAmount(body.monthly_fee, "The fee");
+    /*
+     * A starting price only makes sense below the list price: "from 1,500 to 1,200"
+     * is not a range anybody would print. Refused rather than silently dropped, so the
+     * admin who typed it finds out.
+     */
+    const feeFrom = optionalAmount(body.fee_from, "The starting price");
+    if (feeFrom !== null && (fee === null || feeFrom >= fee)) {
+      throw badRequest("The starting price must be below the price a month.");
+    }
+    const feeNote = body.fee_note?.trim() ? body.fee_note.trim().slice(0, 240) : null;
     const currency = body.currency
       ? requireEnum(body.currency, "currency", CURRENCIES)
       : DEFAULT_CURRENCY;
@@ -396,11 +408,13 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
     const statements = [
       env.DB.prepare(
         `UPDATE subscription_tiers
-            SET monthly_fee = ?, currency = ?, summary = ?, ideal_for = ?,
-                updated_at = ?, updated_by = ?
+            SET monthly_fee = ?, fee_from = ?, fee_note = ?, currency = ?, summary = ?,
+                ideal_for = ?, updated_at = ?, updated_by = ?
           WHERE tier = ?`,
       ).bind(
         fee,
+        feeFrom,
+        feeNote,
         currency,
         body.summary?.trim() ? body.summary.trim().slice(0, 400) : null,
         body.ideal_for?.trim() ? body.ideal_for.trim().slice(0, 300) : null,
