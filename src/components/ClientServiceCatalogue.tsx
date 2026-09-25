@@ -8,7 +8,9 @@
  * the service lines as tabs, and each piece of work as a card with room to say what it
  * is. The price is quiet where there is none yet and clear where there is.
  *
- * Asking is a small conversation rather than a button that fires. The dialog says what
+ * Each card turns over: the front is the name and the price, the back is what the work
+ * covers, the way the package cards do it. Asking is a small conversation rather than a
+ * button that fires. The dialog says what
  * they are asking about, lets them add a line about their situation, and only then
  * sends it. Nothing here commits the client to anything - a fee comes back from the
  * firm and waits for their answer - and the copy says so where they will read it.
@@ -238,7 +240,11 @@ function Count({ n }: { n: number }) {
   return <span className="ml-0.5 opacity-70 tabular-nums">{n}</span>;
 }
 
-/** One piece of work, with what it is and what it costs, and a way to ask. */
+/**
+ * One piece of work as a card that turns over: the front is the name and the price,
+ * the back is what it covers and the way to ask. The same turn as the package cards -
+ * on hover, on keyboard focus and on a tap - so it works on a phone as well as a desk.
+ */
 function ServiceCard({
   service,
   withUs,
@@ -248,33 +254,86 @@ function ServiceCard({
   withUs: boolean;
   onAsk: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const turned = pinned || hovered;
   const priced = service.fee !== null;
+  const fee = priced
+    ? capitalise(describeFee(service.fee, service.fee_basis, (n) => formatMoney(n, service.currency)))
+    : "Fee on request";
   return (
-    <div className="flex flex-col rounded-lg bg-panel p-4 ring-1 ring-slate-200 transition-shadow hover:shadow-md hover:ring-slate-300">
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-        {lineLabel(service.service_line)}
-      </span>
-      <h3 className="mt-1 text-sm font-semibold text-slate-900">{service.name}</h3>
-      {service.summary && (
-        <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-500">{service.summary}</p>
-      )}
-      <div className="mt-auto flex items-center justify-between gap-2 pt-4">
-        <span
-          className={
-            priced ? "text-sm font-semibold tabular-nums text-slate-900" : "text-xs text-slate-400"
-          }
+    <div
+      className={`flip lift h-52 ${turned ? "is-turned" : ""}`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div className="flip-inner h-full">
+        {/* ------------------------------------------------- the front */}
+        <button
+          type="button"
+          aria-expanded={turned}
+          onFocus={() => setHovered(true)}
+          onBlur={() => setHovered(false)}
+          onClick={() => setPinned((v) => !v)}
+          className="flip-face flex h-full w-full flex-col rounded-lg bg-panel p-4 text-left ring-1 ring-inset ring-slate-200 hover:ring-brand-300"
         >
-          {priced
-            ? capitalise(describeFee(service.fee, service.fee_basis, (n) => formatMoney(n, service.currency)))
-            : "Fee on request"}
-        </span>
-        {withUs ? (
-          <span className="pill bg-slate-100 text-slate-600 ring-slate-200">With us</span>
-        ) : (
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onAsk}>
-            Ask us
-          </button>
-        )}
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            {lineLabel(service.service_line)}
+          </span>
+          <h3 className="mt-1 text-base font-semibold leading-snug text-slate-900">{service.name}</h3>
+          <div className="mt-auto">
+            <span
+              className={
+                priced ? "text-sm font-semibold tabular-nums text-slate-900" : "text-xs text-slate-400"
+              }
+            >
+              {fee}
+            </span>
+            <p className="mt-1.5 text-xs font-medium text-link">
+              {withUs ? "With us - turn it over" : "What this covers - turn it over"}
+            </p>
+          </div>
+        </button>
+
+        {/* -------------------------------------------------- the back */}
+        <div className="flip-face flip-back flex flex-col rounded-lg bg-panel p-4 ring-1 ring-inset ring-brand-300">
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-sm font-semibold text-slate-900">{service.name}</h3>
+            <button
+              type="button"
+              className="btn-ghost btn-sm ml-auto -mr-2 -mt-1"
+              onClick={() => {
+                setPinned(false);
+                setHovered(false);
+              }}
+              onFocus={() => setHovered(true)}
+              onBlur={() => setHovered(false)}
+            >
+              Back
+            </button>
+          </div>
+          <p className="mt-1 flex-1 overflow-auto text-sm leading-6 text-slate-600">
+            {service.summary ?? "Ask us and we will tell you what this covers for your business."}
+          </p>
+          <div className="mt-2 flex shrink-0 items-center justify-between gap-2">
+            <span className={priced ? "text-sm font-semibold tabular-nums text-slate-900" : "text-xs text-slate-400"}>
+              {fee}
+            </span>
+            {withUs ? (
+              <span className="pill bg-slate-100 text-slate-600 ring-slate-200">With us</span>
+            ) : (
+              <button
+                type="button"
+                className="btn-primary btn-sm"
+                onClick={onAsk}
+                onFocus={() => setHovered(true)}
+                onBlur={() => setHovered(false)}
+              >
+                Ask us
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
