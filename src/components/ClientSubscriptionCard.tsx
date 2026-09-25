@@ -10,7 +10,7 @@
  * records what they were on and what they paid before.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   SERVICE_STATE_LABELS,
@@ -73,6 +73,7 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const dialogs = useDialogs();
+  const bannerRef = useRef<HTMLDivElement>(null);
   const [moving, setMoving] = useState(false);
   const [recording, setRecording] = useState(false);
   const [inviting, setInviting] = useState(false);
@@ -110,6 +111,10 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
       await load();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Could not do that.");
+      window.setTimeout(
+        () => bannerRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }),
+        0,
+      );
     } finally {
       setBusy(false);
     }
@@ -127,7 +132,13 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
       </div>
 
       <div className="space-y-5 p-4">
-        {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
+        {/*
+          This card is long. An error that lands at the top while somebody is working at
+          the bottom is an error nobody sees, so the banner scrolls into view.
+        */}
+        <div ref={bannerRef}>
+          {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
+        </div>
         {notice && <SuccessBanner message={notice} onDismiss={() => setNotice(null)} />}
 
         {!subscription ? (
@@ -1220,45 +1231,86 @@ function RaiseInvoice({
   currency: Currency;
 }) {
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
+  const [withServices, setWithServices] = useState(true);
   const [raised, setRaised] = useState<{ id: string; number: string } | null>(null);
+  /*
+   * The outcome is reported here, beside the button, because this block sits at the
+   * foot of a long card and a refusal at the top of it went unseen. A month already
+   * billed - the usual answer now that the monthly run bills on its own - links to the
+   * invoice that covers it.
+   */
+  const [refusal, setRefusal] = useState<{ message: string; invoiceId: string | null } | null>(null);
   const [byHand, setByHand] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const raise = async () => {
+    setSending(true);
+    setRefusal(null);
+    setRaised(null);
+    try {
+      const r = await api.raiseInvoice(clientId, { period, include_services: withServices });
+      setRaised(r);
+    } catch (err) {
+      setRefusal(
+        err instanceof ApiRequestError
+          ? { message: err.message, invoiceId: err.status === 409 ? (err.detail ?? null) : null }
+          : { message: "Could not raise that.", invoiceId: null },
+      );
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
-    <div className="flex flex-wrap items-end gap-2">
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-end gap-2">
+        {hasSubscription && (
+          <>
+            <Field label="Bill the month">
+              {(id) => (
+                <TextInput id={id} type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+              )}
+            </Field>
+            <button type="button" className="btn-secondary" disabled={busy || sending} onClick={() => void raise()}>
+              {sending ? "Raising..." : "Raise a draft"}
+            </button>
+          </>
+        )}
+        {/*
+          Anything the month does not cover: a filing fee paid on the client's behalf, a
+          courier, a one-off piece of work the catalogue does not carry. Typed line by
+          line, as a draft, so it can be read over before it goes.
+        */}
+        <button type="button" className="btn-secondary" disabled={busy} onClick={() => setByHand(true)}>
+          Raise one by hand
+        </button>
+      </div>
       {hasSubscription && (
-        <>
-          <Field label="Bill the month" hint="Delivered work not yet invoiced is picked up too.">
-            {(id) => (
-              <TextInput id={id} type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
-            )}
-          </Field>
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={busy}
-            onClick={() =>
-              void act(async () => {
-                const r = await api.raiseInvoice(clientId, { period });
-                setRaised(r);
-              }, "Draft invoice raised.")
-            }
-          >
-            Raise a draft
-          </button>
-        </>
+        <label className="flex items-center gap-2 text-xs text-slate-600">
+          <input type="checkbox" checked={withServices} onChange={(e) => setWithServices(e.target.checked)} />
+          Pick up delivered work not yet invoiced
+        </label>
       )}
-      {/*
-        Anything the month does not cover: a filing fee paid on the client's behalf, a
-        courier, a one-off piece of work the catalogue does not carry. Typed line by
-        line, as a draft, so it can be read over before it goes.
-      */}
-      <button type="button" className="btn-secondary" disabled={busy} onClick={() => setByHand(true)}>
-        Raise one by hand
-      </button>
       {raised && (
-        <Link className="link text-sm" to={`/invoices/${raised.id}`}>
-          {raised.number} →
-        </Link>
+        <p className="text-sm text-emerald-800">
+          Draft {raised.number} raised.{" "}
+          <Link className="link" to={`/invoices/${raised.id}`}>
+            Open it →
+          </Link>
+        </p>
+      )}
+      {refusal && (
+        <p className="text-sm text-rose-800" role="alert">
+          {refusal.message}
+          {refusal.invoiceId && (
+            <>
+              {" "}
+              <Link className="link" to={`/invoices/${refusal.invoiceId}`}>
+                Open that invoice →
+              </Link>
+            </>
+          )}
+        </p>
       )}
       <ManualInvoiceModal
         open={byHand}

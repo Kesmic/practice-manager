@@ -17,7 +17,8 @@ export const unauthorized = (message = "Not signed in.") =>
   new HttpError(401, message);
 export const forbidden = (message: string) => new HttpError(403, message);
 export const notFound = (message = "Not found.") => new HttpError(404, message);
-export const conflict = (message: string) => new HttpError(409, message);
+export const conflict = (message: string, detail?: string) =>
+  new HttpError(409, message, detail);
 export const tooMany = (message: string) => new HttpError(429, message);
 
 const SECURITY_HEADERS: Record<string, string> = {

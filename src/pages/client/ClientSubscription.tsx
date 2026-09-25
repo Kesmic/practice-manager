@@ -165,7 +165,7 @@ export function ClientSubscription() {
                   </span>
                   {extrasCount > 0 && (
                     <span className="pill bg-teal-50 text-teal-800 ring-teal-200">
-                      Plus {extrasCount} extra{extrasCount === 1 ? "" : "s"} from other packages
+                      Plus {extrasCount} extra{extrasCount === 1 ? "" : "s"} from other packages, at no extra cost
                     </span>
                   )}
                 </span>
@@ -243,7 +243,7 @@ export function ClientSubscription() {
               {extrasCount > 0 && (
                 <p className="muted mt-1">
                   The ones marked are from a higher package, included for you on top of{" "}
-                  {TIER_LABELS[subscription.tier]}.
+                  {TIER_LABELS[subscription.tier]} at no extra cost.
                 </p>
               )}
               <ul className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2">
