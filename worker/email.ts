@@ -423,6 +423,10 @@ export const PROVIDERS: Record<
       // Postmark separates transactional mail from bulk. These are notifications
       // about someone's own work, so they belong on the transactional stream.
       MessageStream: "outbound",
+      // Links go where they say, never through the provider's redirect: the portal
+      // tracks invoice links itself. See the SendGrid note below.
+      TrackLinks: "None",
+      TrackOpens: false,
       ...(extras.attachments?.length
         ? {
             Attachments: extras.attachments.map((a) => ({
@@ -464,6 +468,19 @@ export const PROVIDERS: Record<
               })),
             }
           : {}),
+        /*
+         * SendGrid's own tracking, off. Left on, it rewrites every link in the message
+         * to pass through the account's branded link domain (url5507.kesmic.org) -
+         * which has no HTTPS certificate, so a client following "here" on an invoice
+         * met "This site doesn't support a secure connection". It would do the same to
+         * an invitation or a password reset link, sending the token over plain HTTP.
+         * The portal tracks opens and clicks on invoices itself, through its own
+         * address, so nothing is lost.
+         */
+        tracking_settings: {
+          click_tracking: { enable: false, enable_text: false },
+          open_tracking: { enable: false },
+        },
       },
     };
   },
