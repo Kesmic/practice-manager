@@ -26,7 +26,6 @@ export const AREAS = [
   "clients",
   "engagements",
   "templates",
-  "client_requests",
   "reports",
   "people",
   "directory",
@@ -102,15 +101,6 @@ export const AREA_SPECS: Record<Area, AreaSpec> = {
       "The standard procedures and deadline rules, and generating a period of work from them.",
     defaultMin: "associate",
     floor: "associate",
-  },
-  client_requests: {
-    label: "Client requests",
-    detail:
-      "Enquiries from the public onboarding and service-request links, and turning one into a client.",
-    defaultMin: "manager",
-    floor: "senior_associate",
-    floorReason:
-      "Cannot be opened below Senior Associate: an enquiry carries a stranger's contact details and their description of their affairs.",
   },
   reports: {
     label: "Reports",

@@ -60,7 +60,7 @@ import {
   readJson,
   unauthorized,
 } from "../http";
-import { MIN_SUPERVISOR_ROLE, atLeast, type Role } from "../../shared/workflow";
+import { type Role } from "../../shared/workflow";
 import type { Attention } from "../../shared/attention";
 import {
   nextFirstRunStep,
@@ -137,7 +137,7 @@ async function countAttention(
   user: AuthenticatedUser,
 ): Promise<Attention> {
   const schedule = await readReportSchedule(env);
-  const [documents, onboarding, requests, unread, filed, reporter, offers] = await env.DB.batch<
+  const [documents, onboarding, unread, filed, reporter, offers] = await env.DB.batch<
     Record<string, unknown>
   >([
     /*
@@ -161,14 +161,6 @@ async function countAttention(
       `SELECT COUNT(*) AS n FROM onboarding_items
         WHERE user_id = ? AND owner = 'employee' AND is_done = 0`,
     ).bind(user.id),
-    /*
-     * Enquiries nobody has picked up or decided. Counted for everybody, and filtered
-     * below by whether this person can actually reach the screen - a badge on a link
-     * somebody cannot follow is a dead end.
-     */
-    env.DB.prepare(
-      `SELECT COUNT(*) AS n FROM client_requests WHERE status IN ('new','in_review')`,
-    ),
     env.DB.prepare(
       `SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL`,
     ).bind(user.id),
@@ -202,9 +194,6 @@ async function countAttention(
   return {
     documents: count(documents.results),
     onboarding: count(onboarding.results),
-    client_requests: atLeast(user.role, MIN_SUPERVISOR_ROLE)
-      ? count(requests.results)
-      : 0,
     notifications: count(unread.results),
     /*
      * The report they owe now, and nothing else - so one or nothing, never seven.

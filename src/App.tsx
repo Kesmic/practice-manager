@@ -4,7 +4,6 @@ import { Spinner } from "./components/ui";
 import { useSession } from "./lib/auth";
 import { Account } from "./pages/Account";
 import { ClientDetail } from "./pages/ClientDetail";
-import { ClientRequests } from "./pages/ClientRequests";
 import { Clients } from "./pages/Clients";
 import { Dashboard } from "./pages/Dashboard";
 import { DocumentView } from "./pages/DocumentView";
@@ -16,7 +15,6 @@ import { MyClients } from "./pages/MyClients";
 import { StatusReports } from "./pages/StatusReports";
 import { Guide } from "./pages/Guide";
 import { Handbook } from "./pages/Handbook";
-import { Intake } from "./pages/Intake";
 import { ClientPortal, ClientPublic } from "./components/ClientLayout";
 import { PartnerPortal, PartnerPublic } from "./components/PartnerLayout";
 import { PartnerLogin } from "./pages/partner/PartnerLogin";
@@ -102,13 +100,6 @@ export function App() {
       <Route path="/setup" element={<Setup />} />
 
       {/*
-        Public, outside the Layout and outside Protected: the two client intake
-        links open here. The unguessable token in the path is what stands in for a
-        sign-in, and the Worker is what checks it.
-      */}
-      <Route path="/request/:kind/:token" element={<Intake />} />
-
-      {/*
         The client portal. Outside Protected and outside Layout, because a client is not
         a user of this portal - they have their own session, their own cookie and their
         own shell. Nothing under /client can reach a staff page, and nothing above can
@@ -186,14 +177,6 @@ export function App() {
         <Route path="/tasks/:id" element={<TaskDetail />} />
         <Route path="/clients" element={<Clients />} />
         <Route path="/clients/:id" element={<ClientDetail />} />
-        <Route
-          path="/client-requests"
-          element={
-            <Protected minimum="manager">
-              <ClientRequests />
-            </Protected>
-          }
-        />
         <Route path="/directory" element={<Directory />} />
         <Route path="/my-clients" element={<MyClients />} />
         <Route path="/status-reports" element={<StatusReports />} />

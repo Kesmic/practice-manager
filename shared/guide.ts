@@ -313,39 +313,6 @@ Removing a link removes the link. The document is untouched.
   },
 
   {
-    id: "requests",
-    title: "Client requests",
-    summary: "The two public links, and turning an enquiry into a client.",
-    minimum: "senior_associate",
-    area: "client_requests",
-    body: `
-## The two links
-
-**Portal settings** issues two addresses: one for people who are not clients yet, and one
-for existing clients asking for something further. They ask for different things, so send
-the right one.
-
-Anyone with the address can submit. If one gets out, **rotate** it: the old address stops
-working immediately and you send the new one.
-
-## What arrives
-
-An enquiry, and nothing else. No client record is created, no account, and no email is
-sent to the sender.
-
-## Dealing with one
-
-Open it, read it, and either **accept** it, which creates the client record from what
-they told you, or mark it declined with a reason. Either way the enquiry itself is kept.
-
-## The service list
-
-What the forms offer under *What do you need help with?* is yours to set, under
-**Portal settings**. Change it whenever the firm's services change.
-`,
-  },
-
-  {
     id: "reports",
     title: "Reports",
     summary: "Workload, review quality and overdue work across the practice.",

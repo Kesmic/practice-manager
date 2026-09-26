@@ -21,8 +21,6 @@ export interface Attention {
   documents: number;
   /** Onboarding steps that are this person's own to complete. */
   onboarding: number;
-  /** Client enquiries nobody has picked up or decided yet. */
-  client_requests: number;
   /** Unread inbox entries. */
   notifications: number;
   /**
@@ -46,7 +44,6 @@ export interface Attention {
 export const NO_ATTENTION: Attention = {
   documents: 0,
   onboarding: 0,
-  client_requests: 0,
   notifications: 0,
   status_reports: 0,
   allocations: 0,
