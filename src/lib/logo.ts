@@ -178,3 +178,99 @@ export async function deriveLightInk(
 
   return { derived: null, analysis };
 }
+
+// ---------------------------------------------------------------------------
+// The copy printed on PDFs
+// ---------------------------------------------------------------------------
+
+/** How tall the printed copy is drawn: 52pt on the page, so about 500 dots an inch. */
+const PRINT_HEIGHT = 360;
+/** And no wider than this, for a long, low wordmark. */
+const PRINT_MAX_WIDTH = 1600;
+
+/** The text of an SVG data URI, however it was encoded. */
+function svgText(dataUrl: string): string | null {
+  const m = /^data:image\/svg\+xml(;charset=[^;,]+)?(;base64)?,(.*)$/is.exec(dataUrl.trim());
+  if (!m) return null;
+  if (m[2]) {
+    const bytes = Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
+  return decodeURIComponent(m[3]);
+}
+
+/**
+ * An SVG given an explicit size. Many are saved with a viewBox and no width or height,
+ * which a browser draws at 300 by 150 or not at all; setting the size from the viewBox
+ * keeps the shape and draws it large enough to stay sharp in print.
+ */
+function sizedSvg(text: string): { url: string; width: number; height: number } | null {
+  const doc = new DOMParser().parseFromString(text, "image/svg+xml");
+  const root = doc.documentElement;
+  if (!root || root.nodeName.toLowerCase() !== "svg" || doc.getElementsByTagName("parsererror").length) {
+    return null;
+  }
+  const box = (root.getAttribute("viewBox") ?? "").trim().split(/[\s,]+/).map(Number);
+  let ratio = box.length === 4 && box[2] > 0 && box[3] > 0 ? box[2] / box[3] : 0;
+  if (!ratio) {
+    const w = parseFloat(root.getAttribute("width") ?? "");
+    const h = parseFloat(root.getAttribute("height") ?? "");
+    ratio = w > 0 && h > 0 ? w / h : 0;
+    // A size without a viewBox: give it one, so the new size scales the drawing
+    // rather than cropping it.
+    if (ratio && !root.getAttribute("viewBox")) root.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  }
+  if (!ratio) ratio = 3;
+  let height = PRINT_HEIGHT;
+  let width = Math.round(height * ratio);
+  if (width > PRINT_MAX_WIDTH) {
+    width = PRINT_MAX_WIDTH;
+    height = Math.max(1, Math.round(width / ratio));
+  }
+  root.setAttribute("width", String(width));
+  root.setAttribute("height", String(height));
+  root.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  const xml = new XMLSerializer().serializeToString(root);
+  const bytes = new TextEncoder().encode(xml);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { url: `data:image/svg+xml;base64,${btoa(binary)}`, width, height };
+}
+
+/**
+ * The logo drawn as a PNG a PDF can carry, for a logo that is an SVG, WebP or GIF;
+ * null for one that needs no copy (a PNG or JPEG is used as it is) or cannot be drawn.
+ *
+ * Drawn here, in the browser, because the Worker has no way to draw an SVG - and the
+ * browser draws it exactly as it appears on screen, text and gradients included.
+ */
+export async function printCopy(dataUrl: string): Promise<string | null> {
+  if (!dataUrl || /^data:image\/(png|jpeg|jpg);/i.test(dataUrl)) return null;
+  let source = dataUrl;
+  let size: { width: number; height: number } | null = null;
+  const text = svgText(dataUrl);
+  if (text !== null) {
+    const sized = sizedSvg(text);
+    if (!sized) return null;
+    source = sized.url;
+    size = sized;
+  }
+  const image = await load(source);
+  const naturalWidth = size?.width ?? image.naturalWidth;
+  const naturalHeight = size?.height ?? image.naturalHeight;
+  if (!naturalWidth || !naturalHeight) return null;
+
+  // Smaller only if the file would not fit in the setting.
+  for (const scale of [1, 0.7, 0.5, 0.35]) {
+    const fit = Math.min(1, PRINT_MAX_WIDTH / naturalWidth, (PRINT_HEIGHT * 1.5) / naturalHeight) * scale;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(naturalWidth * fit));
+    canvas.height = Math.max(1, Math.round(naturalHeight * fit));
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const out = canvas.toDataURL("image/png");
+    if (out.length <= MAX_CHARS) return out;
+  }
+  return null;
+}

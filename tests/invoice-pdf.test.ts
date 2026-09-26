@@ -226,3 +226,24 @@ test("a logo a PDF cannot show without a renderer gives way to the firm's name",
 test("the file is named for the invoice and the client, as a PDF", () => {
   assert.equal(invoiceFilename(DOC), "acme202610-acme-trading-ltd.pdf");
 });
+
+// ---------------------------------------------------------------- SVG logos
+
+import { isRasterLogo, logoFingerprint, pdfLogo } from "../shared/logo-print";
+
+test("an SVG logo reaches a PDF through the copy drawn from it, and only that logo's copy", async () => {
+  const svg = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
+  const copy = `data:image/png;base64,${Buffer.from(png(4, 4, false)).toString("base64")}`;
+  const drawnFrom = await logoFingerprint(svg);
+  assert.match(drawnFrom, /^[0-9a-f]{32}$/);
+
+  assert.equal(await pdfLogo({ logo_data_url: svg, logo_print_data_url: copy, logo_print_for: drawnFrom }), copy);
+  // The logo changed since the copy was drawn: the firm's name, never the old picture.
+  assert.equal(await pdfLogo({ logo_data_url: `${svg}x`, logo_print_data_url: copy, logo_print_for: drawnFrom }), "");
+  assert.equal(await pdfLogo({ logo_data_url: svg, logo_print_data_url: "", logo_print_for: "" }), "");
+  // A PNG or JPEG goes in as it is, whatever copy is lying about.
+  assert.equal(await pdfLogo({ logo_data_url: copy, logo_print_data_url: "", logo_print_for: "" }), copy);
+  assert.equal(await pdfLogo({}), "");
+  assert.ok(isRasterLogo("data:image/jpeg;base64,/9j/"));
+  assert.ok(!isRasterLogo(svg));
+});

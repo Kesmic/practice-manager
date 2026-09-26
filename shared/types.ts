@@ -688,6 +688,10 @@ export interface FirmSettings {
    * "" means there is only one, and the portal plates the main logo instead.
    */
   logo_dark_data_url: string;
+  /** The logo drawn as a PNG for PDFs, when it is an SVG. Written only; never read back. */
+  logo_print_data_url?: string;
+  /** Which logo that copy was drawn from (shared/logo-print.ts). */
+  logo_print_for?: string;
   /** Six-digit hex, or "" for the default. Recolours the whole interface. */
   primary_color: string;
   secondary_color: string;

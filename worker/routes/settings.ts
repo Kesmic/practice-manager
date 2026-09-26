@@ -115,6 +115,14 @@ const DEFAULTS: Record<string, string> = {
    * and the portal falls back to setting the main one on a bright plate.
    */
   logo_dark_data_url: "",
+  /**
+   * The logo as a PNG, for PDFs, when the logo itself is an SVG, WebP or GIF - which a
+   * PDF cannot carry. Drawn by the settings screen in the Partner's browser, with the
+   * fingerprint of the logo it was drawn from; see shared/logo-print.ts. Never sent
+   * back with the settings: only the Worker reads it.
+   */
+  logo_print_data_url: "",
+  logo_print_for: "",
   primary_color: "",
   secondary_color: "",
   /**
@@ -210,6 +218,7 @@ const MAX_LENGTH: Record<string, number> = {
   // is generous for a logo and comfortably inside what a D1 row will hold.
   logo_data_url: 400_000,
   logo_dark_data_url: 400_000,
+  logo_print_data_url: 400_000,
 };
 
 /** Image types a browser will render from a data URI without any conversion. */
@@ -246,7 +255,9 @@ function assertColour(value: string, field: string): string {
 function withoutTokens(settings: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(settings)) {
-    if (!key.startsWith("intake_token")) out[key] = value;
+    // The printed copy of the logo is also left out: up to 400 kB that only the
+    // Worker uses, in a blob every screen loads. Its fingerprint stays in.
+    if (!key.startsWith("intake_token") && key !== "logo_print_data_url") out[key] = value;
   }
   return out;
 }
@@ -456,6 +467,9 @@ export function registerSettingsRoutes(router: Router<Env>): void {
       const value = optionalString(body[key], key, MAX_LENGTH[key] ?? 200) ?? "";
       if (key === "logo_data_url" || key === "logo_dark_data_url") {
         return { key, value: assertLogo(value) };
+      }
+      if (key === "logo_print_data_url" && value && !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value)) {
+        throw badRequest("The printed copy of the logo must be a PNG.");
       }
       if (key === "primary_color" || key === "secondary_color") {
         return { key, value: assertColour(value, key) };
