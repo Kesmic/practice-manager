@@ -170,7 +170,7 @@ export function ClientDetail() {
             setNotice={setNotice}
           />
 
-          <ClientSubscriptionCard clientId={client.id} />
+          <ClientSubscriptionCard clientId={client.id} clientName={client.name} />
 
           <ClientFileCard
             clientId={id}

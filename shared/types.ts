@@ -1264,6 +1264,8 @@ export interface InvoiceLineRow {
   subscription_period: string | null;
   /** A fee (1) or a reimbursable passed on at cost (0). Absent on rows a client reads. */
   taxable?: 0 | 1;
+  /** The item name an imported invoice's original copy printed beside the line. */
+  activity?: string | null;
 }
 
 export interface InvoiceTaxRow {
@@ -1379,6 +1381,8 @@ export interface InvoiceDetail {
     sent_at: string | null;
     voided_at: string | null;
     void_reason: string | null;
+    /** The system it was brought in from ("QuickBooks"), or null for one raised here. */
+    imported_from: string | null;
   };
   lines: InvoiceLineRow[];
   taxes: InvoiceTaxRow[];

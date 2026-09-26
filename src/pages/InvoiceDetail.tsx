@@ -92,6 +92,7 @@ export function InvoiceDetail() {
           {invoice.issued_on ? ` · issued ${formatDate(invoice.issued_on)}` : " · not issued"}
           {` · due ${formatDate(invoice.due_on)}`}
           {invoice.period_label ? ` · covers ${invoice.period_label}` : ""}
+          {invoice.imported_from ? ` · brought in from ${invoice.imported_from}` : ""}
         </p>
       </div>
 
@@ -559,15 +560,29 @@ function History({ data }: { data: Detail }) {
   const { invoice, emails, views, reminders, payments, events } = data;
   const items: HistoryItem[] = [];
 
-  items.push({
-    at: invoice.created_at,
-    title: "Raised as a draft",
-    by: invoice.created_by_name ?? (invoice.period_label ? "the monthly billing run" : null),
-  });
-
   const firstEmail = emails.length ? emails.map((e) => e.sent_at).sort()[0] : null;
   const issuedEmails = emails.filter((e) => e.kind === "issued");
-  if (invoice.sent_at) {
+  if (invoice.imported_from) {
+    // Raised and sent in another system; the portal only holds the record.
+    items.push({
+      at: invoice.sent_at ?? invoice.created_at,
+      title: `Issued in ${invoice.imported_from}`,
+      detail: <span>Raised and sent to the client before the portal held their account.</span>,
+    });
+    items.push({
+      at: invoice.created_at,
+      title: `Brought in from ${invoice.imported_from}`,
+      by: invoice.created_by_name,
+      detail: <span>With its payments. Nothing was emailed to the client.</span>,
+    });
+  } else {
+    items.push({
+      at: invoice.created_at,
+      title: "Raised as a draft",
+      by: invoice.created_by_name ?? (invoice.period_label ? "the monthly billing run" : null),
+    });
+  }
+  if (invoice.sent_at && !invoice.imported_from) {
     items.push({
       at: invoice.sent_at,
       title: "Issued",

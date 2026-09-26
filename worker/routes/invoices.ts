@@ -340,7 +340,7 @@ async function fullInvoice(env: Env, id: string) {
   const [lines, taxes, payments, reminders, emails, views, events] = await env.DB.batch([
     env.DB.prepare(
       `SELECT id, description, quantity, unit_amount, amount, source, subscription_period,
-              taxable
+              taxable, activity
          FROM invoice_lines WHERE invoice_id = ? ORDER BY position`,
     ).bind(id),
     env.DB.prepare(
@@ -1259,7 +1259,10 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     assertRunner(env, request);
 
     const { results } = await env.DB.prepare(
-      `SELECT id FROM invoices WHERE state IN ('sent', 'part_paid') AND due_on < ?`,
+      // An invoice brought in from another system is chased by a person, not the schedule:
+      // a year-old bill arriving with a reminder the day it is imported would be a shock.
+      `SELECT id FROM invoices
+        WHERE state IN ('sent', 'part_paid') AND due_on < ? AND imported_from IS NULL`,
     )
       .bind(today())
       .all<{ id: string }>();
@@ -1277,7 +1280,8 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
      */
     const { results: dueToday } = await env.DB.prepare(
       `SELECT id FROM invoices
-        WHERE state IN ('sent', 'part_paid') AND due_on = ? AND due_notice_at IS NULL`,
+        WHERE state IN ('sent', 'part_paid') AND due_on = ? AND due_notice_at IS NULL
+          AND imported_from IS NULL`,
     )
       .bind(today())
       .all<{ id: string }>();
@@ -1451,7 +1455,7 @@ async function documentFor(env: Env, invoiceId: string): Promise<InvoiceDocument
   const [lines, taxes, payments] = await env.DB.batch([
     env.DB.prepare(
       `SELECT description, quantity, unit_amount, amount, source, subscription_period,
-              taxable
+              taxable, activity
          FROM invoice_lines WHERE invoice_id = ? ORDER BY position`,
     ).bind(invoiceId),
     env.DB.prepare(
@@ -1501,12 +1505,15 @@ async function documentFor(env: Env, invoiceId: string): Promise<InvoiceDocument
       source: string;
       subscription_period: string | null;
       taxable: 0 | 1;
+      activity: string | null;
     }>).map((line) => ({
       date: issued,
       // The firm's own invoices carry a short "activity" beside the description. A
-      // reimbursable says so, because it is the one line tax was not charged on.
-      activity:
-        line.taxable === 0
+      // reimbursable says so, because it is the one line tax was not charged on. An
+      // imported invoice keeps the item name its original copy printed.
+      activity: line.activity
+        ? line.activity
+        : line.taxable === 0
           ? "Reimbursable at cost"
           : line.source === "subscription"
             ? "Consultancy services"

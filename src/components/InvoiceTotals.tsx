@@ -41,7 +41,9 @@ export function InvoiceTotals({
   /** On a draft: takes a line off. Absent once the invoice is a document somebody holds. */
   onRemove?: (lineId: string) => void;
 }) {
-  const reimbursed = lines.some((line) => !isFee(line));
+  // Only worth explaining when there is tax to explain; an invoice with none has no
+  // fee-versus-cost distinction to make.
+  const reimbursed = taxes.length > 0 && lines.some((line) => !isFee(line));
   return (
     <div className="scroll-x">
       <table className="table">
@@ -59,9 +61,17 @@ export function InvoiceTotals({
             <tr key={line.id}>
               <td>
                 {line.description}
-                {/* The one line tax was not charged on says so, next to the words. */}
-                {!isFee(line) && (
-                  <span className="pill ml-2 bg-slate-100 text-slate-600 ring-slate-200">at cost</span>
+                {/*
+                  The one line tax was not charged on says so, next to the words. An
+                  imported line says what its original copy called it instead - "at
+                  cost" beside a credit for an overpayment would be wrong.
+                */}
+                {line.activity ? (
+                  <span className="pill ml-2 bg-slate-100 text-slate-600 ring-slate-200">{line.activity}</span>
+                ) : (
+                  !isFee(line) && (
+                    <span className="pill ml-2 bg-slate-100 text-slate-600 ring-slate-200">at cost</span>
+                  )
                 )}
               </td>
               <td className="text-right tabular-nums">{line.quantity}</td>
