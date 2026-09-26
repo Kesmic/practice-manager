@@ -166,13 +166,71 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
               )}
               {subscription.status !== "active" && (
                 <span className="pill bg-amber-50 text-amber-800 ring-amber-200">
-                  {subscription.status}
+                  {subscription.status === "paused" ? "Paused - not being billed" : "Ended"}
                 </span>
               )}
               <span className="ml-auto text-xs text-slate-500">
                 since {formatDate(subscription.started_on)}
               </span>
             </div>
+
+            {/*
+              Pausing, resuming and ending are their own actions, apart from the tier and
+              fee: a form that carried the standing along with everything else sent back
+              whatever it had loaded, and could pause a subscription again after it had
+              been resumed elsewhere.
+            */}
+            {partner && (
+              <div className="flex flex-wrap items-center gap-2">
+                {subscription.status === "active" && (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    disabled={busy}
+                    onClick={async () => {
+                      const ok = await dialogs.confirm(
+                        "The monthly invoice stops until you resume it. Nothing already invoiced changes, and the months it is paused are not billed afterwards.",
+                        { title: "Pause the subscription?", confirmLabel: "Pause it" },
+                      );
+                      if (ok) void act(() => api.setSubscriptionStatus(clientId, "paused"), "Paused. Nothing is billed until it is resumed.");
+                    }}
+                  >
+                    Pause
+                  </button>
+                )}
+                {subscription.status !== "active" && (
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm"
+                    disabled={busy}
+                    onClick={() =>
+                      void act(
+                        () => api.setSubscriptionStatus(clientId, "active"),
+                        "Resumed. The monthly invoice picks up again from this month.",
+                      )
+                    }
+                  >
+                    Resume
+                  </button>
+                )}
+                {subscription.status !== "ended" && (
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm text-rose-700"
+                    disabled={busy}
+                    onClick={async () => {
+                      const ok = await dialogs.confirm(
+                        "The subscription closes today and no further monthly invoices are raised. It can be reopened with Resume.",
+                        { title: "End the subscription?", confirmLabel: "End it", danger: true },
+                      );
+                      if (ok) void act(() => api.setSubscriptionStatus(clientId, "ended"), "Ended.");
+                    }}
+                  >
+                    End
+                  </button>
+                )}
+              </div>
+            )}
 
             {assessment?.should_move && assessment.suggested && (
               <div className="rounded-md bg-amber-50 px-3 py-2.5 text-sm text-amber-900 ring-1 ring-inset ring-amber-200">
@@ -480,7 +538,13 @@ export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
                         ? `Subscribed to ${event.to_tier ? TIER_LABELS[event.to_tier] : ""}`
                         : event.kind === "fee_changed"
                           ? "Fee changed"
-                          : event.kind}
+                          : event.kind === "paused"
+                            ? "Paused"
+                            : event.kind === "resumed"
+                              ? "Resumed"
+                              : event.kind === "ended"
+                                ? "Ended"
+                                : event.kind}
                     {event.from_fee !== null && event.to_fee !== null && (
                       <span className="text-slate-500">
                         {" "}
@@ -1542,12 +1606,10 @@ function MoveTierModal({
     monthly_fee: number | null;
     currency: Currency;
     started_on?: string;
-    status?: "active" | "paused" | "ended";
   }) => Promise<void>;
 }) {
   const [tier, setTier] = useState<ClientTier>(current?.tier ?? "starter");
   const [fee, setFee] = useState(current?.monthly_fee?.toString() ?? "");
-  const [status, setStatus] = useState(current?.status ?? "active");
   const today = new Date().toISOString().slice(0, 10);
   /*
    * When the package started, which is rarely today: the client agreed months ago and
@@ -1565,6 +1627,23 @@ function MoveTierModal({
   const [currency, setCurrency] = useState<Currency>(
     currencyOf(current?.currency ?? listed?.currency),
   );
+
+  /*
+   * Fresh from the saved subscription every time it opens. Held from the first render,
+   * the form kept whatever was last typed or loaded - so a change abandoned with Cancel,
+   * or a page left open while somebody else changed the subscription, came back and was
+   * saved over what is actually there.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const at = current?.tier ?? "starter";
+    setTier(at);
+    setFee(current?.monthly_fee?.toString() ?? "");
+    setStartedOn(current?.started_on ?? new Date().toISOString().slice(0, 10));
+    setCurrency(currencyOf(current?.currency ?? tiers.find((t) => t.tier === at)?.currency));
+    // Only on opening: while open, the Partner's edits are the form's.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   const currencyProblem = whyNotABillingCurrency(
     fee.trim() === "" ? null : Number(fee),
     currency,
@@ -1592,7 +1671,6 @@ function MoveTierModal({
                 monthly_fee: fee.trim() === "" ? null : Number(fee),
                 currency,
                 started_on: startedOn,
-                status: status as "active" | "paused" | "ended",
               })
             }
           >
@@ -1662,15 +1740,6 @@ function MoveTierModal({
               value={startedOn}
               onChange={(e) => setStartedOn(e.target.value)}
             />
-          )}
-        </Field>
-        <Field label="Standing" hint="Paused stops billing without ending the subscription.">
-          {(id) => (
-            <Select id={id} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
-              <option value="active">Active</option>
-              <option value="paused">Paused</option>
-              <option value="ended">Ended</option>
-            </Select>
           )}
         </Field>
       </div>

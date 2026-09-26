@@ -733,6 +733,38 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
    * as the change, so there is no state in which a client is on a new tier and nothing
    * records what they were on before.
    */
+  /**
+   * Pauses, resumes or ends a subscription - on its own, so that nothing else about the
+   * subscription is sent back with it, and so the History says exactly which happened.
+   *
+   * Paused stops the monthly billing without ending the arrangement; resumed picks it up
+   * again (from the month in hand - the months it was paused are not billed); ended
+   * closes it on today's date. Resuming an ended subscription reopens it.
+   */
+  router.post("/api/clients/:id/subscription/status", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ status?: unknown }>(request);
+    const status = requireEnum(body.status, "status", ["active", "paused", "ended"] as const);
+    const existing = await loadSubscription(env, params.id);
+    if (!existing) throw notFound("This client is not on a subscription.");
+    if (existing.status === status) return json({ ok: true, status });
+
+    const timestamp = nowIso();
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE client_subscriptions
+            SET status = ?, ended_on = ?, updated_at = ?, updated_by = ?
+          WHERE client_id = ?`,
+      ).bind(status, status === "ended" ? timestamp.slice(0, 10) : null, timestamp, actor.id, params.id),
+      eventStatement(env, {
+        clientId: params.id,
+        kind: status === "active" ? "resumed" : status,
+        actorId: actor.id,
+      }),
+    ]);
+    return json({ ok: true, status });
+  });
+
   router.put("/api/clients/:id/subscription", async ({ request, env, params }) => {
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const body = await readJson<{
@@ -751,9 +783,16 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
 
     const tier = requireEnum(body.tier, "tier", CLIENT_TIERS) as ClientTier;
     const fee = optionalAmount(body.monthly_fee, "The fee");
-    const status = body.status
+    /*
+     * The standing is changed through its own route (below), not here: a form for the
+     * tier and fee that also carried the standing sent back whatever it had loaded, so a
+     * page left open from before a subscription was resumed could quietly pause it again
+     * with the next fee change. Sent here it is still honoured, for a new subscription
+     * starting paused; left out, an existing subscription keeps the standing it has.
+     */
+    const statusSent = body.status
       ? requireEnum(body.status, "status", ["active", "paused", "ended"] as const)
-      : "active";
+      : null;
     /*
      * Cedis unless somebody says dollars. Nothing converts between the two - see
      * shared/money.ts - so this is the currency the client is actually billed in, and it
@@ -764,6 +803,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
       : DEFAULT_CURRENCY;
     const timestamp = nowIso();
     const existing = await loadSubscription(env, params.id);
+    const status = statusSent ?? (existing?.status as "active" | "paused" | "ended" | undefined) ?? "active";
 
     /*
      * When the package started. Free to be in the past - a client agreed in July is a
@@ -803,7 +843,7 @@ export function registerSubscriptionRoutes(router: Router<Env>): void {
           startedOn,
           timestamp,
           actor.id,
-          status === "ended" ? timestamp.slice(0, 10) : null,
+          status === "ended" ? (existing.status === "ended" ? existing.ended_on : timestamp.slice(0, 10)) : null,
           params.id,
         ),
       );
