@@ -19,6 +19,7 @@ import { useSession } from "../lib/auth";
 import { ClientAllocationsCard } from "../components/ClientAllocationsCard";
 import { ClientFileCard } from "../components/ClientFileCard";
 import { ClientSubscriptionCard } from "../components/ClientSubscriptionCard";
+import { ClientStatements } from "../components/ClientStatements";
 import { NewTaskModal } from "../components/NewTaskModal";
 import { TaskTable } from "../components/TaskTable";
 import {
@@ -171,6 +172,8 @@ export function ClientDetail() {
           />
 
           <ClientSubscriptionCard clientId={client.id} />
+
+          {can("manager") && <ClientStatements clientId={client.id} />}
 
           <ClientFileCard
             clientId={id}

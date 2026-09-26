@@ -1619,3 +1619,47 @@ export interface GrowthPartnerOverview {
   commissions: Array<CommissionRow & { partner_id: string }>;
   today: string;
 }
+
+// ---------------------------------------------------------------- statements
+
+/** A statement drawn up for the screen (shared/statements.ts). */
+export interface StatementView {
+  client: { id: string; name: string };
+  currency: string;
+  /** Every currency the client has been invoiced in, to choose between. */
+  currencies: string[];
+  statement: import("./statements").Statement;
+}
+
+/** The email a statement is about to go out with. */
+export interface StatementEmailDraft {
+  from_name: string;
+  reply_to: string | null;
+  email_ready: boolean;
+  contacts: Array<{ email: string; full_name: string }>;
+  cc: string[];
+  wording: { subject: string; message: string };
+  standard: { subject: string; message: string };
+  firm_wording: boolean;
+  can_save_wording: boolean;
+  facts: { firm_name: string; statement_date: string; amount_due: string };
+  attachment_name: string;
+  limits: { subject: number; message: number };
+}
+
+/** A statement sent, one row per recipient. */
+export interface StatementSentRow {
+  id: string;
+  kind: import("./statements").StatementType;
+  statement_date: string;
+  start_on: string | null;
+  end_on: string | null;
+  currency: string;
+  amount_due: number;
+  recipient_email: string;
+  recipient_name: string | null;
+  status: "sent" | "failed";
+  error: string | null;
+  sent_at: string;
+  sent_by_name: string | null;
+}

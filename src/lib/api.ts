@@ -39,6 +39,9 @@ import type {
   InvoiceEmailComposed,
   InvoiceEmailDraft,
   InvoiceFileRow,
+  StatementEmailDraft,
+  StatementSentRow,
+  StatementView,
   InvoiceList,
   PartnerPipeline,
   PartnerSelf,
@@ -1252,6 +1255,19 @@ export const api = {
     request<InvoiceDetail>(`/api/invoices/${id}/lines`, { method: "POST", body: line }),
   removeInvoiceLine: (lineId: string) =>
     request<InvoiceDetail>(`/api/invoice-lines/${lineId}`, { method: "DELETE" }),
+  statement: (clientId: string, query: string) =>
+    request<StatementView>(`/api/clients/${clientId}/statement?${query}`),
+  statementPdfUrl: (clientId: string, query: string) => `/api/clients/${clientId}/statement/pdf?${query}`,
+  statementEmail: (clientId: string, query: string) =>
+    request<StatementEmailDraft>(`/api/clients/${clientId}/statement/email?${query}`),
+  sendStatement: (clientId: string, body: Record<string, unknown>) =>
+    request<{ sent_to: string[]; failed: Array<{ email: string; error: string }> }>(
+      `/api/clients/${clientId}/statement/send`,
+      { method: "POST", body },
+    ),
+  statementsSent: (clientId: string) =>
+    request<{ statements: StatementSentRow[] }>(`/api/clients/${clientId}/statements`),
+  myStatementPdfUrl: (query: string) => `/api/client/statement/pdf?${query}`,
   /** Attaches one file to an invoice; `shared` lets the client see it from the start. */
   attachInvoiceFile: async (invoiceId: string, file: File, shared: boolean) => {
     let response: Response;
