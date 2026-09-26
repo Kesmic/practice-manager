@@ -119,19 +119,39 @@ STANDARD_INVOICE_EMAILS.resent.message = STANDARD_INVOICE_EMAILS.issued.message;
 /** The longest subject and message the portal will send. */
 export const INVOICE_EMAIL_LIMITS = { subject: 200, message: 5_000 };
 
+/** What each letter is called on the screens that edit it. */
+export const INVOICE_EMAIL_NAMES: Record<InvoiceEmailKind, string> = {
+  issued: "The invoice",
+  resent: "The invoice, sent again",
+  due_today: "Due today notice",
+  overdue: "Overdue reminder",
+};
+
 /**
- * The wording an invoice goes out with: the firm's own saved wording for invoices when
- * there is one, otherwise the standard. Reminders always use the standard.
+ * Where the firm's own wording for each letter is kept in Settings. The invoice and
+ * the copy sent again share theirs, as they share the standard.
+ */
+export const INVOICE_EMAIL_SETTINGS: Record<InvoiceEmailKind, { subject: string; message: string }> = {
+  issued: { subject: "invoice_email_subject", message: "invoice_email_message" },
+  resent: { subject: "invoice_email_subject", message: "invoice_email_message" },
+  due_today: { subject: "due_today_email_subject", message: "due_today_email_message" },
+  overdue: { subject: "overdue_email_subject", message: "overdue_email_message" },
+};
+
+/**
+ * The wording a letter goes out with: the firm's own saved wording for it when there
+ * is one, otherwise the standard. Empty settings mean "the standard", so a later
+ * change to the standard reaches a firm that never changed it.
  */
 export function wordingFor(
   kind: InvoiceEmailKind,
-  saved: { subject?: string | null; message?: string | null },
+  settings: Record<string, string | null | undefined>,
 ): InvoiceEmailWording {
   const standard = STANDARD_INVOICE_EMAILS[kind];
-  if (kind !== "issued" && kind !== "resent") return standard;
+  const keys = INVOICE_EMAIL_SETTINGS[kind];
   return {
-    subject: saved.subject?.trim() || standard.subject,
-    message: saved.message?.trim() || standard.message,
+    subject: settings[keys.subject]?.trim() || standard.subject,
+    message: settings[keys.message]?.trim() || standard.message,
   };
 }
 

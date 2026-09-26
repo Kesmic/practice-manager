@@ -40,7 +40,7 @@ import {
   notFound,
   readJson,
 } from "../http";
-import { MIN_SUPERVISOR_ROLE } from "../../shared/workflow";
+import { MIN_SUPERVISOR_ROLE, atLeast, type Role } from "../../shared/workflow";
 import { MIN_HR_ADMIN_ROLE } from "../../shared/hr";
 import { readSettings } from "./settings";
 import { feeFor, readCatalogue } from "./subscriptions";
@@ -67,6 +67,7 @@ import {
 import { emailConfigured } from "../email";
 import {
   INVOICE_EMAIL_LIMITS,
+  INVOICE_EMAIL_SETTINGS,
   STANDARD_INVOICE_EMAILS,
   looksLikeEmail,
   wordingFor,
@@ -692,7 +693,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       : {};
     const settings = await readSettings(env);
     const composed = body.subject === undefined ? null : readComposed(body);
-    if (composed) await keepWording(env, body, composed, actor.id);
+    if (composed) await keepWording(env, "issued", body, composed, actor);
     const sent = await issueInvoice(
       env,
       params.id,
@@ -706,12 +707,18 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
   /**
    * The email an invoice is about to go out with, for the screen to show and edit
    * before it is sent: who it goes to, who is copied, and the words - the firm's own
-   * saved wording if it has one, otherwise the standard - with the figures they fill
-   * in. Nothing is sent from here.
+   * saved wording for that letter if it has one, otherwise the standard - with the
+   * figures they fill in. Nothing is sent from here.
+   *
+   * `kind=reminder` asks for whichever chase is due now - the notice on the day it
+   * falls due, or the next overdue reminder - and refuses, with the reason, when none
+   * is, so the screen says so before anybody writes a word.
    */
   router.get("/api/invoices/:id/email", async ({ request, env, params, url }) => {
-    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
-    const kind = url.searchParams.get("kind") === "resent" ? "resent" : "issued";
+    const asked = url.searchParams.get("kind");
+    const reminder = asked === "reminder";
+    // Chasing is a Manager's job, as the button is; issuing is a Partner's.
+    const actor = await requireRole(env, request, reminder ? MIN_SUPERVISOR_ROLE : MIN_HR_ADMIN_ROLE);
     const invoice = await env.DB.prepare(
       `SELECT id, client_id, number, state, gross, balance_due, due_on, currency FROM invoices WHERE id = ?`,
     )
@@ -727,33 +734,45 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
         currency: string;
       }>();
     if (!invoice) throw notFound("There is no such invoice.");
-    if (kind === "issued" && invoice.state !== "draft") {
-      throw badRequest("Only a draft can be issued. This one has already been sent.");
-    }
-    if (kind === "resent" && (invoice.state === "draft" || invoice.state === "void")) {
-      throw badRequest("Only an issued invoice can be sent again.");
+
+    let kind: InvoiceEmailKind;
+    let chasing: { step: number; days_late: number } | null = null;
+    let amount = askedFor(invoice);
+    if (reminder) {
+      const next = await nextChase(env, invoice.id);
+      if (!next.ok) throw badRequest(next.why);
+      kind = next.kind;
+      amount = next.outstanding;
+      if (next.kind === "overdue") chasing = { step: next.step, days_late: next.days_late };
+    } else {
+      kind = asked === "resent" ? "resent" : "issued";
+      if (kind === "issued" && invoice.state !== "draft") {
+        throw badRequest("Only a draft can be issued. This one has already been sent.");
+      }
+      if (kind === "resent" && (invoice.state === "draft" || invoice.state === "void")) {
+        throw badRequest("Only an issued invoice can be sent again.");
+      }
     }
 
     const settings = await readSettings(env);
-    const saved = {
-      subject: settings.invoice_email_subject,
-      message: settings.invoice_email_message,
-    };
+    const keys = INVOICE_EMAIL_SETTINGS[kind];
     const { filename } = await buildDocument(env, invoice.id);
     return json({
       kind,
+      chasing,
       from_name: `${settings.firm_name} Finance`,
       reply_to: (settings.firm_finance_email ?? "").trim() || null,
       email_ready: emailConfigured(env),
       contacts: await billingContacts(env, invoice.client_id),
       cc: firmCopies(settings, actor.email),
-      wording: wordingFor(kind, saved),
+      wording: wordingFor(kind, settings),
       standard: STANDARD_INVOICE_EMAILS[kind],
-      firm_wording: Boolean(saved.subject?.trim() || saved.message?.trim()),
+      firm_wording: Boolean(settings[keys.subject]?.trim() || settings[keys.message]?.trim()),
+      can_save_wording: atLeast(actor.role, MIN_HR_ADMIN_ROLE),
       facts: {
         number: invoice.number,
         firm_name: settings.firm_name,
-        amount_due: formatMoney(askedFor(invoice), invoice.currency),
+        amount_due: formatMoney(amount, invoice.currency),
         due_on: letterDate(invoice.due_on),
       },
       attachment_name: filename,
@@ -939,24 +958,39 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     return noContent();
   });
 
-  /** Chases one invoice by hand, outside the schedule. */
+  /**
+   * Chases one invoice by hand, outside the schedule - in the words the screen was
+   * shown and perhaps edited, when it sends them, or the saved wording when it does not.
+   */
   router.post("/api/invoices/:id/remind", async ({ request, env, params }) => {
     const actor = await requireRole(env, request, MIN_SUPERVISOR_ROLE);
+    const body = (request.headers.get("content-type") ?? "").includes("application/json")
+      ? await readJson<ComposedBody>(request)
+      : {};
+    const composed = body.subject === undefined ? null : readComposed(body);
+    if (composed && !composed.to.length) throw badRequest("Add somebody to send it to.");
     const settings = await readSettings(env);
     // On the day it falls due the letter is the due-today notice; after that, the reminder.
     const due = await env.DB.prepare(`SELECT due_on FROM invoices WHERE id = ?`)
       .bind(params.id)
       .first<{ due_on: string }>();
-    if (due?.due_on === today()) {
+    const kind = due?.due_on === today() ? "due_today" : "overdue";
+    if (composed) await keepWording(env, kind, body, composed, actor);
+    if (kind === "due_today") {
       const notice = await noticeDueToday(env, params.id, {
         actorId: actor.id,
         automatic: false,
-        cc: firmCopies(settings, actor.email),
+        cc: composed?.cc ?? firmCopies(settings, actor.email),
+        composed,
       });
       if (!notice.sent) throw badRequest(notice.why ?? "There is nothing to chase.");
       return json({ sent: true, step: 0, sent_to: notice.sent_to });
     }
-    const sent = await chase(env, params.id, false, { actorId: actor.id, actorEmail: actor.email });
+    const sent = await chase(env, params.id, false, {
+      actorId: actor.id,
+      actorEmail: actor.email,
+      composed,
+    });
     if (!sent.sent) throw badRequest(sent.why ?? "There is nothing to chase.");
     return json(sent);
   });
@@ -982,7 +1016,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     if (alsoTo && !looksLikeEmail(alsoTo)) {
       throw badRequest("That does not look like an email address.");
     }
-    if (composed) await keepWording(env, body, composed, actor.id);
+    if (composed) await keepWording(env, "resent", body, composed, actor);
     const settings = await readSettings(env);
     const outcome = await mailInvoice(env, params.id, "resent", {
       actorId: actor.id,
@@ -1568,11 +1602,7 @@ async function mailInvoice(
   );
   const { html, filename } = await buildDocument(env, invoiceId);
   const wording =
-    options.composed?.wording ??
-    wordingFor(kind, {
-      subject: settings.invoice_email_subject,
-      message: settings.invoice_email_message,
-    });
+    options.composed?.wording ?? wordingFor(kind, settings);
 
   return await sendInvoiceEmail(env, {
     invoiceId,
@@ -1602,7 +1632,7 @@ async function mailInvoice(
 async function noticeDueToday(
   env: Env,
   invoiceId: string,
-  options: { actorId: string | null; automatic: boolean; cc: string[] },
+  options: { actorId: string | null; automatic: boolean; cc: string[]; composed?: Composed | null },
 ): Promise<{ sent: boolean; why?: string; sent_to?: string[] }> {
   const invoice = await env.DB.prepare(
     `SELECT id, state, gross, balance_due, due_on, due_notice_at FROM invoices WHERE id = ?`,
@@ -1643,6 +1673,53 @@ async function noticeDueToday(
 }
 
 /**
+ * Which chase an invoice is due for now, without sending it: the notice, on the day it
+ * falls due, or the next reminder on the schedule - or why neither, in the same words
+ * the send would use. The send screen asks this before it opens.
+ */
+async function nextChase(
+  env: Env,
+  invoiceId: string,
+): Promise<
+  | { ok: true; kind: "due_today"; outstanding: number }
+  | { ok: true; kind: "overdue"; outstanding: number; step: number; days_late: number }
+  | { ok: false; why: string }
+> {
+  const invoice = await env.DB.prepare(
+    `SELECT id, number, state, gross, balance_due, due_on, currency, reminders_sent, period_label
+       FROM invoices WHERE id = ?`,
+  )
+    .bind(invoiceId)
+    .first<InvoiceRow>();
+  if (!invoice) return { ok: false, why: "There is no such invoice." };
+  if (invoice.state !== "sent" && invoice.state !== "part_paid") {
+    return { ok: false, why: "Only an issued, unpaid invoice is chased." };
+  }
+  const payments = await paymentsFor(env, invoiceId);
+  const standing = standingOf(invoice, payments, today());
+  if (standing.outstanding <= 0) return { ok: false, why: "That invoice is settled." };
+  if (invoice.due_on === today()) {
+    return { ok: true, kind: "due_today", outstanding: standing.outstanding };
+  }
+  const due = reminderDue(invoice, payments, invoice.reminders_sent, today(), DEFAULT_REMINDER_DAYS);
+  if (!due.due) {
+    return {
+      ok: false,
+      why: !standing.overdue
+        ? "That invoice is not yet due."
+        : "Every reminder on the schedule has already been sent. This one needs a telephone call.",
+    };
+  }
+  return {
+    ok: true,
+    kind: "overdue",
+    outstanding: standing.outstanding,
+    step: due.step,
+    days_late: due.days_late,
+  };
+}
+
+/**
  * Sends the reminder that is due on one invoice, if one is.
  *
  * The step is written in the same call that sends, so a crash between the two costs at
@@ -1652,7 +1729,11 @@ async function chase(
   env: Env,
   invoiceId: string,
   automatic: boolean,
-  options: { actorId: string | null; actorEmail?: string | null } = { actorId: null },
+  options: {
+    actorId: string | null;
+    actorEmail?: string | null;
+    composed?: Composed | null;
+  } = { actorId: null },
 ): Promise<{ sent: boolean; step?: number; why?: string }> {
   const invoice = await env.DB.prepare(
     `SELECT i.id, i.number, i.state, i.gross, i.balance_due, i.due_on, i.currency,
@@ -1685,7 +1766,7 @@ async function chase(
   }
 
   const contacts = await billingContacts(env, invoice.client_id);
-  if (!contacts.length) {
+  if (!(options.composed ? options.composed.to.length : contacts.length)) {
     return { sent: false, why: "There is nobody at that client to send it to." };
   }
 
@@ -1694,7 +1775,8 @@ async function chase(
   const outcome = await mailInvoice(env, invoiceId, "overdue", {
     actorId: options.actorId,
     automatic,
-    cc: firmCopies(settings, options.actorEmail),
+    cc: options.composed?.cc ?? firmCopies(settings, options.actorEmail),
+    composed: options.composed,
   });
   if (!outcome.sent_to.length) {
     return {
@@ -2044,21 +2126,30 @@ function readComposed(body: ComposedBody): Composed {
 }
 
 /**
- * Makes these words the firm's wording for every invoice from now on, when the screen
- * asks - including the ones the monthly run sends by itself. Saving the standard words
- * clears the firm's own, so "put it back" is simply saving what the screen offers.
+ * Makes these words the firm's wording for this letter from now on, when the screen
+ * asks - including the ones sent by themselves: the monthly run's invoices, and the
+ * scheduled notices and reminders. Saving the standard words clears the firm's own, so
+ * "put it back" is simply saving what the screen offers.
+ *
+ * A Partner's decision, as every other firm-wide setting is: a Manager can chase in
+ * their own words, but not change what everybody else's chasing says.
  */
 async function keepWording(
   env: Env,
+  kind: InvoiceEmailKind,
   body: ComposedBody,
   composed: Composed,
-  actorId: string,
+  actor: { id: string; role: Role },
 ): Promise<void> {
   if (body.save_wording !== true) return;
-  const standard = STANDARD_INVOICE_EMAILS.issued;
+  if (!atLeast(actor.role, MIN_HR_ADMIN_ROLE)) {
+    throw forbidden("Only a Partner can change the standard wording. Untick it to send this one as written.");
+  }
+  const standard = STANDARD_INVOICE_EMAILS[kind];
+  const keys = INVOICE_EMAIL_SETTINGS[kind];
   const { subject, message } = composed.wording;
-  await writeSetting(env, "invoice_email_subject", subject === standard.subject ? "" : subject, actorId);
-  await writeSetting(env, "invoice_email_message", message === standard.message ? "" : message, actorId);
+  await writeSetting(env, keys.subject, subject === standard.subject ? "" : subject, actor.id);
+  await writeSetting(env, keys.message, message === standard.message ? "" : message, actor.id);
 }
 
 function firmCopies(settings: Record<string, string>, actorEmail?: string | null): string[] {

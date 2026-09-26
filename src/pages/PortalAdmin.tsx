@@ -919,7 +919,15 @@ function WelcomeAdmin({
         setBusy(true);
         setError(null);
         try {
-          const res = await api.updateSettings(settings);
+          // Only what this form edits: sending every setting back would overwrite
+          // anything changed on another screen since this one loaded.
+          const res = await api.updateSettings({
+            firm_name: settings.firm_name,
+            firm_website: settings.firm_website,
+            md_name: settings.md_name,
+            md_title: settings.md_title,
+            welcome_message: settings.welcome_message,
+          });
           setSettings(res.settings);
           setNotice("Saved. New joiners will see this on their onboarding page.");
         } catch (err) {

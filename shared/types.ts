@@ -1316,7 +1316,11 @@ export interface InvoiceEmailRow {
 
 /** The email an invoice is about to go out with, for the send screen to edit. */
 export interface InvoiceEmailDraft {
-  kind: "issued" | "resent";
+  kind: "issued" | "resent" | "due_today" | "overdue";
+  /** For an overdue reminder: which on the schedule, and how late the invoice is. */
+  chasing: { step: number; days_late: number } | null;
+  /** Whether this person may make the wording the firm's standard (a Partner). */
+  can_save_wording: boolean;
   from_name: string;
   reply_to: string | null;
   /** Whether the portal can send email at all. */

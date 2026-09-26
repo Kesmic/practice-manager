@@ -145,12 +145,22 @@ test("[Summary] on its own line is the box of figures; inside a sentence it is o
   assert.match(inline.text, /In short: Invoice: CPL202608 · Amount due: GHS 1,494\.00 · Due date: 15 October 2026/);
 });
 
-test("the firm's saved wording replaces the standard for invoices, never for reminders", () => {
+test("each letter takes the firm's saved wording for it, or the standard", () => {
+  const settings = {
+    invoice_email_subject: "Our invoice [Invoice number]",
+    invoice_email_message: "Dear [Name]",
+    overdue_email_subject: "Still unpaid: [Invoice number]",
+    overdue_email_message: " ",
+  };
   const saved = { subject: "Our invoice [Invoice number]", message: "Dear [Name]" };
-  assert.deepEqual(wordingFor("issued", saved), saved);
-  assert.deepEqual(wordingFor("resent", saved), saved);
-  assert.deepEqual(wordingFor("overdue", saved), STANDARD_INVOICE_EMAILS.overdue);
-  assert.deepEqual(wordingFor("issued", { subject: "", message: " " }), STANDARD_INVOICE_EMAILS.issued);
+  assert.deepEqual(wordingFor("issued", settings), saved);
+  assert.deepEqual(wordingFor("resent", settings), saved);
+  assert.deepEqual(wordingFor("due_today", settings), STANDARD_INVOICE_EMAILS.due_today);
+  assert.deepEqual(wordingFor("overdue", settings), {
+    subject: "Still unpaid: [Invoice number]",
+    message: STANDARD_INVOICE_EMAILS.overdue.message,
+  });
+  assert.deepEqual(wordingFor("issued", {}), STANDARD_INVOICE_EMAILS.issued);
 });
 
 test("an address is one plain mailbox", () => {

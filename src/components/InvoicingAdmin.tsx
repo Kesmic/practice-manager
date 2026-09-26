@@ -33,6 +33,7 @@ import {
   options,
 } from "./ui";
 import { formatMoneyExact } from "../lib/format";
+import { EmailWordingAdmin } from "./EmailWordingAdmin";
 
 interface SettingsBag {
   [key: string]: string;
@@ -242,14 +243,20 @@ export function InvoicingAdmin() {
         className="card"
         onSubmit={(e) => {
           e.preventDefault();
-          setBusy(true);
           /*
-           * The whole bag goes back, not just what changed: the settings endpoint takes
-           * a complete set, and posting a partial one would blank everything absent.
+           * Only the fields changed here. The endpoint updates just the keys it is sent,
+           * and sending every setting back would overwrite anything changed elsewhere
+           * since this screen loaded - the email wording below, for one.
            */
+          if (!Object.keys(form).length) {
+            setDone("Nothing has changed.");
+            return;
+          }
+          setBusy(true);
           void api
-            .updateSettings({ ...settings, ...form } as never)
+            .updateSettings(form as never)
             .then(() => {
+              setForm({});
               setDone("Saved.");
               return load();
             })
@@ -425,6 +432,8 @@ export function InvoicingAdmin() {
           </div>
         </div>
       </form>
+
+      <EmailWordingAdmin />
     </div>
   );
 }

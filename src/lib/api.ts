@@ -1251,7 +1251,7 @@ export const api = {
     request<InvoiceDetail>(`/api/invoices/${id}/lines`, { method: "POST", body: line }),
   removeInvoiceLine: (lineId: string) =>
     request<InvoiceDetail>(`/api/invoice-lines/${lineId}`, { method: "DELETE" }),
-  invoiceEmail: (id: string, kind: "issued" | "resent") =>
+  invoiceEmail: (id: string, kind: "issued" | "resent" | "reminder") =>
     request<InvoiceEmailDraft>(`/api/invoices/${id}/email?kind=${kind}`),
   sendInvoice: (id: string, email?: InvoiceEmailComposed) =>
     request<{ sent_to: string[]; failed: Array<{ email: string; error: string }> }>(
@@ -1286,8 +1286,11 @@ export const api = {
     request<void>(`/api/invoice-payments/${paymentId}`, { method: "PATCH", body }),
   removePayment: (paymentId: string) =>
     request<void>(`/api/invoice-payments/${paymentId}`, { method: "DELETE" }),
-  remindInvoice: (id: string) =>
-    request<{ sent: boolean; step?: number }>(`/api/invoices/${id}/remind`, { method: "POST" }),
+  remindInvoice: (id: string, email?: InvoiceEmailComposed) =>
+    request<{ sent: boolean; step?: number; sent_to?: string[] }>(`/api/invoices/${id}/remind`, {
+      method: "POST",
+      body: email ?? {},
+    }),
 
   // ------------------------------------------------- the client's own portal
   // ------------------------------------------------------- growth partners
