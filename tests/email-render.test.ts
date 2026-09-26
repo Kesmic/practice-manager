@@ -165,3 +165,15 @@ test("an invoice email carries its attachment, replies to finance, and goes out 
   assert.equal(plain.from, "Kesmic Practice Manager <portal@kesmic.test>");
   assert.ok(!("attachments" in plain) && !("reply_to" in plain));
 });
+
+test("the provider never rewrites links through its own tracking domain", () => {
+  const env = { EMAIL_API_KEY: "k", EMAIL_FROM: "portal@kesmic.test" } as unknown as Parameters<typeof PROVIDERS.sendgrid>[0];
+  const sg = PROVIDERS.sendgrid(env, "a@x.test", "s", "t", "h", []).body as {
+    tracking_settings: { click_tracking: { enable: boolean; enable_text: boolean }; open_tracking: { enable: boolean } };
+  };
+  assert.deepEqual(sg.tracking_settings.click_tracking, { enable: false, enable_text: false });
+  assert.equal(sg.tracking_settings.open_tracking.enable, false);
+  const pm = PROVIDERS.postmark(env, "a@x.test", "s", "t", "h", []).body as { TrackLinks: string; TrackOpens: boolean };
+  assert.equal(pm.TrackLinks, "None");
+  assert.equal(pm.TrackOpens, false);
+});
