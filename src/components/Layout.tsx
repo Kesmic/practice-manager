@@ -44,14 +44,6 @@ const NAV: NavItem[] = [
   { to: "/tasks", label: "Deliverables", section: "Work" },
   { to: "/clients", label: "Clients", area: "clients", section: "Work" },
   {
-    to: "/client-requests",
-    label: "Client requests",
-    area: "client_requests",
-    section: "Work",
-    badge: "client_requests",
-    badgeNoun: "client request",
-  },
-  {
     to: "/status-reports",
     label: "Status reports",
     section: "Work",

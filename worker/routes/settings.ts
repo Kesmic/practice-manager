@@ -129,24 +129,6 @@ const DEFAULTS: Record<string, string> = {
   primary_color: "",
   secondary_color: "",
   /**
-   * The unguessable part of the two client intake links. Empty until the links are
-   * created. Held here rather than in their own table because they are exactly what
-   * settings are: one firm-wide value each, replaced rather than accumulated.
-   *
-   * Not editable through /api/settings and not public: they are issued and rotated
-   * through /api/intake-links, which is the only place that should be able to
-   * change an address the firm has already given out.
-   */
-  intake_token_new: "",
-  intake_token_existing: "",
-  /**
-   * The service list on the public intake forms, as JSON: [{key, label}, ...].
-   * Empty means "use the firm's service lines", which is what a new deployment
-   * gets. Edited through /api/intake-services rather than here, because the
-   * validation is specific and a malformed list breaks a public page.
-   */
-  intake_services: "",
-  /**
    * Which grades can see which areas, as JSON: {"reports":"senior_associate", ...}.
    * Empty means the built-in defaults. Only what differs from the defaults is stored.
    *
@@ -176,7 +158,6 @@ const DEFAULTS: Record<string, string> = {
 /** Everything except the settings that have their own, validating endpoints. */
 const EDITABLE = Object.keys(DEFAULTS).filter(
   (key) =>
-    !key.startsWith("intake_") &&
     key !== "nav_visibility" &&
     key !== "idle_timeout_minutes" &&
     key !== "contract_defaults",
@@ -214,9 +195,7 @@ const MAX_LENGTH: Record<string, number> = {
   statement_email_message: 5_000,
   // One line per line, printed under the firm's name on an invoice.
   firm_address: 500,
-  // JSON the screen writes: which services the intake form offers, and which
-  // navigation entries are shown to whom.
-  intake_services: 10_000,
+  // JSON the screen writes: which navigation entries are shown to whom.
   nav_visibility: 10_000,
   // A data URI for the logo. 400,000 characters is roughly a 290 kB image, which
   // is generous for a logo and comfortably inside what a D1 row will hold.

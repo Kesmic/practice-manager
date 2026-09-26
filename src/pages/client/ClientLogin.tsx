@@ -2,7 +2,7 @@
  * Where a client signs in.
  *
  * Standalone, with no navigation and nothing about the firm's other work, for the reason
- * shared/intake.ts gives about the public intake page: the portal should not tell
+ * the public enquiry forms once gave: the portal should not tell
  * somebody outside the firm what it holds.
  *
  * Every failure reads the same, because the server refuses them all the same way - a
