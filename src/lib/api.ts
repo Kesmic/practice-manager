@@ -1145,6 +1145,11 @@ export const api = {
       status?: "active" | "paused" | "ended";
     },
   ) => request<{ ok: true }>(`/api/clients/${clientId}/subscription`, { method: "PUT", body }),
+  setSubscriptionStatus: (clientId: string, status: "active" | "paused" | "ended") =>
+    request<{ ok: true; status: string }>(`/api/clients/${clientId}/subscription/status`, {
+      method: "POST",
+      body: { status },
+    }),
 
   recordFigures: (clientId: string, body: { as_of: string; values: Record<string, number>; note?: string }) =>
     request<{ recorded: number }>(`/api/clients/${clientId}/figures`, { method: "POST", body }),
