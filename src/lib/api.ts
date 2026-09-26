@@ -1251,6 +1251,19 @@ export const api = {
     request<InvoiceDetail>(`/api/invoices/${id}/lines`, { method: "POST", body: line }),
   removeInvoiceLine: (lineId: string) =>
     request<InvoiceDetail>(`/api/invoice-lines/${lineId}`, { method: "DELETE" }),
+  importInvoices: (
+    clientId: string,
+    body: {
+      source: string;
+      currency: string;
+      invoices: unknown[];
+      payments: Array<{ invoice: string; paid_on: string; amount: number; account: string }>;
+    },
+  ) =>
+    request<{ created: number; paid: number; payments: number; outstanding: number }>(
+      `/api/clients/${clientId}/import-invoices`,
+      { method: "POST", body },
+    ),
   invoiceEmail: (id: string, kind: "issued" | "resent" | "reminder") =>
     request<InvoiceEmailDraft>(`/api/invoices/${id}/email?kind=${kind}`),
   sendInvoice: (id: string, email?: InvoiceEmailComposed) =>

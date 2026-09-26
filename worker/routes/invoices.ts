@@ -1259,7 +1259,10 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     assertRunner(env, request);
 
     const { results } = await env.DB.prepare(
-      `SELECT id FROM invoices WHERE state IN ('sent', 'part_paid') AND due_on < ?`,
+      // An invoice brought in from another system is chased by a person, not the schedule:
+      // a year-old bill arriving with a reminder the day it is imported would be a shock.
+      `SELECT id FROM invoices
+        WHERE state IN ('sent', 'part_paid') AND due_on < ? AND imported_from IS NULL`,
     )
       .bind(today())
       .all<{ id: string }>();
@@ -1277,7 +1280,8 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
      */
     const { results: dueToday } = await env.DB.prepare(
       `SELECT id FROM invoices
-        WHERE state IN ('sent', 'part_paid') AND due_on = ? AND due_notice_at IS NULL`,
+        WHERE state IN ('sent', 'part_paid') AND due_on = ? AND due_notice_at IS NULL
+          AND imported_from IS NULL`,
     )
       .bind(today())
       .all<{ id: string }>();

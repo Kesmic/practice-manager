@@ -1381,6 +1381,8 @@ export interface InvoiceDetail {
     sent_at: string | null;
     voided_at: string | null;
     void_reason: string | null;
+    /** The system it was brought in from ("QuickBooks"), or null for one raised here. */
+    imported_from: string | null;
   };
   lines: InvoiceLineRow[];
   taxes: InvoiceTaxRow[];
