@@ -75,6 +75,7 @@ import {
   type InvoiceEmailWording,
 } from "../../shared/invoice-email-wording";
 import { writeSetting } from "./settings";
+import { emailFiles, filesFor } from "./invoice-files";
 import { CURRENCIES, currencyOf } from "../../shared/money";
 import { billingDue, normaliseBillingDay } from "../../shared/billing";
 import {
@@ -361,7 +362,7 @@ async function fullInvoice(env: Env, id: string) {
     env.DB.prepare(
       `SELECT e.id, e.kind, e.recipient_email, e.recipient_name, e.cc, e.status, e.error,
               e.automatic, e.sent_at, e.opened_at, e.last_opened_at, e.open_count,
-              e.clicked_at, e.click_count, e.subject, e.body, e.attached,
+              e.clicked_at, e.click_count, e.subject, e.body, e.attached, e.files,
               u.full_name AS sent_by_name
          FROM invoice_emails e LEFT JOIN users u ON u.id = e.sent_by
         WHERE e.invoice_id = ? ORDER BY e.sent_at DESC`,
@@ -390,6 +391,7 @@ async function fullInvoice(env: Env, id: string) {
     emails: emails.results,
     views: views.results,
     events: events.results,
+    files: await filesFor(env, id),
     standing: standingOf(
       invoice,
       payments.results as unknown as PaymentLike[],
@@ -777,6 +779,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
         due_on: letterDate(invoice.due_on),
       },
       attachment_name: filename,
+      files: await filesFor(env, invoice.id, { sharedOnly: true }),
       limits: INVOICE_EMAIL_LIMITS,
     });
   });
@@ -1155,6 +1158,12 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     if ((await paymentsFor(env, invoice.id)).length) {
       throw badRequest("Money has been recorded against this invoice, so it cannot be deleted.");
     }
+    const { results: attached } = await env.DB.prepare(
+      `SELECT object_key FROM invoice_files WHERE invoice_id = ?`,
+    )
+      .bind(invoice.id)
+      .all<{ object_key: string }>();
+    const fileKeys = attached.map((f) => f.object_key);
 
     await env.DB.batch([
       env.DB.prepare(
@@ -1180,8 +1189,12 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       env.DB.prepare(`DELETE FROM invoice_reminders WHERE invoice_id = ?`).bind(invoice.id),
       env.DB.prepare(`DELETE FROM invoice_taxes WHERE invoice_id = ?`).bind(invoice.id),
       env.DB.prepare(`DELETE FROM invoice_lines WHERE invoice_id = ?`).bind(invoice.id),
+      env.DB.prepare(`DELETE FROM invoice_files WHERE invoice_id = ?`).bind(invoice.id),
       env.DB.prepare(`DELETE FROM invoices WHERE id = ?`).bind(invoice.id),
     ]);
+    // The files' bytes, now nothing points at them. The client never sees this invoice
+    // again, so neither should anything attached to it survive in the bucket.
+    for (const key of fileKeys) await env.FILES?.delete(key);
     return noContent();
   });
 
@@ -1635,6 +1648,7 @@ async function mailInvoice(
     ),
     dueOn: letterDate(invoice.due_on),
     attachment: document,
+    files: options.composed?.files.length ? await emailFiles(env, invoiceId, options.composed.files) : [],
     actorId: options.actorId,
     automatic: options.automatic,
   });
@@ -2091,6 +2105,7 @@ interface ComposedBody {
   message?: unknown;
   attach?: unknown;
   save_wording?: unknown;
+  files?: unknown;
 }
 
 /** An invoice email as edited on the screen, checked. */
@@ -2099,6 +2114,8 @@ interface Composed {
   cc: string[];
   wording: InvoiceEmailWording;
   attach: boolean;
+  /** Shared files on the invoice to send as well, by id. */
+  files: string[];
 }
 
 /** A list of addresses, each checked, each once, and not too many. */
@@ -2138,7 +2155,10 @@ function readComposed(body: ComposedBody): Composed {
   const cc = addressList(body.cc, "cc", 10).filter(
     (c) => !to.some((t) => t.toLowerCase() === c.toLowerCase()),
   );
-  return { to, cc, wording: { subject, message }, attach: body.attach !== false };
+  const files = Array.isArray(body.files)
+    ? [...new Set(body.files.filter((f): f is string => typeof f === "string" && /^[\w-]{1,64}$/.test(f)))].slice(0, 10)
+    : [];
+  return { to, cc, wording: { subject, message }, attach: body.attach !== false, files };
 }
 
 /**

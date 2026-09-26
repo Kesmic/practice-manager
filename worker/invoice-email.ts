@@ -100,6 +100,8 @@ export async function sendInvoiceEmail(
     dueOn: string;
     /** The invoice as a PDF, or null to send without it. */
     attachment: { filename: string; bytes: Uint8Array } | null;
+    /** Files on the invoice shared with the client, chosen to go with this email. */
+    files?: Array<{ filename: string; bytes: Uint8Array; contentType: string }>;
     actorId: string | null;
     automatic: boolean;
   },
@@ -107,15 +109,23 @@ export async function sendInvoiceEmail(
   const base = (env.PORTAL_URL ?? "").trim().replace(/\/+$/, "");
   const sent_to: string[] = [];
   const failed: Array<{ email: string; error: string }> = [];
-  const attachments = input.attachment
-    ? [
-        {
-          filename: input.attachment.filename,
-          content: base64Bytes(input.attachment.bytes),
-          contentType: "application/pdf",
-        },
-      ]
-    : undefined;
+  const attachments = [
+    ...(input.attachment
+      ? [
+          {
+            filename: input.attachment.filename,
+            content: base64Bytes(input.attachment.bytes),
+            contentType: "application/pdf",
+          },
+        ]
+      : []),
+    ...(input.files ?? []).map((f) => ({
+      filename: f.filename,
+      content: base64Bytes(f.bytes),
+      contentType: f.contentType,
+    })),
+  ];
+  const fileNames = (input.files ?? []).map((f) => f.filename).join(", ") || null;
 
   for (const recipient of input.recipients) {
     const token = mailToken();
@@ -148,7 +158,7 @@ export async function sendInvoiceEmail(
     } else {
       try {
         await deliver(env, recipient.email, message.subject, message.text, message.html, input.cc, {
-          attachments,
+          attachments: attachments.length ? attachments : undefined,
           replyTo: input.replyTo ?? undefined,
           fromName: `${input.firmName} Finance`,
         });
@@ -161,8 +171,8 @@ export async function sendInvoiceEmail(
     await env.DB.prepare(
       `INSERT INTO invoice_emails
          (id, invoice_id, kind, recipient_email, recipient_name, cc, status, error, token,
-          automatic, sent_by, sent_at, subject, body, attached)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          automatic, sent_by, sent_at, subject, body, attached, files)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         newId(),
@@ -179,7 +189,8 @@ export async function sendInvoiceEmail(
         nowIso(),
         message.subject,
         stored,
-        attachments ? 1 : 0,
+        input.attachment ? 1 : 0,
+        fileNames,
       )
       .run();
 

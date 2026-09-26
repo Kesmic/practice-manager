@@ -1317,6 +1317,8 @@ export interface InvoiceEmailRow {
   subject: string | null;
   body: string | null;
   attached: 0 | 1;
+  /** The names of any other files that went with it, comma-separated. */
+  files: string | null;
   sent_by_name: string | null;
 }
 
@@ -1339,6 +1341,8 @@ export interface InvoiceEmailDraft {
   firm_wording: boolean;
   facts: { number: string; firm_name: string; amount_due: string; due_on: string };
   attachment_name: string;
+  /** Files on the invoice that are shared with the client, which may go with the email. */
+  files: InvoiceFileRow[];
   limits: { subject: number; message: number };
 }
 
@@ -1350,6 +1354,8 @@ export interface InvoiceEmailComposed {
   message: string;
   attach: boolean;
   save_wording: boolean;
+  /** Shared files to attach, by id. */
+  files: string[];
 }
 
 /** A client user looking at the invoice in the portal, grouped by person and kind. */
@@ -1391,6 +1397,8 @@ export interface InvoiceDetail {
   emails: InvoiceEmailRow[];
   views: InvoiceViewRow[];
   events: InvoiceEventRow[];
+  /** Papers attached to the invoice, shared with the client or kept by the firm. */
+  files: InvoiceFileRow[];
   standing: Standing;
 }
 
@@ -1455,6 +1463,18 @@ export interface ClientInvoiceList {
   statement: { outstanding: number; overdue: number; count: number };
 }
 
+/** A file attached to an invoice. */
+export interface InvoiceFileRow {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  /** 1 when the client can see and download it. */
+  shared: 0 | 1;
+  uploaded_at: string;
+  uploaded_by_name: string | null;
+}
+
 export interface ClientInvoiceDetail {
   invoice: {
     id: string;
@@ -1477,6 +1497,8 @@ export interface ClientInvoiceDetail {
   taxes: InvoiceTaxRow[];
   payments: InvoicePaymentRow[];
   standing: Standing;
+  /** Only the files the firm has shared with them. */
+  files: InvoiceFileRow[];
 }
 
 /** Re-exported so screens import one place for the shapes they render. */

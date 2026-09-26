@@ -16,6 +16,7 @@ import { ApiRequestError, api } from "../../lib/api";
 import { InvoiceStatePill, InvoiceTotals } from "../../components/InvoiceTotals";
 import { ErrorBanner, Spinner } from "../../components/ui";
 import { formatDate, formatMoneyExact } from "../../lib/format";
+import { describeFileSize } from "@shared/invoice-files";
 
 export function ClientInvoiceDetail() {
   const { id = "" } = useParams();
@@ -80,6 +81,23 @@ export function ClientInvoiceDetail() {
           discountLabel={invoice.discount_label}
         />
       </section>
+
+      {/* Papers the firm has shared with this invoice: a receipt, a timesheet. */}
+      {data.files.length > 0 && (
+        <section className="card p-5">
+          <h2 className="card-title">Documents</h2>
+          <ul className="mt-2 divide-y divide-slate-100">
+            {data.files.map((f) => (
+              <li key={f.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+                <a className="link min-w-0 break-words" href={api.clientInvoiceFileUrl(invoice.id, f.id)}>
+                  <span aria-hidden="true">📎</span> {f.filename}
+                </a>
+                <span className="text-xs text-slate-500">{describeFileSize(f.size_bytes)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="card p-5">
         <h2 className="card-title">Payment</h2>

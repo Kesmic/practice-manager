@@ -38,6 +38,7 @@ import type {
   InvoiceDetail,
   InvoiceEmailComposed,
   InvoiceEmailDraft,
+  InvoiceFileRow,
   InvoiceList,
   PartnerPipeline,
   PartnerSelf,
@@ -1251,6 +1252,39 @@ export const api = {
     request<InvoiceDetail>(`/api/invoices/${id}/lines`, { method: "POST", body: line }),
   removeInvoiceLine: (lineId: string) =>
     request<InvoiceDetail>(`/api/invoice-lines/${lineId}`, { method: "DELETE" }),
+  /** Attaches one file to an invoice; `shared` lets the client see it from the start. */
+  attachInvoiceFile: async (invoiceId: string, file: File, shared: boolean) => {
+    let response: Response;
+    try {
+      response = await fetch(`/api/invoices/${invoiceId}/files${shared ? "?shared=1" : ""}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+          // Encoded, because a header may only carry Latin-1 and filenames do not.
+          "X-Filename": encodeURIComponent(file.name),
+        },
+        body: file,
+        credentials: "same-origin",
+      });
+    } catch {
+      throw new ApiRequestError(0, "Could not reach the server. Check your connection.");
+    }
+    const text = await response.text();
+    const payload = text ? (JSON.parse(text) as { error?: string; detail?: string }) : null;
+    if (!response.ok) {
+      throw new ApiRequestError(
+        response.status,
+        payload?.error ?? `Could not attach that file (${response.status}).`,
+        payload?.detail,
+      );
+    }
+    return payload as unknown as { files: InvoiceFileRow[] };
+  },
+  shareInvoiceFile: (fileId: string, shared: boolean) =>
+    request<{ files: InvoiceFileRow[] }>(`/api/invoice-files/${fileId}`, { method: "PATCH", body: { shared } }),
+  removeInvoiceFile: (fileId: string) => request<void>(`/api/invoice-files/${fileId}`, { method: "DELETE" }),
+  invoiceFileUrl: (fileId: string) => `/api/invoice-files/${fileId}`,
+  clientInvoiceFileUrl: (invoiceId: string, fileId: string) => `/api/client/invoices/${invoiceId}/files/${fileId}`,
   importInvoices: (
     clientId: string,
     body: {
