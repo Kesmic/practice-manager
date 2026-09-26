@@ -15,7 +15,8 @@ import {
 } from "@shared/hr";
 import { ApiRequestError, api } from "../lib/api";
 import { applyBranding, isHexColour } from "../lib/branding";
-import { deriveLightInk, whyNotDerivable } from "../lib/logo";
+import { deriveLightInk, printCopy, whyNotDerivable } from "../lib/logo";
+import { isRasterLogo, logoFingerprint } from "@shared/logo-print";
 import { useFirm } from "../lib/firm";
 import { useSession } from "../lib/auth";
 import { ContractTermsCard } from "../components/ContractTermsCard";
@@ -86,6 +87,28 @@ export function PortalAdmin() {
   const tab: Tab = TABS.some(([key]) => key === asked) ? (asked as Tab) : DEFAULT_TAB;
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  /*
+   * A logo a PDF cannot carry - an SVG, most often - needs a PNG copy drawn in a
+   * browser before invoices can show it. The Appearance tab draws one on save; this
+   * draws one for a logo saved before that existed, or changed some other way, the
+   * first time a Partner opens any settings tab. Quietly: nothing here is the
+   * Partner's to decide, and if the browser cannot draw it, invoices carry the firm's
+   * name as they did before.
+   */
+  useEffect(() => {
+    if (!can("partner")) return;
+    void (async () => {
+      const { settings } = await api.settings();
+      const logo = settings.logo_data_url;
+      if (!logo || isRasterLogo(logo)) return;
+      if (settings.logo_print_for === (await logoFingerprint(logo))) return;
+      const copy = await printedLogo(logo);
+      if (copy.logo_print_data_url) await api.updateSettings(copy);
+    })().catch(() => undefined);
+    // Once per visit to the settings.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openTab = (key: Tab) => {
     const next = new URLSearchParams(params);
@@ -1159,6 +1182,8 @@ function AppearanceAdmin({
         logo_dark_data_url: settings.logo_dark_data_url,
         primary_color: settings.primary_color,
         secondary_color: settings.secondary_color,
+        // An SVG logo also gets the PNG copy invoices are printed with.
+        ...(await printedLogo(settings.logo_data_url)),
       });
       setSettings(res.settings);
       await refresh();
@@ -1593,4 +1618,21 @@ function ColourField({
       )}
     </Field>
   );
+}
+
+/**
+ * The PNG copy of an SVG (or WebP, or GIF) logo that PDFs are printed with, and the
+ * fingerprint of the logo it was drawn from; nothing for a PNG or JPEG, which PDFs
+ * carry as they are. See shared/logo-print.ts.
+ */
+async function printedLogo(
+  logo: string,
+): Promise<{ logo_print_data_url?: string; logo_print_for?: string }> {
+  if (!logo || isRasterLogo(logo)) return {};
+  try {
+    const copy = await printCopy(logo);
+    return copy ? { logo_print_data_url: copy, logo_print_for: await logoFingerprint(logo) } : {};
+  } catch {
+    return {};
+  }
 }

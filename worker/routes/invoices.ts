@@ -50,6 +50,7 @@ import {
   type InvoiceDocument,
 } from "../../shared/invoice-document";
 import { renderInvoicePdf } from "../../shared/invoice-pdf";
+import { pdfLogo } from "../../shared/logo-print";
 import {
   discountAmount,
   discountApplies,
@@ -1475,7 +1476,8 @@ async function documentFor(env: Env, invoiceId: string): Promise<InvoiceDocument
       phone: settings.firm_phone,
       email: settings.firm_finance_email,
       website: (settings.firm_website || "").replace(/^https?:\/\//, ""),
-      logo: settings.logo_data_url,
+      // A PNG or JPEG as it is; an SVG through the copy the settings screen drew of it.
+      logo: await pdfLogo(settings),
       tax_id: settings.firm_tax_id,
     },
     client: {
