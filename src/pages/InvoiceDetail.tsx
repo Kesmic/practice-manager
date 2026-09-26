@@ -114,7 +114,7 @@ export function InvoiceDetail() {
 
       <div className="flex flex-wrap gap-2">
         <a className="btn-secondary" href={`/api/invoices/${invoice.id}/document`}>
-          Download the invoice
+          Download the invoice (PDF)
         </a>
         {partner && invoice.state === "draft" && (
           <button

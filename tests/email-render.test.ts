@@ -142,18 +142,18 @@ test("no copy list means the field is absent, not empty", () => {
 test("an invoice email carries its attachment, replies to finance, and goes out under the firm's name", () => {
   const env = { EMAIL_API_KEY: "k", EMAIL_FROM: "Kesmic Practice Manager <portal@kesmic.test>" } as never;
   const extras = {
-    attachments: [{ filename: "cpl202608.html", content: "PGgxPg==", contentType: "text/html" }],
+    attachments: [{ filename: "cpl202608.pdf", content: "PGgxPg==", contentType: "application/pdf" }],
     replyTo: "finance@kesmic.test",
     fromName: "Kesmic Consultancy Hub Finance",
   };
   const resend = PROVIDERS.resend(env, "kofi@x.test", "s", "t", "h", [], extras).body as Record<string, unknown>;
   assert.equal(resend.from, "Kesmic Consultancy Hub Finance <portal@kesmic.test>");
   assert.equal(resend.reply_to, "finance@kesmic.test");
-  assert.deepEqual(resend.attachments, [{ filename: "cpl202608.html", content: "PGgxPg==" }]);
+  assert.deepEqual(resend.attachments, [{ filename: "cpl202608.pdf", content: "PGgxPg==" }]);
 
   const postmark = PROVIDERS.postmark(env, "kofi@x.test", "s", "t", "h", [], extras).body as Record<string, unknown>;
   assert.equal(postmark.ReplyTo, "finance@kesmic.test");
-  assert.deepEqual(postmark.Attachments, [{ Name: "cpl202608.html", Content: "PGgxPg==", ContentType: "text/html" }]);
+  assert.deepEqual(postmark.Attachments, [{ Name: "cpl202608.pdf", Content: "PGgxPg==", ContentType: "application/pdf" }]);
 
   const sendgrid = PROVIDERS.sendgrid(env, "kofi@x.test", "s", "t", "h", [], extras).body as Record<string, unknown>;
   assert.deepEqual(sendgrid.from, { email: "portal@kesmic.test", name: "Kesmic Consultancy Hub Finance" });

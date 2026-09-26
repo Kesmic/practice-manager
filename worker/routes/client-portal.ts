@@ -693,7 +693,7 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       ),
     });
   });
-  /** Their own invoice as a printable document. Scoped, so another's is simply absent. */
+  /** Their own invoice as a PDF. Scoped, so another's is simply absent. */
   router.get("/api/client/invoices/:id/document", async ({ request, env, params }) => {
     const actor = await requireClientUser(env, request);
     const mine = await env.DB.prepare(

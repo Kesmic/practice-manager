@@ -47,9 +47,9 @@ import { feeFor, readCatalogue } from "./subscriptions";
 import {
   describeTerms,
   invoiceFilename,
-  renderInvoice,
   type InvoiceDocument,
 } from "../../shared/invoice-document";
+import { renderInvoicePdf } from "../../shared/invoice-pdf";
 import {
   discountAmount,
   discountApplies,
@@ -756,7 +756,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
 
     const settings = await readSettings(env);
     const keys = INVOICE_EMAIL_SETTINGS[kind];
-    const { filename } = await buildDocument(env, invoice.id);
+    const filename = invoiceFilename(await documentFor(env, invoice.id));
     return json({
       kind,
       chasing,
@@ -1403,10 +1403,10 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
  * duplicating the assembly - two builders would be two invoices that disagree.
  */
 export async function serveDocument(env: Env, invoiceId: string): Promise<Response> {
-  const { html, filename } = await buildDocument(env, invoiceId);
-  return new Response(html, {
+  const { bytes, filename } = await buildDocument(env, invoiceId);
+  return new Response(bytes, {
     headers: {
-      "Content-Type": "text/html; charset=utf-8",
+      "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="${filename}"`,
       // Somebody's bill. Nothing should cache it.
       "Cache-Control": "private, no-store",
@@ -1418,7 +1418,13 @@ export async function serveDocument(env: Env, invoiceId: string): Promise<Respon
 async function buildDocument(
   env: Env,
   invoiceId: string,
-): Promise<{ html: string; filename: string }> {
+): Promise<{ bytes: Uint8Array<ArrayBuffer>; filename: string }> {
+  const doc = await documentFor(env, invoiceId);
+  return { bytes: await renderInvoicePdf(doc), filename: invoiceFilename(doc) };
+}
+
+/** What the invoice document says, from the invoice, its client and the firm's settings. */
+async function documentFor(env: Env, invoiceId: string): Promise<InvoiceDocument> {
   const row = await env.DB.prepare(
     `SELECT i.*, c.name AS client_name, c.code AS client_code, c.address AS client_address,
             c.tax_id AS client_tax_id
@@ -1541,7 +1547,7 @@ async function buildDocument(
     },
   };
 
-  return { html: renderInvoice(doc), filename: invoiceFilename(doc) };
+  return doc;
 }
 
 /**
@@ -1600,7 +1606,8 @@ async function mailInvoice(
     payments,
     today(),
   );
-  const { html, filename } = await buildDocument(env, invoiceId);
+  const attach = options.composed?.attach !== false;
+  const document = attach ? await buildDocument(env, invoiceId) : null;
   const wording =
     options.composed?.wording ?? wordingFor(kind, settings);
 
@@ -1618,7 +1625,7 @@ async function mailInvoice(
       invoice.currency,
     ),
     dueOn: letterDate(invoice.due_on),
-    attachment: options.composed?.attach === false ? null : { filename, html },
+    attachment: document,
     actorId: options.actorId,
     automatic: options.automatic,
   });

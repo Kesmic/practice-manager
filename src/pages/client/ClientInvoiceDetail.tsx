@@ -62,6 +62,9 @@ export function ClientInvoiceDetail() {
           due {formatDate(invoice.due_on)}
           {invoice.period_label ? ` · covers ${invoice.period_label}` : ""}
         </p>
+        <a className="btn-secondary mt-3 inline-flex" href={`/api/client/invoices/${invoice.id}/document`}>
+          Download the invoice (PDF)
+        </a>
       </div>
 
       <section className="card p-5">
