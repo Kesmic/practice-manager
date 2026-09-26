@@ -59,6 +59,7 @@ import {
 import { feeFor, readCatalogue, readExtras } from "./subscriptions";
 import { activeDiscount } from "../discounts";
 import { serveDocument } from "./invoices";
+import { filesFor } from "./invoice-files";
 import { standingOf, type InvoiceState, type PaymentLike } from "../../shared/invoices";
 
 /**
@@ -691,6 +692,8 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
         payments.results as unknown as PaymentLike[],
         new Date().toISOString().slice(0, 10),
       ),
+      // Only what the firm has chosen to share; its own papers stay its own.
+      files: await filesFor(env, params.id, { sharedOnly: true }),
     });
   });
   /** Their own invoice as a PDF. Scoped, so another's is simply absent. */

@@ -15,6 +15,7 @@ import { useDialogs } from "../lib/dialogs";
 import { ApiRequestError, api } from "../lib/api";
 import { InvoiceStatePill, InvoiceTotals } from "../components/InvoiceTotals";
 import { InvoiceEmailComposer } from "../components/InvoiceEmailComposer";
+import { InvoiceFiles } from "../components/InvoiceFiles";
 import {
   ErrorBanner,
   Field,
@@ -321,6 +322,14 @@ export function InvoiceDetail() {
         )}
       </section>
 
+      <InvoiceFiles
+        key={invoice.id}
+        invoiceId={invoice.id}
+        files={data.files}
+        isDraft={invoice.state === "draft"}
+        canEdit={can("manager")}
+      />
+
       <History data={data} />
 
       <PaymentModal
@@ -613,6 +622,7 @@ function History({ data }: { data: Detail }) {
             <details className="mt-1 text-xs">
               <summary className="cursor-pointer text-link">
                 What it said{e.attached ? "" : " · sent without the invoice attached"}
+                {e.files ? ` · with ${e.files}` : ""}
               </summary>
               <div className="mt-1 rounded-md bg-slate-50 p-3 ring-1 ring-slate-200">
                 <div className="font-semibold text-slate-900">{e.subject}</div>

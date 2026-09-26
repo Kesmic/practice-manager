@@ -43,6 +43,7 @@ const LETTER_NOUN = {
   overdue: "overdue reminder",
 } as const;
 import type { InvoiceEmailComposed, InvoiceEmailDraft } from "@shared/types";
+import { describeFileSize } from "@shared/invoice-files";
 import { ApiRequestError, api } from "../lib/api";
 import { ErrorBanner, Modal, Spinner, TextInput } from "./ui";
 
@@ -67,6 +68,8 @@ export function InvoiceEmailComposer({
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [attach, setAttach] = useState(true);
+  // Files shared with the client, to go with the email as well; see the draft's load.
+  const [files, setFiles] = useState<Set<string>>(new Set());
   const [saveWording, setSaveWording] = useState(false);
   const [previewAs, setPreviewAs] = useState(0);
   const [tab, setTab] = useState<"edit" | "preview">("edit");
@@ -83,6 +86,9 @@ export function InvoiceEmailComposer({
         setCc(d.cc);
         setSubject(d.wording.subject);
         setMessage(d.wording.message);
+        // With the invoice itself, every file shared with the client goes too, as Xero
+        // sends a bill's attachments; a reminder carries only what somebody ticks.
+        setFiles(new Set(d.kind === "issued" || d.kind === "resent" ? d.files.map((f) => f.id) : []));
       })
       .catch((err) => {
         if (live) setError(err instanceof ApiRequestError ? err.message : "Could not prepare the email.");
@@ -131,6 +137,7 @@ export function InvoiceEmailComposer({
       message,
       attach,
       save_wording: saveWording,
+      files: [...files],
     };
     const letter = draft.kind;
     const saved = saveWording ? ` The wording is saved for every ${LETTER_NOUN[letter]} from now on.` : "";
@@ -296,6 +303,27 @@ export function InvoiceEmailComposer({
                     Attach the invoice <span className="text-slate-500">({draft.attachment_name})</span>
                   </span>
                 </label>
+                {draft.files.map((f) => (
+                  <label key={f.id} className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={files.has(f.id)}
+                      onChange={(e) =>
+                        setFiles((s) => {
+                          const next = new Set(s);
+                          if (e.target.checked) next.add(f.id);
+                          else next.delete(f.id);
+                          return next;
+                        })
+                      }
+                    />
+                    <span className="min-w-0 break-words">
+                      Attach {f.filename}{" "}
+                      <span className="text-slate-500">({describeFileSize(f.size_bytes)}, shared with the client)</span>
+                    </span>
+                  </label>
+                ))}
                 {draft.can_save_wording && (
                   <label className="flex cursor-pointer items-start gap-2">
                     <input
@@ -356,7 +384,10 @@ export function InvoiceEmailComposer({
                 cc={cc}
                 subject={preview?.subject ?? ""}
                 html={preview?.html ?? ""}
-                attachment={attach ? draft.attachment_name : null}
+                attachments={[
+                  ...(attach ? [draft.attachment_name] : []),
+                  ...draft.files.filter((f) => files.has(f.id)).map((f) => f.filename),
+                ]}
                 switcher={
                   to.length > 1 ? (
                     <select
@@ -486,7 +517,7 @@ export function EmailPreview({
   cc = [],
   subject,
   html,
-  attachment,
+  attachments,
   switcher,
 }: {
   fromName: string;
@@ -494,7 +525,7 @@ export function EmailPreview({
   cc?: string[];
   subject: string;
   html: string;
-  attachment: string | null;
+  attachments: string[];
   switcher?: ReactNode;
 }) {
   return (
@@ -515,9 +546,13 @@ export function EmailPreview({
         srcDoc={html}
         className="block h-[26rem] w-full bg-slate-100 lg:h-[calc(70vh-16rem)] lg:min-h-[18rem]"
       />
-      {attachment && (
-        <div className="border-t border-slate-200 bg-panel px-4 py-2 text-xs text-slate-600">
-          <span aria-hidden="true">📎</span> {attachment}
+      {attachments.length > 0 && (
+        <div className="space-y-0.5 border-t border-slate-200 bg-panel px-4 py-2 text-xs text-slate-600">
+          {attachments.map((name) => (
+            <div key={name} className="break-words">
+              <span aria-hidden="true">📎</span> {name}
+            </div>
+          ))}
         </div>
       )}
     </div>
