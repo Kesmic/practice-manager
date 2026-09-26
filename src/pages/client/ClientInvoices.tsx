@@ -42,9 +42,15 @@ export function ClientInvoices() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="section-title">Invoices</h1>
-        <p className="muted mt-1">Everything we have invoiced you, and what is outstanding.</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="section-title">Invoices</h1>
+          <p className="muted mt-1">Everything we have invoiced you, and what is outstanding.</p>
+        </div>
+        {/* Their account for the year so far, as a statement they can file or forward. */}
+        <a className="btn-secondary" href={api.myStatementPdfUrl("")}>
+          Download statement (PDF)
+        </a>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">

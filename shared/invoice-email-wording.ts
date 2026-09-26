@@ -161,10 +161,14 @@ const KNOWN = new Set(INVOICE_EMAIL_PLACEHOLDERS.map((p) => p.token.toLowerCase(
  * Bracketed words the portal will not fill in - "[Contact name]" where "[Name]" was
  * meant, say - so the screen can point them out before a client reads them verbatim.
  */
-export function unknownPlaceholders(text: string): string[] {
+export function unknownPlaceholders(
+  text: string,
+  placeholders: Array<{ token: string }> = INVOICE_EMAIL_PLACEHOLDERS,
+): string[] {
+  const known = placeholders === INVOICE_EMAIL_PLACEHOLDERS ? KNOWN : new Set(placeholders.map((p) => p.token.toLowerCase()));
   const out = new Set<string>();
   for (const match of text.matchAll(/\[[^\]\n]{1,40}\]/g)) {
-    if (!KNOWN.has(match[0].toLowerCase())) out.add(match[0]);
+    if (!known.has(match[0].toLowerCase())) out.add(match[0]);
   }
   return [...out];
 }
@@ -180,17 +184,17 @@ export function escapeHtml(value: string): string {
 /** One stretch of the message: text, the link, or the figures. */
 type Run = { text: string } | { link: true } | { summary: true };
 
-/** Splits a line into text and the two special placeholders, filling in the rest. */
-function runsOf(line: string, facts: InvoiceEmailFacts): Run[] {
-  const name = facts.name.trim();
-  const words: Record<string, string> = {
-    "[name]": name || "Sir/Madam",
-    "[first name]": name.split(/\s+/)[0] || "Sir/Madam",
-    "[invoice number]": facts.number,
-    "[amount due]": facts.amountDue,
-    "[due date]": facts.dueOn,
-    "[firm name]": facts.firmName,
+/** What [Name] and [First name] become: the recipient's name, or Sir/Madam without one. */
+function nameWords(name: string): Record<string, string> {
+  const trimmed = name.trim();
+  return {
+    "[name]": trimmed || "Sir/Madam",
+    "[first name]": trimmed.split(/\s+/)[0] || "Sir/Madam",
   };
+}
+
+/** Splits a line into text and the two special placeholders, filling in the rest. */
+function runsOf(line: string, words: Record<string, string>): Run[] {
   const runs: Run[] = [];
   let rest = line;
   const pattern = /\[[^\]\n]{1,40}\]/;
@@ -226,15 +230,37 @@ export function composeInvoiceEmail(
   wording: InvoiceEmailWording,
   facts: InvoiceEmailFacts,
 ): { subject: string; text: string; html: string } {
-  const figures: Array<[string, string]> = [
-    ["Invoice", facts.number],
-    ["Amount due", facts.amountDue],
-    ["Due date", facts.dueOn],
-  ];
+  return composeEmail(wording, {
+    words: {
+      ...nameWords(facts.name),
+      "[invoice number]": facts.number,
+      "[amount due]": facts.amountDue,
+      "[due date]": facts.dueOn,
+      "[firm name]": facts.firmName,
+    },
+    figures: [
+      ["Invoice", facts.number],
+      ["Amount due", facts.amountDue],
+      ["Due date", facts.dueOn],
+    ],
+    link: facts.link,
+    pixel: facts.pixel,
+  });
+}
+
+/**
+ * Any of the portal's letters to a client from its wording: the placeholders it fills
+ * in, the figures [Summary] sets out, where [here] goes, and the open-tracking image.
+ */
+function composeEmail(
+  wording: InvoiceEmailWording,
+  facts: { words: Record<string, string>; figures: Array<[string, string]>; link: string; pixel: string },
+): { subject: string; text: string; html: string } {
+  const { words, figures } = facts;
   const inlineFigures = figures.map(([k, v]) => `${k}: ${v}`).join(" · ");
 
   // A subject is one line of plain text: the link is just the word, the figures a line.
-  const subject = runsOf(wording.subject.replace(/[\r\n]+/g, " "), facts)
+  const subject = runsOf(wording.subject.replace(/[\r\n]+/g, " "), words)
     .map((r) => ("text" in r ? r.text : "link" in r ? "here" : inlineFigures))
     .join("")
     .trim();
@@ -254,7 +280,7 @@ export function composeInvoiceEmail(
     .map((lines) =>
       isSummary(lines)
         ? figures.map(([k, v]) => `${k}: ${v}`).join("\n")
-        : lines.map((line) => runsOf(line, facts).map(textRun).join("")).join("\n"),
+        : lines.map((line) => runsOf(line, words).map(textRun).join("")).join("\n"),
     )
     .join("\n\n");
 
@@ -277,7 +303,7 @@ export function composeInvoiceEmail(
       isSummary(lines)
         ? table
         : `<p style="margin:0 0 16px;font-size:15px;line-height:1.55">${lines
-            .map((line) => runsOf(line, facts).map(htmlRun).join(""))
+            .map((line) => runsOf(line, words).map(htmlRun).join(""))
             .join("<br>")}</p>`,
     )
     .join("\n    ");
@@ -300,4 +326,78 @@ export function composeInvoiceEmail(
 /** An address the portal will send to. Deliberately plain: one mailbox, no names. */
 export function looksLikeEmail(value: string): boolean {
   return /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/.test(value.trim());
+}
+
+// ---------------------------------------------------------------------------
+// Statements
+// ---------------------------------------------------------------------------
+
+/** The words a statement email fills in. */
+export const STATEMENT_EMAIL_PLACEHOLDERS: Array<{ token: string; label: string; hint: string }> = [
+  { token: "[Name]", label: "Name", hint: "The recipient's full name, or Sir/Madam when none is held" },
+  { token: "[First name]", label: "First name", hint: "The first word of the recipient's name" },
+  { token: "[Statement date]", label: "Statement date", hint: "The date the statement is drawn up to" },
+  { token: "[Amount due]", label: "Amount due", hint: "What the client owes on the statement date" },
+  { token: "[Firm name]", label: "Firm name", hint: "The firm's name, from Settings" },
+  { token: "[here]", label: "Link", hint: "The word here, linked to the client's invoices in the portal" },
+  { token: "[Summary]", label: "Summary", hint: "On a line of its own: the statement date and the amount due" },
+];
+
+export const STANDARD_STATEMENT_EMAIL: InvoiceEmailWording = {
+  subject: "Statement of account from [Firm name] - [Statement date]",
+  message: [
+    "Dear [Name],",
+    "",
+    "Please find attached your statement of account as at [Statement date].",
+    "",
+    "[Summary]",
+    "",
+    "You can see each invoice and download copies [here]. If your records differ from ours, or you have any questions, please let us know.",
+    "",
+    "--",
+    "Best regards,",
+    "Finance Team",
+    "[Firm name]",
+  ].join("\n"),
+};
+
+/** Where the firm's own statement wording is kept, when it has changed the standard. */
+export const STATEMENT_EMAIL_SETTINGS = { subject: "statement_email_subject", message: "statement_email_message" };
+
+export function statementWording(settings: Record<string, string | null | undefined>): InvoiceEmailWording {
+  return {
+    subject: settings[STATEMENT_EMAIL_SETTINGS.subject]?.trim() || STANDARD_STATEMENT_EMAIL.subject,
+    message: settings[STATEMENT_EMAIL_SETTINGS.message]?.trim() || STANDARD_STATEMENT_EMAIL.message,
+  };
+}
+
+export interface StatementEmailFacts {
+  name: string;
+  firmName: string;
+  /** Already formatted: "26 September 2026". */
+  statementDate: string;
+  /** Already formatted: "GHS 3,814.50". */
+  amountDue: string;
+  /** The client's invoices in the portal; empty when the portal has no address. */
+  link: string;
+}
+
+export function composeStatementEmail(
+  wording: InvoiceEmailWording,
+  facts: StatementEmailFacts,
+): { subject: string; text: string; html: string } {
+  return composeEmail(wording, {
+    words: {
+      ...nameWords(facts.name),
+      "[statement date]": facts.statementDate,
+      "[amount due]": facts.amountDue,
+      "[firm name]": facts.firmName,
+    },
+    figures: [
+      ["Statement date", facts.statementDate],
+      ["Amount due", facts.amountDue],
+    ],
+    link: facts.link,
+    pixel: "",
+  });
 }

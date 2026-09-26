@@ -74,6 +74,9 @@ const DEFAULTS: Record<string, string> = {
   due_today_email_message: "",
   overdue_email_subject: "",
   overdue_email_message: "",
+  /* And for the statement of account (shared/statements.ts). */
+  statement_email_subject: "",
+  statement_email_message: "",
 
   /** Days from issue to due. The firm's own invoices say Net 15. */
   invoice_terms_days: "15",
@@ -208,6 +211,7 @@ const MAX_LENGTH: Record<string, number> = {
   invoice_email_message: 5_000,
   due_today_email_message: 5_000,
   overdue_email_message: 5_000,
+  statement_email_message: 5_000,
   // One line per line, printed under the firm's name on an invoice.
   firm_address: 500,
   // JSON the screen writes: which services the intake form offers, and which

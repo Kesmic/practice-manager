@@ -16,23 +16,50 @@ import { useEffect, useMemo, useState } from "react";
 import {
   INVOICE_EMAIL_LIMITS,
   INVOICE_EMAIL_NAMES,
+  INVOICE_EMAIL_PLACEHOLDERS,
   INVOICE_EMAIL_SETTINGS,
   STANDARD_INVOICE_EMAILS,
+  STANDARD_STATEMENT_EMAIL,
+  STATEMENT_EMAIL_PLACEHOLDERS,
+  STATEMENT_EMAIL_SETTINGS,
   composeInvoiceEmail,
+  composeStatementEmail,
+  statementWording,
   wordingFor,
 } from "@shared/invoice-email-wording";
 import { ApiRequestError, api } from "../lib/api";
 import { ErrorBanner, Spinner, SuccessBanner } from "./ui";
 import { EmailPreview, WordingFields } from "./InvoiceEmailComposer";
 
-const LETTERS = ["issued", "due_today", "overdue"] as const;
+const LETTERS = ["issued", "due_today", "overdue", "statement"] as const;
 type Letter = (typeof LETTERS)[number];
+
+/** The statement sits beside the invoice's three letters, with its own words. */
+const NAMES: Record<Letter, string> = {
+  issued: INVOICE_EMAIL_NAMES.issued,
+  due_today: INVOICE_EMAIL_NAMES.due_today,
+  overdue: INVOICE_EMAIL_NAMES.overdue,
+  statement: "Statement",
+};
+const KEYS: Record<Letter, { subject: string; message: string }> = {
+  issued: INVOICE_EMAIL_SETTINGS.issued,
+  due_today: INVOICE_EMAIL_SETTINGS.due_today,
+  overdue: INVOICE_EMAIL_SETTINGS.overdue,
+  statement: STATEMENT_EMAIL_SETTINGS,
+};
+const STANDARD: Record<Letter, { subject: string; message: string }> = {
+  issued: STANDARD_INVOICE_EMAILS.issued,
+  due_today: STANDARD_INVOICE_EMAILS.due_today,
+  overdue: STANDARD_INVOICE_EMAILS.overdue,
+  statement: STANDARD_STATEMENT_EMAIL,
+};
 
 /** When each letter goes, in a line under its name. */
 const WHEN: Record<Letter, string> = {
   issued: "When an invoice is issued, by hand or by the monthly run, and when it is sent again.",
   due_today: "On the day payment falls due, if it is still unpaid.",
   overdue: "On the reminder schedule once it is late, and when somebody chases it by hand.",
+  statement: "With a statement of account, when somebody sends one from the client's page.",
 };
 
 /** "15 October 2026", some days from today. */
@@ -59,9 +86,13 @@ export function EmailWordingAdmin() {
       );
   }, []);
 
-  const saved = settings ? wordingFor(letter, settings) : STANDARD_INVOICE_EMAILS[letter];
+  const saved = !settings
+    ? STANDARD[letter]
+    : letter === "statement"
+      ? statementWording(settings)
+      : wordingFor(letter, settings);
   const current = drafts[letter] ?? saved;
-  const standard = STANDARD_INVOICE_EMAILS[letter];
+  const standard = STANDARD[letter];
   const changed = current.subject !== saved.subject || current.message !== saved.message;
   const isStandard = current.subject.trim() === standard.subject && current.message.trim() === standard.message;
   const savedIsStandard = saved.subject === standard.subject && saved.message === standard.message;
@@ -71,7 +102,15 @@ export function EmailWordingAdmin() {
 
   const preview = useMemo(
     () =>
-      composeInvoiceEmail(current, {
+      letter === "statement"
+        ? composeStatementEmail(current, {
+            name: "Ama Owusu",
+            firmName: settings?.firm_name ?? "",
+            statementDate: letterDateFromToday(0),
+            amountDue: "GHS 3,814.50",
+            link: "#the-client-portal",
+          })
+        : composeInvoiceEmail(current, {
         name: "Ama Owusu",
         number: "INV202610",
         firmName: settings?.firm_name ?? "",
@@ -88,7 +127,7 @@ export function EmailWordingAdmin() {
   const save = async () => {
     setBusy(true);
     setError(null);
-    const keys = INVOICE_EMAIL_SETTINGS[letter];
+    const keys = KEYS[letter];
     const subject = current.subject.replace(/[\r\n]+/g, " ").trim();
     const message = current.message.replace(/\r\n?/g, "\n").trim();
     try {
@@ -98,7 +137,7 @@ export function EmailWordingAdmin() {
       } as never);
       setSettings(r.settings as unknown as Record<string, string>);
       setDrafts((d) => ({ ...d, [letter]: undefined }));
-      setDone(`${INVOICE_EMAIL_NAMES[letter]}: saved. Everything sent from now on uses it.`);
+      setDone(`${NAMES[letter]}: saved. Everything sent from now on uses it.`);
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Could not save.");
     } finally {
@@ -129,7 +168,7 @@ export function EmailWordingAdmin() {
               onClick={() => setLetter(l)}
               className={`rounded px-3 py-1 ${letter === l ? "bg-panel font-semibold text-slate-900 shadow-sm" : "text-slate-600"}`}
             >
-              {INVOICE_EMAIL_NAMES[l]}
+              {NAMES[l]}
               {drafts[l] ? " •" : ""}
             </button>
           ))}
@@ -153,6 +192,7 @@ export function EmailWordingAdmin() {
               onMessage={(message) => edit({ message })}
               limits={INVOICE_EMAIL_LIMITS}
               rows={14}
+              placeholders={letter === "statement" ? STATEMENT_EMAIL_PLACEHOLDERS : INVOICE_EMAIL_PLACEHOLDERS}
             />
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -185,7 +225,7 @@ export function EmailWordingAdmin() {
               to="Ama Owusu <ama@example.com>"
               subject={preview.subject}
               html={preview.html}
-              attachments={["inv202610-example-client.pdf"]}
+              attachments={[letter === "statement" ? "statement-example-client.pdf" : "inv202610-example-client.pdf"]}
             />
             <p className="hint">An example client and figures, to show how it reads.</p>
           </div>

@@ -428,6 +428,7 @@ export function WordingFields({
   onMessage,
   limits,
   rows = 15,
+  placeholders = INVOICE_EMAIL_PLACEHOLDERS,
 }: {
   subject: string;
   message: string;
@@ -435,10 +436,15 @@ export function WordingFields({
   onMessage: (value: string) => void;
   limits: { subject: number; message: number };
   rows?: number;
+  /** The bracketed words this letter fills in; an invoice's unless said. */
+  placeholders?: Array<{ token: string; label: string; hint: string }>;
 }) {
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const ids = useId();
-  const stray = useMemo(() => unknownPlaceholders(`${subject}\n${message}`), [subject, message]);
+  const stray = useMemo(
+    () => unknownPlaceholders(`${subject}\n${message}`, placeholders),
+    [subject, message, placeholders],
+  );
 
   // Puts a placeholder where the cursor is, as Xero's "insert placeholder" does.
   const insert = (token: string) => {
@@ -482,7 +488,7 @@ export function WordingFields({
         />
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-slate-500">Insert:</span>
-          {INVOICE_EMAIL_PLACEHOLDERS.map((p) => (
+          {placeholders.map((p) => (
             <button
               key={p.token}
               type="button"
@@ -495,9 +501,8 @@ export function WordingFields({
           ))}
         </div>
         <p className="hint">
-          Words in square brackets are filled in for each person. [here] becomes a link to
-          the invoice in the client portal, and [Summary] on its own line becomes the box
-          with the number, amount and due date.
+          Words in square brackets are filled in for each person. [here] becomes a link into
+          the client portal, and [Summary] on its own line becomes the box of figures.
         </p>
         {stray.length > 0 && (
           <p className="mt-1 text-xs text-amber-800">
@@ -575,7 +580,7 @@ function PreviewRow({ label, value, strong }: { label: string; value: string; st
  * box adds what was typed; a pasted list is split; backspace in an empty box takes the
  * last one off. Billing contacts not on the list are offered back with one click.
  */
-function AddressField({
+export function AddressField({
   label,
   values,
   onChange,

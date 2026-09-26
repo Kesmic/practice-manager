@@ -15,23 +15,23 @@
  * each and "Page 2 of 3" at the foot, and the totals never split from each other.
  */
 
-import { PdfDocument, imageFromDataUri, textWidth, wrapText, type PdfPage } from "./pdf";
+import { PdfDocument, imageFromDataUri, textWidth, wrapText, type PdfImage, type PdfPage } from "./pdf";
 import { figure, money, slashDate, type InvoiceDocument } from "./invoice-document";
 
-const INK = "#1b2431";
-const BODY = "#46505f";
-const MUTED = "#6b7686";
-const LABEL = "#8b95a3";
-const TITLE = "#5b6673";
-const RULE = "#e4e8ee";
-const BAND = "#f2f2f2";
-const DEDUCTION = "#8a1c13";
+export const INK = "#1b2431";
+export const BODY = "#46505f";
+export const MUTED = "#6b7686";
+export const LABEL = "#8b95a3";
+export const TITLE = "#5b6673";
+export const RULE = "#e4e8ee";
+export const BAND = "#f2f2f2";
+export const DEDUCTION = "#8a1c13";
 
-const LEFT = 48;
-const RIGHT = 595.28 - 48;
-const TOP = 48;
+export const LEFT = 48;
+export const RIGHT = 595.28 - 48;
+export const TOP = 48;
 /** Where the body stops, leaving room for the page number. */
-const BOTTOM = 841.89 - 56;
+export const BOTTOM = 841.89 - 56;
 
 /** The table's columns: where each starts, how wide, and which way it aligns. */
 const COLUMNS = (() => {
@@ -55,8 +55,69 @@ const COLUMNS = (() => {
 const PAD = 6;
 
 /** A small spaced capital label, as the firm's invoices set them. */
-function label(page: PdfPage, text: string, x: number, y: number, align: "left" | "right" = "left", colour = LABEL) {
+export function label(page: PdfPage, text: string, x: number, y: number, align: "left" | "right" = "left", colour = LABEL) {
   page.text(text.toUpperCase(), x, y, { font: "bold", size: 6.8, colour, spacing: 0.9, align });
+}
+
+/**
+ * The firm's letterhead - logo or name, the address block, and the document's title
+ * set large on the right - returning where the page continues. Shared with the
+ * statement (shared/statement-pdf.ts), so the two documents a client files side by
+ * side look like one firm's.
+ */
+export async function letterhead(
+  page: PdfPage,
+  firm: InvoiceDocument["firm"],
+  logo: PdfImage | null,
+  logoIndex: number | null,
+  title: string,
+): Promise<number> {
+  let left = TOP;
+  if (logo && logoIndex !== null) {
+    const scale = Math.min(180 / logo.width, 52 / logo.height);
+    const w = logo.width * scale;
+    const h = logo.height * scale;
+    page.image(logoIndex, LEFT, TOP, w, h);
+    left = TOP + h + 14;
+  } else {
+    page.text(firm.name, LEFT, TOP + 12, { font: "bold", size: 13, colour: INK });
+    left = TOP + 28;
+  }
+  const address = [
+    ...firm.address_lines,
+    firm.city,
+    firm.phone,
+    firm.email,
+    firm.website,
+    firm.tax_id ? `TIN ${firm.tax_id}` : "",
+  ].filter(Boolean);
+  for (const line of address) {
+    page.text(line, LEFT, left, { size: 8.5, colour: MUTED });
+    left += 11.5;
+  }
+  page.text(title, RIGHT, TOP + 22, { size: 24, colour: TITLE, spacing: 2.6, align: "right" });
+  return Math.max(left, TOP + 40) + 18;
+}
+
+/** The client's name, address and TIN under a small label, returning where it ends. */
+export function billTo(page: PdfPage, client: InvoiceDocument["client"], y: number, heading: string): number {
+  let bill = y;
+  label(page, heading, LEFT, bill);
+  bill += 15;
+  for (const line of wrapText(client.name, "bold", 10.5, 260)) {
+    page.text(line, LEFT, bill, { font: "bold", size: 10.5, colour: INK });
+    bill += 13;
+  }
+  for (const line of client.address_lines.flatMap((l) => wrapText(l, "regular", 9, 260))) {
+    page.text(line, LEFT, bill, { size: 9, colour: BODY });
+    bill += 12;
+  }
+  if (client.tax_id) {
+    bill += 2;
+    page.text(`TIN ${client.tax_id}`, LEFT, bill, { size: 8.5, colour: MUTED });
+    bill += 12;
+  }
+  return bill;
 }
 
 export async function renderInvoicePdf(
@@ -74,50 +135,8 @@ export async function renderInvoicePdf(
   let page = pdf.addPage();
   let y = TOP;
 
-  // ------------------------------------------------------------ letterhead
-  let left = TOP;
-  if (logo && logoIndex !== null) {
-    const scale = Math.min(180 / logo.width, 52 / logo.height);
-    const w = logo.width * scale;
-    const h = logo.height * scale;
-    page.image(logoIndex, LEFT, TOP, w, h);
-    left = TOP + h + 14;
-  } else {
-    page.text(doc.firm.name, LEFT, TOP + 12, { font: "bold", size: 13, colour: INK });
-    left = TOP + 28;
-  }
-  const address = [
-    ...doc.firm.address_lines,
-    doc.firm.city,
-    doc.firm.phone,
-    doc.firm.email,
-    doc.firm.website,
-    doc.firm.tax_id ? `TIN ${doc.firm.tax_id}` : "",
-  ].filter(Boolean);
-  for (const line of address) {
-    page.text(line, LEFT, left, { size: 8.5, colour: MUTED });
-    left += 11.5;
-  }
-  page.text("INVOICE", RIGHT, TOP + 22, { size: 24, colour: TITLE, spacing: 2.6, align: "right" });
-  y = Math.max(left, TOP + 40) + 18;
-
-  // ------------------------------------------------- bill to and references
-  let bill = y;
-  label(page, "Bill to", LEFT, bill);
-  bill += 15;
-  for (const line of wrapText(doc.client.name, "bold", 10.5, 260)) {
-    page.text(line, LEFT, bill, { font: "bold", size: 10.5, colour: INK });
-    bill += 13;
-  }
-  for (const line of doc.client.address_lines.flatMap((l) => wrapText(l, "regular", 9, 260))) {
-    page.text(line, LEFT, bill, { size: 9, colour: BODY });
-    bill += 12;
-  }
-  if (doc.client.tax_id) {
-    bill += 2;
-    page.text(`TIN ${doc.client.tax_id}`, LEFT, bill, { size: 8.5, colour: MUTED });
-    bill += 12;
-  }
+  y = await letterhead(page, doc.firm, logo, logoIndex, "INVOICE");
+  const bill = billTo(page, doc.client, y, "Bill to");
 
   let refs = y;
   const refsLeft = RIGHT - 200;

@@ -123,7 +123,7 @@ function readManualLine(raw: ManualLine): ManualLine {
   };
 }
 
-function askedFor(invoice: { gross: number; balance_due?: number | null }): number {
+export function askedFor(invoice: { gross: number; balance_due?: number | null }): number {
   // Zero means unset, for the reason standingOf gives.
   return invoice.balance_due && invoice.balance_due > 0 ? invoice.balance_due : invoice.gross;
 }
@@ -404,7 +404,7 @@ async function fullInvoice(env: Env, id: string) {
 }
 
 /** Who at the client an invoice or a reminder goes to. */
-async function billingContacts(
+export async function billingContacts(
   env: Env,
   clientId: string,
 ): Promise<Array<{ email: string; full_name: string }>> {
@@ -1494,6 +1494,35 @@ async function buildDocument(
   return { bytes: await renderInvoicePdf(doc), filename: invoiceFilename(doc) };
 }
 
+/** The firm as its documents print it: the letterhead of an invoice or a statement. */
+export async function firmOnPaper(settings: Record<string, string>): Promise<InvoiceDocument["firm"]> {
+  return {
+    name: settings.firm_name,
+    address_lines: (settings.firm_address || "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean),
+    city: settings.firm_city,
+    phone: settings.firm_phone,
+    email: settings.firm_finance_email,
+    website: (settings.firm_website || "").replace(/^https?:\/\//, ""),
+    // A PNG or JPEG as it is; an SVG through the copy the settings screen drew of it.
+    logo: await pdfLogo(settings),
+    tax_id: settings.firm_tax_id,
+  };
+}
+
+/** Where the firm's documents ask clients to pay. */
+export function bankOnPaper(settings: Record<string, string>): InvoiceDocument["bank"] {
+  return {
+    account_name: settings.bank_account_name,
+    account_number: settings.bank_account_number,
+    bank: settings.bank_name,
+    branch: settings.bank_branch,
+    swift: settings.bank_swift,
+  };
+}
+
 /** What the invoice document says, from the invoice, its client and the firm's settings. */
 async function documentFor(env: Env, invoiceId: string): Promise<InvoiceDocument> {
   const row = await env.DB.prepare(
@@ -1536,20 +1565,7 @@ async function documentFor(env: Env, invoiceId: string): Promise<InvoiceDocument
   const issued = row.issued_on ?? today();
 
   const doc: InvoiceDocument = {
-    firm: {
-      name: settings.firm_name,
-      address_lines: (settings.firm_address || "")
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean),
-      city: settings.firm_city,
-      phone: settings.firm_phone,
-      email: settings.firm_finance_email,
-      website: (settings.firm_website || "").replace(/^https?:\/\//, ""),
-      // A PNG or JPEG as it is; an SVG through the copy the settings screen drew of it.
-      logo: await pdfLogo(settings),
-      tax_id: settings.firm_tax_id,
-    },
+    firm: await firmOnPaper(settings),
     client: {
       name: row.client_name,
       address_lines: (row.client_address || "")
@@ -1613,13 +1629,7 @@ async function documentFor(env: Env, invoiceId: string): Promise<InvoiceDocument
       ),
     ),
     note: row.note,
-    bank: {
-      account_name: settings.bank_account_name,
-      account_number: settings.bank_account_number,
-      bank: settings.bank_name,
-      branch: settings.bank_branch,
-      swift: settings.bank_swift,
-    },
+    bank: bankOnPaper(settings),
   };
 
   return doc;
@@ -2151,7 +2161,7 @@ export async function raiseInvoice(
  * and a member of staff to be able to point at the copy later.
  */
 /** An invoice email as edited on the screen, before it is checked. */
-interface ComposedBody {
+export interface ComposedBody {
   to?: unknown;
   cc?: unknown;
   subject?: unknown;
@@ -2162,7 +2172,7 @@ interface ComposedBody {
 }
 
 /** An invoice email as edited on the screen, checked. */
-interface Composed {
+export interface Composed {
   to: string[];
   cc: string[];
   wording: InvoiceEmailWording;
@@ -2192,7 +2202,7 @@ function addressList(value: unknown, field: string, max: number): string[] {
  * character of them - so the checks are only on size and shape: a subject is one line,
  * and a message cannot be empty.
  */
-function readComposed(body: ComposedBody): Composed {
+export function readComposed(body: ComposedBody): Composed {
   const subject = (typeof body.subject === "string" ? body.subject : "").replace(/[\r\n]+/g, " ").trim();
   const message = (typeof body.message === "string" ? body.message : "").replace(/\r\n?/g, "\n").trim();
   if (!subject) throw badRequest("The email needs a subject.");
@@ -2241,7 +2251,7 @@ async function keepWording(
   await writeSetting(env, keys.message, message === standard.message ? "" : message, actor.id);
 }
 
-function firmCopies(settings: Record<string, string>, actorEmail?: string | null): string[] {
+export function firmCopies(settings: Record<string, string>, actorEmail?: string | null): string[] {
   const out = new Set<string>();
   const finance = (settings.firm_finance_email ?? "").trim();
   if (finance) out.add(finance);
@@ -2338,7 +2348,7 @@ function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function formatMoney(amount: number, currency: string): string {
+export function formatMoney(amount: number, currency: string): string {
   return `${currency} ${amount.toLocaleString("en-GB", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
