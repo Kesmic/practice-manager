@@ -541,7 +541,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
            FROM invoices i JOIN clients c ON c.id = i.client_id
           WHERE (?1 IS NULL OR i.state = ?1)
           ORDER BY i.due_on DESC, i.number DESC
-          LIMIT 300`,
+          LIMIT 5000`,
       ).bind(state),
       env.DB.prepare(
         `SELECT invoice_id, amount, withheld, certificate_received FROM invoice_payments`,
