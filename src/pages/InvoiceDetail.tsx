@@ -7,7 +7,7 @@
  * client's as different documents with the same number.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { INVOICE_STATE_LABELS, whyNotALine } from "@shared/invoices";
 import type { InvoiceDetail as Detail, InvoiceEmailRow } from "@shared/types";
@@ -51,7 +51,7 @@ export function InvoiceDetail() {
   if (error && !data) return <ErrorBanner error={error} />;
   if (!data) return <Spinner label="Loading the invoice" />;
 
-  const { invoice, lines, taxes, payments, reminders, emails, views, standing } = data;
+  const { invoice, lines, taxes, payments, standing } = data;
   const partner = can("partner");
 
   const act = async (what: () => Promise<unknown>, message: string) => {
@@ -333,50 +333,7 @@ export function InvoiceDetail() {
         )}
       </section>
 
-      <EmailLog emails={emails} />
-
-      {views.length > 0 && (
-        <section className="card p-5">
-          <h2 className="card-title">Seen in the client portal</h2>
-          <p className="muted mt-1">Exact: recorded when somebody signed in to the portal opened or downloaded it.</p>
-          <div className="mt-2 divide-y divide-slate-100">
-            {views.map((v, i) => (
-              <div key={i} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2 text-sm">
-                <span className="font-medium text-slate-800">{v.full_name ?? v.email ?? "A former login"}</span>
-                <span className="text-slate-600">
-                  {v.what === "download" ? "Downloaded it" : "Opened it"}
-                  {v.times > 1 ? ` ${v.times} times` : ""}
-                </span>
-                <span className="ml-auto tabular-nums text-xs text-slate-500">
-                  {v.times > 1
-                    ? `first ${formatDateTime(v.first_at)} · last ${formatDateTime(v.last_at)}`
-                    : formatDateTime(v.last_at)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {emails.length === 0 && reminders.length > 0 && (
-        <section className="card p-5">
-          <h2 className="card-title">Chasing</h2>
-          <div className="mt-2 divide-y divide-slate-100">
-            {reminders.map((r, i) => (
-              <div key={i} className="flex flex-wrap gap-x-4 gap-y-1 py-2 text-sm">
-                <span className="tabular-nums text-slate-500">{formatDateTime(r.sent_at)}</span>
-                <span>
-                  Reminder {r.step} · {r.days_late} days late
-                </span>
-                <span className="text-slate-500">{r.sent_to}</span>
-                <span className="ml-auto text-xs text-slate-400">
-                  {r.automatic ? "automatic" : "by hand"}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      <History data={data} />
 
       <PaymentModal
         open={paying}
@@ -585,66 +542,205 @@ function AddLine({
 }
 
 const EMAIL_LABELS: Record<InvoiceEmailRow["kind"], string> = {
-  issued: "Invoice sent",
+  issued: "Invoice emailed",
   resent: "Sent again",
   due_today: "Due today notice",
   overdue: "Overdue reminder",
 };
 
+/** A date or a moment, shown as whichever it is. */
+function when(at: string): string {
+  return at.length <= 10 ? formatDate(at) : formatDateTime(at);
+}
+
+interface HistoryItem {
+  at: string;
+  title: string;
+  by?: string | null;
+  detail?: ReactNode;
+  pills?: ReactNode;
+}
+
 /**
- * Every email this invoice has sent, one row per recipient: what it was, who it went to
- * and who was copied, whether the provider took it, and what the recipient did with it.
+ * Everything that has happened to this invoice, oldest first, in one list: raised,
+ * issued, every email and what the recipient did with it, the client's visits to the
+ * portal, payments, a cancellation, a return to draft. Always shown, because even an
+ * invoice issued before the email log began has a history - who raised it and when it
+ * went out - and a blank space reads as "nothing is known".
  */
-function EmailLog({ emails }: { emails: InvoiceEmailRow[] }) {
-  if (emails.length === 0) return null;
+function History({ data }: { data: Detail }) {
+  const { invoice, emails, views, reminders, payments, events } = data;
+  const items: HistoryItem[] = [];
+
+  items.push({
+    at: invoice.created_at,
+    title: "Raised as a draft",
+    by: invoice.created_by_name ?? (invoice.period_label ? "the monthly billing run" : null),
+  });
+
+  const firstEmail = emails.length ? emails.map((e) => e.sent_at).sort()[0] : null;
+  const issuedEmails = emails.filter((e) => e.kind === "issued");
+  if (invoice.sent_at) {
+    items.push({
+      at: invoice.sent_at,
+      title: "Issued",
+      by: issuedEmails[0]?.sent_by_name ?? (issuedEmails[0]?.automatic ? "the monthly billing run" : null),
+      detail:
+        issuedEmails.length === 0 ? (
+          <span>
+            Emailed to the client&rsquo;s billing contacts. This was before the email log
+            began, so who it reached and whether it was opened were not recorded.
+          </span>
+        ) : undefined,
+    });
+  }
+
+  for (const e of emails) {
+    items.push({
+      at: e.sent_at,
+      title: EMAIL_LABELS[e.kind],
+      by: e.automatic ? "the portal, automatically" : e.sent_by_name,
+      detail: (
+        <>
+          <div className="break-words">
+            To {e.recipient_name ? `${e.recipient_name} <${e.recipient_email}>` : e.recipient_email}
+          </div>
+          {e.cc && <div className="break-words text-xs text-slate-500">Copied to {e.cc}</div>}
+          {e.status === "failed" && <div className="text-xs text-rose-700">{e.error}</div>}
+        </>
+      ),
+      pills:
+        e.status === "failed" ? (
+          <span className="pill bg-rose-50 text-rose-800 ring-rose-200">Not delivered</span>
+        ) : (
+          <>
+            {e.opened_at ? (
+              <span
+                className="pill bg-emerald-50 text-emerald-800 ring-emerald-200"
+                title={`First ${formatDateTime(e.opened_at)}${e.last_opened_at && e.last_opened_at !== e.opened_at ? `, last ${formatDateTime(e.last_opened_at)}` : ""}`}
+              >
+                Opened {formatDateTime(e.opened_at)}
+                {e.open_count > 1 ? ` · ${e.open_count} times` : ""}
+              </span>
+            ) : (
+              <span className="pill bg-slate-100 text-slate-600 ring-slate-200">Not opened yet</span>
+            )}
+            {e.clicked_at && (
+              <span className="pill bg-brand-50 text-link ring-brand-200">
+                Followed the link {formatDateTime(e.clicked_at)}
+              </span>
+            )}
+          </>
+        ),
+    });
+  }
+
+  // Reminders sent before the email log began, which only the old record knows about.
+  for (const r of reminders) {
+    if (firstEmail && r.sent_at >= firstEmail) continue;
+    items.push({
+      at: r.sent_at,
+      title: `Reminder ${r.step} · ${r.days_late} days late`,
+      by: r.automatic ? "the portal, automatically" : null,
+      detail: r.sent_to ? <span className="break-words">To {r.sent_to}</span> : undefined,
+    });
+  }
+
+  for (const v of views) {
+    const who = v.full_name ?? v.email ?? "A former login";
+    items.push({
+      at: v.first_at,
+      title: `${who} ${v.what === "download" ? "downloaded it" : "opened it"} in the portal`,
+      detail:
+        v.times > 1 ? (
+          <span>
+            {v.times} times, most recently {formatDateTime(v.last_at)}
+          </span>
+        ) : undefined,
+    });
+  }
+
+  for (const p of payments) {
+    items.push({
+      at: p.recorded_at ?? p.paid_on,
+      title: `Payment recorded: ${formatMoneyExact(p.amount, invoice.currency)}${p.withheld > 0 ? ` and ${formatMoneyExact(p.withheld, invoice.currency)} withheld` : ""}`,
+      by: p.recorded_by_name,
+      detail: (
+        <span>
+          Paid on {formatDate(p.paid_on)}
+          {p.method ? ` by ${p.method}` : ""}
+          {p.reference ? ` · ${p.reference}` : ""}
+        </span>
+      ),
+    });
+  }
+
+  for (const ev of events) {
+    // An earlier issue, kept when the invoice went back to draft and lost its date.
+    if (ev.kind === "issued") {
+      // Emailed that time if an issue email went out before it was put back to draft.
+      const redraftedAt = events.find((x) => x.kind === "redrafted" && x.at >= ev.at)?.at;
+      const emailedThen = issuedEmails.some((e) => !redraftedAt || e.sent_at < redraftedAt);
+      items.push({
+        at: ev.at,
+        title: "Issued",
+        detail: emailedThen ? undefined : (
+          <span>
+            Emailed to the client&rsquo;s billing contacts, before the email log began.
+          </span>
+        ),
+      });
+      continue;
+    }
+    items.push({
+      at: ev.at,
+      title: ev.kind === "cancelled" ? "Cancelled" : "Put back to draft",
+      by: ev.actor_name,
+      detail: ev.detail ? <span>{ev.detail}</span> : undefined,
+    });
+  }
+  // A cancellation from before cancellations were recorded as events.
+  if (invoice.voided_at && !events.some((ev) => ev.kind === "cancelled")) {
+    items.push({
+      at: invoice.voided_at,
+      title: "Cancelled",
+      detail: invoice.void_reason ? <span>{invoice.void_reason}</span> : undefined,
+    });
+  }
+
+  items.sort((a, b) => a.at.localeCompare(b.at));
+
   return (
     <section className="card p-5">
-      <h2 className="card-title">Emails</h2>
-      <p className="muted mt-1">
-        Opened is what the recipient&rsquo;s mail app reports when it loads images. Some
-        apps block that and some load images on arrival, so treat it as a strong hint, not
-        proof. Seen in the portal, below, is exact.
-      </p>
-      <div className="mt-3 divide-y divide-slate-100">
-        {emails.map((e) => (
-          <div key={e.id} className="grid gap-x-4 gap-y-1 py-3 text-sm sm:grid-cols-[10rem_1fr]">
-            <div className="tabular-nums text-slate-500">
-              {formatDateTime(e.sent_at)}
-              <div className="text-xs text-slate-400">
-                {e.automatic ? "automatic" : e.sent_by_name ? `by ${e.sent_by_name}` : "by hand"}
-              </div>
-            </div>
+      <h2 className="card-title">History</h2>
+      {emails.length > 0 && (
+        <p className="muted mt-1">
+          &ldquo;Opened&rdquo; is what the recipient&rsquo;s mail app reports when it loads
+          images. Some apps block that and some load images on arrival, so treat it as a
+          strong hint. A visit to the portal is exact.
+        </p>
+      )}
+      <ol className="mt-3 space-y-0">
+        {items.map((item, i) => (
+          <li key={i} className="relative grid gap-x-4 pb-4 pl-5 text-sm sm:grid-cols-[10rem_1fr]">
+            {/* The line and the dot that make it read as a timeline. */}
+            <span
+              aria-hidden="true"
+              className={`absolute left-[5px] top-1.5 w-px bg-slate-200 ${i === items.length - 1 ? "h-0" : "h-full"}`}
+            />
+            <span aria-hidden="true" className="absolute left-0 top-1.5 h-2.5 w-2.5 rounded-full bg-brand-500 ring-2 ring-white" />
+            <div className="tabular-nums text-slate-500">{when(item.at)}</div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium text-slate-800">{EMAIL_LABELS[e.kind]}</span>
-                {e.status === "failed" ? (
-                  <span className="pill bg-rose-50 text-rose-800 ring-rose-200">Not delivered</span>
-                ) : e.opened_at ? (
-                  <span
-                    className="pill bg-emerald-50 text-emerald-800 ring-emerald-200"
-                    title={`First ${formatDateTime(e.opened_at)}${e.last_opened_at && e.last_opened_at !== e.opened_at ? `, last ${formatDateTime(e.last_opened_at)}` : ""}`}
-                  >
-                    Opened {formatDateTime(e.opened_at)}
-                    {e.open_count > 1 ? ` · ${e.open_count} times` : ""}
-                  </span>
-                ) : (
-                  <span className="pill bg-slate-100 text-slate-600 ring-slate-200">Sent, not opened yet</span>
-                )}
-                {e.clicked_at && (
-                  <span className="pill bg-brand-50 text-link ring-brand-200">
-                    Followed the link {formatDateTime(e.clicked_at)}
-                  </span>
-                )}
+                <span className="font-medium text-slate-800">{item.title}</span>
+                {item.pills}
               </div>
-              <div className="mt-0.5 break-words text-slate-600">
-                To {e.recipient_name ? `${e.recipient_name} <${e.recipient_email}>` : e.recipient_email}
-              </div>
-              {e.cc && <div className="break-words text-xs text-slate-500">Copied to {e.cc}</div>}
-              {e.status === "failed" && <div className="mt-1 text-xs text-rose-700">{e.error}</div>}
+              {item.by && <div className="text-xs text-slate-500">by {item.by}</div>}
+              {item.detail && <div className="mt-0.5 text-slate-600">{item.detail}</div>}
             </div>
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
     </section>
   );
 }
