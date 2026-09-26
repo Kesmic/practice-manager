@@ -315,14 +315,18 @@ async function recomputeDraft(env: Env, invoiceId: string): Promise<void> {
 /** An invoice with everything a screen needs hung off it. */
 async function fullInvoice(env: Env, id: string) {
   const invoice = await env.DB.prepare(
-    `SELECT i.*, c.name AS client_name, c.code AS client_code
-       FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ?`,
+    `SELECT i.*, c.name AS client_name, c.code AS client_code,
+            cb.full_name AS created_by_name
+       FROM invoices i
+       JOIN clients c ON c.id = i.client_id
+       LEFT JOIN users cb ON cb.id = i.created_by
+      WHERE i.id = ?`,
   )
     .bind(id)
     .first<InvoiceRow & { client_name: string; client_code: string }>();
   if (!invoice) throw notFound("There is no such invoice.");
 
-  const [lines, taxes, payments, reminders, emails, views] = await env.DB.batch([
+  const [lines, taxes, payments, reminders, emails, views, events] = await env.DB.batch([
     env.DB.prepare(
       `SELECT id, description, quantity, unit_amount, amount, source, subscription_period,
               taxable
@@ -333,7 +337,8 @@ async function fullInvoice(env: Env, id: string) {
     ).bind(id),
     env.DB.prepare(
       `SELECT p.id, p.amount, p.withheld, p.paid_on, p.method, p.reference, p.note,
-              p.certificate_received, p.certificate_ref, u.full_name AS recorded_by_name
+              p.certificate_received, p.certificate_ref, p.recorded_at,
+              u.full_name AS recorded_by_name
          FROM invoice_payments p
          LEFT JOIN users u ON u.id = p.recorded_by
         WHERE p.invoice_id = ? ORDER BY p.paid_on`,
@@ -357,6 +362,11 @@ async function fullInvoice(env: Env, id: string) {
         GROUP BY v.client_user_id, v.what
         ORDER BY last_at DESC`,
     ).bind(id),
+    env.DB.prepare(
+      `SELECT e.kind, e.detail, e.at, u.full_name AS actor_name
+         FROM invoice_events e LEFT JOIN users u ON u.id = e.actor_id
+        WHERE e.invoice_id = ? ORDER BY e.at`,
+    ).bind(id),
   ]);
 
   return {
@@ -367,6 +377,7 @@ async function fullInvoice(env: Env, id: string) {
     reminders: reminders.results,
     emails: emails.results,
     views: views.results,
+    events: events.results,
     standing: standingOf(
       invoice,
       payments.results as unknown as PaymentLike[],
@@ -673,7 +684,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
 
   /** Cancels an invoice, keeping its number and freeing anything it billed. */
   router.post("/api/invoices/:id/void", async ({ request, env, params }) => {
-    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const body = await readJson<{ reason?: string }>(request);
     const reason = requireString(body.reason, "reason", { max: 300 });
 
@@ -698,6 +709,11 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
 
     const timestamp = nowIso();
     await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO invoice_events (id, invoice_id, kind, detail, actor_id, at)
+         SELECT ?, ?, 'cancelled', ?, ?, ? WHERE EXISTS (
+           SELECT 1 FROM invoices WHERE id = ? AND state <> 'void')`,
+      ).bind(newId(), params.id, reason, actor.id, timestamp, params.id),
       env.DB.prepare(
         `UPDATE invoices SET state = 'void', voided_at = ?, void_reason = ?, updated_at = ?
           WHERE id = ? AND state <> 'void'`,
@@ -909,7 +925,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
    * billed them since - in which case it says which, rather than billing them twice.
    */
   router.post("/api/invoices/:id/redraft", async ({ request, env, params }) => {
-    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const invoice = await env.DB.prepare(
       `SELECT id, client_id, state, period_label FROM invoices WHERE id = ?`,
     )
@@ -947,6 +963,16 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
           `UPDATE partner_commissions SET invoice_id = NULL, updated_at = ?
             WHERE invoice_id = ? AND status = 'cancelled'`,
         ).bind(timestamp, invoice.id),
+        /*
+         * Going back to draft clears the date it was issued, so the History keeps it here
+         * first - otherwise an invoice issued before the email log began would lose the
+         * only record that it ever went out.
+         */
+        env.DB.prepare(
+          `INSERT INTO invoice_events (id, invoice_id, kind, detail, actor_id, at)
+           SELECT ?, id, 'issued', NULL, NULL, sent_at
+             FROM invoices WHERE id = ? AND state = 'void' AND sent_at IS NOT NULL`,
+        ).bind(newId(), invoice.id),
         env.DB.prepare(
           `UPDATE invoices
               SET state = 'draft', issued_on = NULL, sent_at = NULL, voided_at = NULL,
@@ -954,6 +980,10 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
                   due_notice_at = NULL, due_on = ?, updated_at = ?
             WHERE id = ? AND state = 'void'`,
         ).bind(addDays(today(), termDays), timestamp, invoice.id),
+        env.DB.prepare(
+          `INSERT INTO invoice_events (id, invoice_id, kind, detail, actor_id, at)
+           VALUES (?, ?, 'redrafted', NULL, ?, ?)`,
+        ).bind(newId(), invoice.id, actor.id, timestamp),
       ]);
     } catch (err) {
       if (/UNIQUE/i.test(String(err))) {
@@ -1028,6 +1058,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       env.DB.prepare(`UPDATE partner_commissions SET invoice_id = NULL WHERE invoice_id = ?`).bind(invoice.id),
       env.DB.prepare(`DELETE FROM invoice_emails WHERE invoice_id = ?`).bind(invoice.id),
       env.DB.prepare(`DELETE FROM invoice_views WHERE invoice_id = ?`).bind(invoice.id),
+      env.DB.prepare(`DELETE FROM invoice_events WHERE invoice_id = ?`).bind(invoice.id),
       env.DB.prepare(`DELETE FROM invoice_reminders WHERE invoice_id = ?`).bind(invoice.id),
       env.DB.prepare(`DELETE FROM invoice_taxes WHERE invoice_id = ?`).bind(invoice.id),
       env.DB.prepare(`DELETE FROM invoice_lines WHERE invoice_id = ?`).bind(invoice.id),

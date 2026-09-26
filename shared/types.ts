@@ -1280,6 +1280,7 @@ export interface InvoicePaymentRow {
   certificate_received: 0 | 1;
   certificate_ref: string | null;
   recorded_by_name?: string | null;
+  recorded_at?: string;
 }
 
 export interface InvoiceReminderRow {
@@ -1319,14 +1320,33 @@ export interface InvoiceViewRow {
   times: number;
 }
 
+/**
+ * Something done to an invoice that nothing else records: a cancellation, a return to
+ * draft, and the date of an earlier issue that going back to draft cleared.
+ */
+export interface InvoiceEventRow {
+  kind: "issued" | "cancelled" | "redrafted";
+  detail: string | null;
+  at: string;
+  actor_name: string | null;
+}
+
 export interface InvoiceDetail {
-  invoice: InvoiceSummary & { note: string | null };
+  invoice: InvoiceSummary & {
+    note: string | null;
+    created_at: string;
+    created_by_name: string | null;
+    sent_at: string | null;
+    voided_at: string | null;
+    void_reason: string | null;
+  };
   lines: InvoiceLineRow[];
   taxes: InvoiceTaxRow[];
   payments: InvoicePaymentRow[];
   reminders: InvoiceReminderRow[];
   emails: InvoiceEmailRow[];
   views: InvoiceViewRow[];
+  events: InvoiceEventRow[];
   standing: Standing;
 }
 
