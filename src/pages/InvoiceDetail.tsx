@@ -36,7 +36,7 @@ export function InvoiceDetail() {
   const dialogs = useDialogs();
   const navigate = useNavigate();
   const [paying, setPaying] = useState(false);
-  const [composing, setComposing] = useState<"issued" | "resent" | null>(null);
+  const [composing, setComposing] = useState<"issued" | "resent" | "reminder" | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -136,14 +136,9 @@ export function InvoiceDetail() {
             type="button"
             className="btn-secondary"
             disabled={busy}
-            onClick={() =>
-              void act(async () => {
-                const r = await api.remindInvoice(invoice.id);
-                return r.step === 0 ? "Due today notice sent." : `Reminder ${r.step} sent.`;
-              }, "Reminder sent.")
-            }
+            onClick={() => setComposing("reminder")}
           >
-            Chase it now
+            Chase it now…
           </button>
         )}
         {partner && (invoice.state === "sent" || invoice.state === "part_paid" || invoice.state === "paid") && (
