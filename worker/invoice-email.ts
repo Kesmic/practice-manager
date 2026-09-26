@@ -17,9 +17,16 @@
 import type { Env } from "./env";
 import { deliver, emailConfigured } from "./email";
 import { newId, nowIso } from "./db";
+import {
+  STANDARD_INVOICE_EMAILS,
+  composeInvoiceEmail,
+  type InvoiceEmailFacts,
+  type InvoiceEmailKind,
+  type InvoiceEmailWording,
+} from "../shared/invoice-email-wording";
 
 export const INVOICE_EMAIL_KINDS = ["issued", "resent", "due_today", "overdue"] as const;
-export type InvoiceEmailKind = (typeof INVOICE_EMAIL_KINDS)[number];
+export type { InvoiceEmailKind, InvoiceEmailFacts, InvoiceEmailWording };
 
 export const INVOICE_EMAIL_LABELS: Record<InvoiceEmailKind, string> = {
   issued: "Invoice sent",
@@ -27,29 +34,6 @@ export const INVOICE_EMAIL_LABELS: Record<InvoiceEmailKind, string> = {
   due_today: "Due today notice",
   overdue: "Overdue reminder",
 };
-
-export interface InvoiceEmailFacts {
-  /** The recipient's name as the firm holds it. Blank reads "Sir/Madam". */
-  name: string;
-  number: string;
-  firmName: string;
-  /** Already formatted: "GHS 1,494.00". */
-  amountDue: string;
-  /** Already formatted: "15 October 2026". */
-  dueOn: string;
-  /** Where "here" goes. Empty when the portal has no address to link to. */
-  link: string;
-  /** The open-tracking image. Empty for none. */
-  pixel: string;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 /** "15 October 2026", the way a letter writes a date. */
 export function letterDate(date: string): string {
@@ -64,108 +48,15 @@ export function letterDate(date: string): string {
 }
 
 /**
- * The message, in both halves. Pure, so the tests pin what a client actually reads.
- *
- * The paragraphs are the firm's wording. The one addition is a short block of the
- * figures - the invoice number, the amount and the date - because "please pay by the
- * due date" is a request somebody can only act on if the date is in front of them.
+ * One of the four letters in the firm's standard wording. The wording itself, and how
+ * it becomes a message, live in shared/invoice-email-wording.ts so the screen can
+ * preview exactly what is sent.
  */
 export function renderInvoiceEmail(
   kind: InvoiceEmailKind,
   facts: InvoiceEmailFacts,
 ): { subject: string; text: string; html: string } {
-  const greeting = `Dear ${facts.name.trim() || "Sir/Madam"},`;
-  const signOff = ["--", "Best regards,", "Finance Team", facts.firmName];
-
-  // Paragraphs as runs of text and links, so the two halves are built from one source.
-  type Run = string | { link: string; label: string };
-  let subject: string;
-  let paragraphs: Run[][];
-
-  if (kind === "issued" || kind === "resent") {
-    subject = `Invoice ${facts.number} from ${facts.firmName}`;
-    paragraphs = [
-      ["Thank you for choosing to do business with us."],
-      [
-        "Please find your invoice details ",
-        facts.link ? { link: facts.link, label: "here" } : "here",
-        ". We kindly request you to make the payment by the due date.",
-      ],
-      [
-        "If you have any questions or need further information, please do not hesitate to contact us.",
-      ],
-    ];
-  } else if (kind === "due_today") {
-    subject = `Payment reminder: invoice ${facts.number} is due today`;
-    paragraphs = [
-      [`Please note that payment for invoice ${facts.number} is due today.`],
-      [
-        "We have attached a copy of the invoice to this email for your convenience. Please let us know if you have any questions.",
-      ],
-    ];
-  } else {
-    subject = `Payment reminder: invoice ${facts.number} is overdue`;
-    paragraphs = [
-      [
-        `Please note that payment for invoice ${facts.number} was due on ${facts.dueOn} and remains outstanding.`,
-      ],
-      [
-        "We have attached a copy of the invoice to this email for your convenience. If payment has already been made, please let us know so that we can match it; otherwise, please let us know if you have any questions.",
-      ],
-    ];
-  }
-
-  // The figures follow the sentence that points at them: after "your invoice details
-  // here" in the invoice itself, after the opening line in a reminder.
-  const figuresAfter = kind === "issued" || kind === "resent" ? 2 : 1;
-  const figures: Array<[string, string]> = [
-    ["Invoice", facts.number],
-    ["Amount due", facts.amountDue],
-    ["Due date", facts.dueOn],
-  ];
-
-  const textRun = (run: Run) => (typeof run === "string" ? run : `${run.label} (${run.link})`);
-  const text = [
-    greeting,
-    ...paragraphs.slice(0, figuresAfter).flatMap((p) => ["", p.map(textRun).join("")]),
-    "",
-    ...figures.map(([k, v]) => `${k}: ${v}`),
-    ...paragraphs.slice(figuresAfter).flatMap((p) => ["", p.map(textRun).join("")]),
-    "",
-    ...signOff,
-  ].join("\n");
-
-  const htmlRun = (run: Run) =>
-    typeof run === "string"
-      ? escapeHtml(run)
-      : `<a href="${escapeHtml(run.link)}" style="color:#255291;font-weight:600">${escapeHtml(run.label)}</a>`;
-  const p = (runs: Run[]) =>
-    `<p style="margin:0 0 16px;font-size:15px;line-height:1.55">${runs.map(htmlRun).join("")}</p>`;
-
-  const html = `<!doctype html>
-<html><body style="margin:0;padding:24px;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a">
-  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:8px;padding:28px">
-    <p style="margin:0 0 16px;font-size:15px">${escapeHtml(greeting)}</p>
-    ${paragraphs.slice(0, figuresAfter).map(p).join("\n    ")}
-    <table role="presentation" style="margin:0 0 18px;border-collapse:collapse;font-size:14px">
-      ${figures
-        .map(
-          ([k, v]) =>
-            `<tr><td style="padding:3px 16px 3px 0;color:#64748b">${escapeHtml(k)}</td><td style="padding:3px 0;font-weight:600">${escapeHtml(v)}</td></tr>`,
-        )
-        .join("")}
-    </table>
-    ${paragraphs.slice(figuresAfter).map(p).join("\n    ")}
-    <p style="margin:24px 0 0;font-size:15px;line-height:1.55">--<br>Best regards,<br>Finance Team<br>${escapeHtml(facts.firmName)}</p>
-  </div>
-  ${
-    facts.pixel
-      ? `<img src="${escapeHtml(facts.pixel)}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px">`
-      : ""
-  }
-</body></html>`;
-
-  return { subject, text, html };
+  return composeInvoiceEmail(STANDARD_INVOICE_EMAILS[kind], facts);
 }
 
 /** A token nobody can guess or reuse: 32 random bytes as hex, safe in a URL. */
@@ -194,6 +85,8 @@ export async function sendInvoiceEmail(
   input: {
     invoiceId: string;
     kind: InvoiceEmailKind;
+    /** The words to send: the standard, the firm's own, or what was edited for this one. */
+    wording: InvoiceEmailWording;
     recipients: Array<{ email: string; full_name: string }>;
     cc: string[];
     replyTo: string | null;
@@ -221,15 +114,28 @@ export async function sendInvoiceEmail(
 
   for (const recipient of input.recipients) {
     const token = mailToken();
-    const message = renderInvoiceEmail(input.kind, {
+    const link = base ? `${base}/api/invoice-mail/${token}/view` : "";
+    const message = composeInvoiceEmail(input.wording, {
       name: recipient.full_name,
       number: input.number,
       firmName: input.firmName,
       amountDue: input.amountDue,
       dueOn: input.dueOn,
-      link: base ? `${base}/api/invoice-mail/${token}/view` : "",
+      link,
       pixel: base ? `${base}/api/invoice-mail/${token}/open.gif` : "",
     });
+
+    // What they read, kept for the History - without the tracking address, which is
+    // the recipient's to use and nobody else's.
+    const stored = composeInvoiceEmail(input.wording, {
+      name: recipient.full_name,
+      number: input.number,
+      firmName: input.firmName,
+      amountDue: input.amountDue,
+      dueOn: input.dueOn,
+      link: "",
+      pixel: "",
+    }).text;
 
     let error: string | null = null;
     if (!emailConfigured(env)) {
@@ -250,8 +156,8 @@ export async function sendInvoiceEmail(
     await env.DB.prepare(
       `INSERT INTO invoice_emails
          (id, invoice_id, kind, recipient_email, recipient_name, cc, status, error, token,
-          automatic, sent_by, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          automatic, sent_by, sent_at, subject, body, attached)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         newId(),
@@ -266,6 +172,9 @@ export async function sendInvoiceEmail(
         input.automatic ? 1 : 0,
         input.actorId,
         nowIso(),
+        message.subject,
+        stored,
+        attachments ? 1 : 0,
       )
       .run();
 

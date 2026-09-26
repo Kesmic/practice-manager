@@ -64,6 +64,15 @@ import {
   sendInvoiceEmail,
   type InvoiceEmailKind,
 } from "../invoice-email";
+import { emailConfigured } from "../email";
+import {
+  INVOICE_EMAIL_LIMITS,
+  STANDARD_INVOICE_EMAILS,
+  looksLikeEmail,
+  wordingFor,
+  type InvoiceEmailWording,
+} from "../../shared/invoice-email-wording";
+import { writeSetting } from "./settings";
 import { CURRENCIES, currencyOf } from "../../shared/money";
 import { billingDue, normaliseBillingDay } from "../../shared/billing";
 import {
@@ -350,7 +359,8 @@ async function fullInvoice(env: Env, id: string) {
     env.DB.prepare(
       `SELECT e.id, e.kind, e.recipient_email, e.recipient_name, e.cc, e.status, e.error,
               e.automatic, e.sent_at, e.opened_at, e.last_opened_at, e.open_count,
-              e.clicked_at, e.click_count, u.full_name AS sent_by_name
+              e.clicked_at, e.click_count, e.subject, e.body, e.attached,
+              u.full_name AS sent_by_name
          FROM invoice_emails e LEFT JOIN users u ON u.id = e.sent_by
         WHERE e.invoice_id = ? ORDER BY e.sent_at DESC`,
     ).bind(id),
@@ -675,11 +685,80 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
 
   /** Issues a draft: freezes the figures, sends it, and starts the clock. */
   router.post("/api/invoices/:id/send", async ({ request, env, params }) => {
-    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    // No body issues it in the saved wording to the billing contacts, as it always did.
+    const body = (request.headers.get("content-type") ?? "").includes("application/json")
+      ? await readJson<ComposedBody>(request)
+      : {};
     const settings = await readSettings(env);
-    const sent = await issueInvoice(env, params.id, firmCopies(settings, actor.email), actor.id);
+    const composed = body.subject === undefined ? null : readComposed(body);
+    if (composed) await keepWording(env, body, composed, actor.id);
+    const sent = await issueInvoice(
+      env,
+      params.id,
+      composed?.cc ?? firmCopies(settings, actor.email),
+      actor.id,
+      composed,
+    );
     return json(sent);
+  });
+
+  /**
+   * The email an invoice is about to go out with, for the screen to show and edit
+   * before it is sent: who it goes to, who is copied, and the words - the firm's own
+   * saved wording if it has one, otherwise the standard - with the figures they fill
+   * in. Nothing is sent from here.
+   */
+  router.get("/api/invoices/:id/email", async ({ request, env, params, url }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const kind = url.searchParams.get("kind") === "resent" ? "resent" : "issued";
+    const invoice = await env.DB.prepare(
+      `SELECT id, client_id, number, state, gross, balance_due, due_on, currency FROM invoices WHERE id = ?`,
+    )
+      .bind(params.id)
+      .first<{
+        id: string;
+        client_id: string;
+        number: string;
+        state: InvoiceState;
+        gross: number;
+        balance_due: number | null;
+        due_on: string;
+        currency: string;
+      }>();
+    if (!invoice) throw notFound("There is no such invoice.");
+    if (kind === "issued" && invoice.state !== "draft") {
+      throw badRequest("Only a draft can be issued. This one has already been sent.");
+    }
+    if (kind === "resent" && (invoice.state === "draft" || invoice.state === "void")) {
+      throw badRequest("Only an issued invoice can be sent again.");
+    }
+
+    const settings = await readSettings(env);
+    const saved = {
+      subject: settings.invoice_email_subject,
+      message: settings.invoice_email_message,
+    };
+    const { filename } = await buildDocument(env, invoice.id);
+    return json({
+      kind,
+      from_name: `${settings.firm_name} Finance`,
+      reply_to: (settings.firm_finance_email ?? "").trim() || null,
+      email_ready: emailConfigured(env),
+      contacts: await billingContacts(env, invoice.client_id),
+      cc: firmCopies(settings, actor.email),
+      wording: wordingFor(kind, saved),
+      standard: STANDARD_INVOICE_EMAILS[kind],
+      firm_wording: Boolean(saved.subject?.trim() || saved.message?.trim()),
+      facts: {
+        number: invoice.number,
+        firm_name: settings.firm_name,
+        amount_due: formatMoney(askedFor(invoice), invoice.currency),
+        due_on: letterDate(invoice.due_on),
+      },
+      attachment_name: filename,
+      limits: INVOICE_EMAIL_LIMITS,
+    });
   });
 
   /** Cancels an invoice, keeping its number and freeing anything it billed. */
@@ -889,7 +968,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
    */
   router.post("/api/invoices/:id/resend", async ({ request, env, params }) => {
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
-    const body = await readJson<{ also_to?: string }>(request);
+    const body = await readJson<ComposedBody & { also_to?: string }>(request);
     const invoice = await env.DB.prepare(`SELECT state FROM invoices WHERE id = ?`)
       .bind(params.id)
       .first<{ state: InvoiceState }>();
@@ -897,16 +976,20 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     if (invoice.state === "draft") throw badRequest("A draft has not been sent yet. Issue it instead.");
     if (invoice.state === "void") throw badRequest("A cancelled invoice is not sent again.");
 
+    const composed = body.subject === undefined ? null : readComposed(body);
+    if (composed && !composed.to.length) throw badRequest("Add somebody to send it to.");
     const alsoTo = (body.also_to ?? "").trim();
-    if (alsoTo && !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(alsoTo)) {
+    if (alsoTo && !looksLikeEmail(alsoTo)) {
       throw badRequest("That does not look like an email address.");
     }
+    if (composed) await keepWording(env, body, composed, actor.id);
     const settings = await readSettings(env);
     const outcome = await mailInvoice(env, params.id, "resent", {
       actorId: actor.id,
       automatic: false,
-      cc: firmCopies(settings, actor.email),
+      cc: composed?.cc ?? firmCopies(settings, actor.email),
       alsoTo: alsoTo || null,
+      composed,
     });
     if (!outcome.sent_to.length) {
       throw badRequest(
@@ -1435,7 +1518,14 @@ async function mailInvoice(
   env: Env,
   invoiceId: string,
   kind: InvoiceEmailKind,
-  options: { actorId: string | null; automatic: boolean; cc: string[]; alsoTo?: string | null },
+  options: {
+    actorId: string | null;
+    automatic: boolean;
+    cc: string[];
+    alsoTo?: string | null;
+    /** Edited on the screen before sending: replaces the recipients, words and attachment. */
+    composed?: Composed | null;
+  },
 ): Promise<{ sent_to: string[]; failed: Array<{ email: string; error: string }> }> {
   const invoice = await env.DB.prepare(
     `SELECT id, client_id, number, gross, balance_due, due_on, currency FROM invoices WHERE id = ?`,
@@ -1452,7 +1542,18 @@ async function mailInvoice(
     }>();
   if (!invoice) throw notFound("There is no such invoice.");
 
-  const recipients = await billingContacts(env, invoice.client_id);
+  const contacts = await billingContacts(env, invoice.client_id);
+  // Named on the screen: a billing contact keeps their name for the greeting; anybody
+  // else added by hand is greeted as Sir/Madam rather than by a guess.
+  const recipients = options.composed
+    ? options.composed.to.map(
+        (email) =>
+          contacts.find((c) => c.email.toLowerCase() === email.toLowerCase()) ?? {
+            email,
+            full_name: "",
+          },
+      )
+    : contacts;
   if (options.alsoTo && !recipients.some((r) => r.email.toLowerCase() === options.alsoTo!.toLowerCase())) {
     recipients.push({ email: options.alsoTo, full_name: "" });
   }
@@ -1466,10 +1567,17 @@ async function mailInvoice(
     today(),
   );
   const { html, filename } = await buildDocument(env, invoiceId);
+  const wording =
+    options.composed?.wording ??
+    wordingFor(kind, {
+      subject: settings.invoice_email_subject,
+      message: settings.invoice_email_message,
+    });
 
   return await sendInvoiceEmail(env, {
     invoiceId,
     kind,
+    wording,
     recipients,
     cc: options.cc,
     replyTo: (settings.firm_finance_email ?? "").trim() || null,
@@ -1480,7 +1588,7 @@ async function mailInvoice(
       invoice.currency,
     ),
     dueOn: letterDate(invoice.due_on),
-    attachment: { filename, html },
+    attachment: options.composed?.attach === false ? null : { filename, html },
     actorId: options.actorId,
     automatic: options.automatic,
   });
@@ -1877,6 +1985,82 @@ export async function raiseInvoice(
  * hand. Never blind: a client is entitled to see who else read a letter about money,
  * and a member of staff to be able to point at the copy later.
  */
+/** An invoice email as edited on the screen, before it is checked. */
+interface ComposedBody {
+  to?: unknown;
+  cc?: unknown;
+  subject?: unknown;
+  message?: unknown;
+  attach?: unknown;
+  save_wording?: unknown;
+}
+
+/** An invoice email as edited on the screen, checked. */
+interface Composed {
+  to: string[];
+  cc: string[];
+  wording: InvoiceEmailWording;
+  attach: boolean;
+}
+
+/** A list of addresses, each checked, each once, and not too many. */
+function addressList(value: unknown, field: string, max: number): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw badRequest(`"${field}" must be a list of email addresses.`);
+  const out = new Map<string, string>();
+  for (const item of value) {
+    const email = typeof item === "string" ? item.trim() : "";
+    if (!looksLikeEmail(email)) {
+      throw badRequest(`${email ? `"${email.slice(0, 80)}"` : "One of them"} does not look like an email address.`);
+    }
+    if (!out.has(email.toLowerCase())) out.set(email.toLowerCase(), email);
+  }
+  if (out.size > max) throw badRequest(`Send it to at most ${max} addresses at a time.`);
+  return [...out.values()];
+}
+
+/**
+ * Checks what the screen sends. The words are plain text - the email escapes every
+ * character of them - so the checks are only on size and shape: a subject is one line,
+ * and a message cannot be empty.
+ */
+function readComposed(body: ComposedBody): Composed {
+  const subject = (typeof body.subject === "string" ? body.subject : "").replace(/[\r\n]+/g, " ").trim();
+  const message = (typeof body.message === "string" ? body.message : "").replace(/\r\n?/g, "\n").trim();
+  if (!subject) throw badRequest("The email needs a subject.");
+  if (!message) throw badRequest("The email needs a message.");
+  if (subject.length > INVOICE_EMAIL_LIMITS.subject) {
+    throw badRequest(`Keep the subject under ${INVOICE_EMAIL_LIMITS.subject} characters.`);
+  }
+  if (message.length > INVOICE_EMAIL_LIMITS.message) {
+    throw badRequest(`Keep the message under ${INVOICE_EMAIL_LIMITS.message.toLocaleString("en-GB")} characters.`);
+  }
+  const to = addressList(body.to, "to", 20);
+  // Anybody in both lists gets it once, as a recipient.
+  const cc = addressList(body.cc, "cc", 10).filter(
+    (c) => !to.some((t) => t.toLowerCase() === c.toLowerCase()),
+  );
+  return { to, cc, wording: { subject, message }, attach: body.attach !== false };
+}
+
+/**
+ * Makes these words the firm's wording for every invoice from now on, when the screen
+ * asks - including the ones the monthly run sends by itself. Saving the standard words
+ * clears the firm's own, so "put it back" is simply saving what the screen offers.
+ */
+async function keepWording(
+  env: Env,
+  body: ComposedBody,
+  composed: Composed,
+  actorId: string,
+): Promise<void> {
+  if (body.save_wording !== true) return;
+  const standard = STANDARD_INVOICE_EMAILS.issued;
+  const { subject, message } = composed.wording;
+  await writeSetting(env, "invoice_email_subject", subject === standard.subject ? "" : subject, actorId);
+  await writeSetting(env, "invoice_email_message", message === standard.message ? "" : message, actorId);
+}
+
 function firmCopies(settings: Record<string, string>, actorEmail?: string | null): string[] {
   const out = new Set<string>();
   const finance = (settings.firm_finance_email ?? "").trim();
@@ -1895,6 +2079,7 @@ export async function issueInvoice(
   invoiceId: string,
   copies: string[],
   actorId: string | null = null,
+  composed: Composed | null = null,
 ): Promise<{ sent_to: string[]; failed: Array<{ email: string; error: string }> }> {
     const { invoice } = await fullInvoice(env, invoiceId);
     if (invoice.state !== "draft") {
@@ -1925,11 +2110,14 @@ export async function issueInvoice(
      */
     await accrueCommission(env, invoiceId);
 
-    if (!contacts.length) return { sent_to: [], failed: [] };
+    // Nobody to send it to - none on file, or everybody taken off on the screen - so
+    // it is issued without an email, which is what the button said it would do.
+    if (!(composed ? composed.to.length : contacts.length)) return { sent_to: [], failed: [] };
     return await mailInvoice(env, invoiceId, "issued", {
       actorId,
       automatic: actorId === null,
       cc: copies,
+      composed,
     });
 }
 
