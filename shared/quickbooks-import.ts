@@ -16,9 +16,10 @@
  *    pays a monthly bill. A payment that matches nothing is shown and left out, never
  *    guessed onto an invoice.
  *
- * Pure, so the tests can pin it with rows as the spreadsheet reader returns them; the
- * screen shows the result for a Partner to check before anything is saved, and the
- * Worker checks it again when it is.
+ * Pure, so the tests pin it with rows as the spreadsheet reader returns them. There is
+ * no screen for it: at the firm's request, ConvyPlus's history was read with this and
+ * written straight into the database (migrations/0052), and it is kept for the next
+ * client who arrives with years of QuickBooks behind them.
  */
 
 export type Cell = string | number | null;

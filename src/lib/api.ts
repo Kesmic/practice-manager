@@ -1285,19 +1285,6 @@ export const api = {
   removeInvoiceFile: (fileId: string) => request<void>(`/api/invoice-files/${fileId}`, { method: "DELETE" }),
   invoiceFileUrl: (fileId: string) => `/api/invoice-files/${fileId}`,
   clientInvoiceFileUrl: (invoiceId: string, fileId: string) => `/api/client/invoices/${invoiceId}/files/${fileId}`,
-  importInvoices: (
-    clientId: string,
-    body: {
-      source: string;
-      currency: string;
-      invoices: unknown[];
-      payments: Array<{ invoice: string; paid_on: string; amount: number; account: string }>;
-    },
-  ) =>
-    request<{ created: number; paid: number; payments: number; outstanding: number }>(
-      `/api/clients/${clientId}/import-invoices`,
-      { method: "POST", body },
-    ),
   invoiceEmail: (id: string, kind: "issued" | "resent" | "reminder") =>
     request<InvoiceEmailDraft>(`/api/invoices/${id}/email?kind=${kind}`),
   sendInvoice: (id: string, email?: InvoiceEmailComposed) =>

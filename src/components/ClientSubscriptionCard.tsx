@@ -53,7 +53,6 @@ import { useDialogs } from "../lib/dialogs";
 import { ApiRequestError, api, type ManualInvoiceLine } from "../lib/api";
 import { MAX_INVOICE_LINES, whyNotALine } from "@shared/invoices";
 import { TierMeters } from "./TierMeters";
-import { InvoiceImportModal } from "./InvoiceImport";
 import {
   ErrorBanner,
   Field,
@@ -67,13 +66,7 @@ import {
 import { useSession } from "../lib/auth";
 import { formatDate, formatMoney, formatMoneyExact } from "../lib/format";
 
-export function ClientSubscriptionCard({
-  clientId,
-  clientName = "",
-}: {
-  clientId: string;
-  clientName?: string;
-}) {
+export function ClientSubscriptionCard({ clientId }: { clientId: string }) {
   const { can } = useSession();
   const [data, setData] = useState<ClientSubscriptionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -359,7 +352,6 @@ export function ClientSubscriptionCard({
             <h3 className="mb-2 text-sm font-semibold text-slate-900">Billing</h3>
             <RaiseInvoice
               clientId={clientId}
-              clientName={clientName}
               busy={busy}
               act={act}
               hasSubscription={!!subscription}
@@ -1227,14 +1219,12 @@ function OfferServiceModal({
 
 function RaiseInvoice({
   clientId,
-  clientName,
   busy,
   act,
   hasSubscription,
   currency,
 }: {
   clientId: string;
-  clientName: string;
   busy: boolean;
   act: (what: () => Promise<unknown>, message: string) => Promise<void>;
   hasSubscription: boolean;
@@ -1251,8 +1241,6 @@ function RaiseInvoice({
    */
   const [refusal, setRefusal] = useState<{ message: string; invoiceId: string | null } | null>(null);
   const [byHand, setByHand] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [imported, setImported] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   const raise = async () => {
@@ -1296,24 +1284,8 @@ function RaiseInvoice({
         <button type="button" className="btn-secondary" disabled={busy} onClick={() => setByHand(true)}>
           Raise one by hand
         </button>
-        {/* A client arriving with a history in QuickBooks: their past invoices and payments. */}
-        <button type="button" className="btn-ghost" disabled={busy} onClick={() => setImporting(true)}>
-          Bring in from QuickBooks…
-        </button>
       </div>
-      {imported && <p className="text-sm text-emerald-800">{imported}</p>}
-      {importing && (
-        <InvoiceImportModal
-          clientId={clientId}
-          clientName={clientName}
-          currency={currency}
-          onClose={() => setImporting(false)}
-          onDone={(message) => {
-            setImporting(false);
-            setImported(message);
-          }}
-        />
-      )}
+
       {hasSubscription && (
         <label className="flex items-center gap-2 text-xs text-slate-600">
           <input type="checkbox" checked={withServices} onChange={(e) => setWithServices(e.target.checked)} />
