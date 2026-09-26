@@ -661,6 +661,7 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       .bind(params.id, actor.client_id)
       .first<{ id: string; state: InvoiceState; gross: number; due_on: string }>();
     if (!invoice) throw notFound("There is no such invoice on your account.");
+    await recordView(env, params.id, actor.id, "page");
 
     const [lines, taxes, payments] = await env.DB.batch([
       env.DB.prepare(
@@ -701,6 +702,7 @@ export function registerClientPortalRoutes(router: Router<Env>): void {
       .bind(params.id, actor.client_id)
       .first();
     if (!mine) throw notFound("There is no such invoice on your account.");
+    await recordView(env, params.id, actor.id, "download");
     return await serveDocument(env, params.id);
   });
   /**
@@ -828,3 +830,27 @@ async function sendResetLink(
 
 /** Referenced so the cookie's name is exported from exactly one place. */
 export { CLIENT_SESSION_COOKIE };
+
+/**
+ * Notes that a client looked at an invoice, for the firm's log. At most once in ten
+ * minutes per person and kind, so a page left open and refreshed reads as one visit.
+ */
+async function recordView(
+  env: Env,
+  invoiceId: string,
+  clientUserId: string,
+  what: "page" | "download",
+): Promise<void> {
+  const at = nowIso();
+  const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  await env.DB.prepare(
+    `INSERT INTO invoice_views (id, invoice_id, client_user_id, what, viewed_at)
+     SELECT ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM invoice_views
+         WHERE invoice_id = ? AND client_user_id = ? AND what = ? AND viewed_at > ?
+      )`,
+  )
+    .bind(newId(), invoiceId, clientUserId, what, at, invoiceId, clientUserId, what, since)
+    .run();
+}

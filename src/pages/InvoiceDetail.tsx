@@ -8,9 +8,9 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { INVOICE_STATE_LABELS, whyNotALine } from "@shared/invoices";
-import type { InvoiceDetail as Detail } from "@shared/types";
+import type { InvoiceDetail as Detail, InvoiceEmailRow } from "@shared/types";
 import { useDialogs } from "../lib/dialogs";
 import { ApiRequestError, api } from "../lib/api";
 import { InvoiceStatePill, InvoiceTotals } from "../components/InvoiceTotals";
@@ -33,6 +33,7 @@ export function InvoiceDetail() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const dialogs = useDialogs();
+  const navigate = useNavigate();
   const [paying, setPaying] = useState(false);
 
   const load = useCallback(async () => {
@@ -50,15 +51,15 @@ export function InvoiceDetail() {
   if (error && !data) return <ErrorBanner error={error} />;
   if (!data) return <Spinner label="Loading the invoice" />;
 
-  const { invoice, lines, taxes, payments, reminders, standing } = data;
+  const { invoice, lines, taxes, payments, reminders, emails, views, standing } = data;
   const partner = can("partner");
 
   const act = async (what: () => Promise<unknown>, message: string) => {
     setBusy(true);
     setError(null);
     try {
-      await what();
-      setNotice(message);
+      const said = await what();
+      setNotice(typeof said === "string" ? said : message);
       await load();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Could not do that.");
@@ -106,12 +107,12 @@ export function InvoiceDetail() {
             disabled={busy}
             onClick={() =>
               void act(async () => {
-                const { sent_to } = await api.sendInvoice(invoice.id);
-                setNotice(
-                  sent_to.length
-                    ? `Issued and emailed to ${sent_to.join(", ")}.`
-                    : "Issued. Nobody at that client has an email address on file, so nothing was sent.",
-                );
+                const { sent_to, failed } = await api.sendInvoice(invoice.id);
+                return sent_to.length
+                  ? `Issued and emailed to ${sent_to.join(", ")}.${failed.length ? ` It could not reach ${failed.map((f) => f.email).join(", ")}.` : ""}`
+                  : failed.length
+                    ? `Issued, but the email failed: ${failed[0].error}`
+                    : "Issued. Nobody at that client has an email address on file, so nothing was sent.";
               }, "Issued.")
             }
           >
@@ -131,14 +132,81 @@ export function InvoiceDetail() {
             onClick={() =>
               void act(async () => {
                 const r = await api.remindInvoice(invoice.id);
-                setNotice(`Reminder ${r.step} sent.`);
+                return r.step === 0 ? "Due today notice sent." : `Reminder ${r.step} sent.`;
               }, "Reminder sent.")
             }
           >
             Chase it now
           </button>
         )}
-        {partner && invoice.state !== "void" && invoice.state !== "paid" && (
+        {partner && (invoice.state === "sent" || invoice.state === "part_paid" || invoice.state === "paid") && (
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={busy}
+            onClick={async () => {
+              const alsoTo = await dialogs.ask(
+                "It goes to the billing contacts again, in the same words as the first time. To send it somewhere else as well - the client's accountant, say - add the address.",
+                {
+                  title: "Send it again",
+                  required: false,
+                  placeholder: "Also send to (optional)",
+                  confirmLabel: "Send it again",
+                },
+              );
+              if (alsoTo === null) return;
+              void act(async () => {
+                const r = await api.resendInvoice(invoice.id, alsoTo.trim());
+                return `Sent again to ${r.sent_to.join(", ")}.${r.failed.length ? ` It could not reach ${r.failed.map((f) => f.email).join(", ")}.` : ""}`;
+              }, "Sent again.");
+            }}
+          >
+            Send it again
+          </button>
+        )}
+        {partner && invoice.state === "void" && (
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={busy}
+            onClick={async () => {
+              const ok = await dialogs.confirm(
+                "It goes back to a draft under the same number, with a fresh due date. The client stops seeing it straight away, and you can correct it and issue it again.",
+                { title: "Put it back to draft?", confirmLabel: "Back to draft" },
+              );
+              if (!ok) return;
+              void act(() => api.redraftInvoice(invoice.id), "Back to draft. The client no longer sees it.");
+            }}
+          >
+            Back to draft
+          </button>
+        )}
+        {partner && (invoice.state === "void" || invoice.state === "draft") && (
+          <button
+            type="button"
+            className="btn-ghost text-rose-700"
+            disabled={busy}
+            onClick={async () => {
+              const reason = await dialogs.ask(
+                `${invoice.number} will be deleted outright and the client will no longer see it. The firm keeps a one-line record of the number and why, for the audit trail. Why is it being deleted?`,
+                { title: "Delete this invoice?", multiline: true, danger: true, confirmLabel: "Delete it" },
+              );
+              if (!reason?.trim()) return;
+              setBusy(true);
+              setError(null);
+              try {
+                await api.deleteInvoice(invoice.id, reason.trim());
+                navigate("/invoices");
+              } catch (err) {
+                setError(err instanceof ApiRequestError ? err.message : "Could not delete it.");
+                setBusy(false);
+              }
+            }}
+          >
+            Delete
+          </button>
+        )}
+        {partner && invoice.state !== "void" && invoice.state !== "paid" && invoice.state !== "draft" && (
           <button
             type="button"
             className="btn-ghost text-rose-700"
@@ -265,7 +333,32 @@ export function InvoiceDetail() {
         )}
       </section>
 
-      {reminders.length > 0 && (
+      <EmailLog emails={emails} />
+
+      {views.length > 0 && (
+        <section className="card p-5">
+          <h2 className="card-title">Seen in the client portal</h2>
+          <p className="muted mt-1">Exact: recorded when somebody signed in to the portal opened or downloaded it.</p>
+          <div className="mt-2 divide-y divide-slate-100">
+            {views.map((v, i) => (
+              <div key={i} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2 text-sm">
+                <span className="font-medium text-slate-800">{v.full_name ?? v.email ?? "A former login"}</span>
+                <span className="text-slate-600">
+                  {v.what === "download" ? "Downloaded it" : "Opened it"}
+                  {v.times > 1 ? ` ${v.times} times` : ""}
+                </span>
+                <span className="ml-auto tabular-nums text-xs text-slate-500">
+                  {v.times > 1
+                    ? `first ${formatDateTime(v.first_at)} · last ${formatDateTime(v.last_at)}`
+                    : formatDateTime(v.last_at)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {emails.length === 0 && reminders.length > 0 && (
         <section className="card p-5">
           <h2 className="card-title">Chasing</h2>
           <div className="mt-2 divide-y divide-slate-100">
@@ -488,5 +581,70 @@ function AddLine({
       </div>
       {reason && description.trim() && <p className="hint mt-1 text-amber-800">{reason}</p>}
     </form>
+  );
+}
+
+const EMAIL_LABELS: Record<InvoiceEmailRow["kind"], string> = {
+  issued: "Invoice sent",
+  resent: "Sent again",
+  due_today: "Due today notice",
+  overdue: "Overdue reminder",
+};
+
+/**
+ * Every email this invoice has sent, one row per recipient: what it was, who it went to
+ * and who was copied, whether the provider took it, and what the recipient did with it.
+ */
+function EmailLog({ emails }: { emails: InvoiceEmailRow[] }) {
+  if (emails.length === 0) return null;
+  return (
+    <section className="card p-5">
+      <h2 className="card-title">Emails</h2>
+      <p className="muted mt-1">
+        Opened is what the recipient&rsquo;s mail app reports when it loads images. Some
+        apps block that and some load images on arrival, so treat it as a strong hint, not
+        proof. Seen in the portal, below, is exact.
+      </p>
+      <div className="mt-3 divide-y divide-slate-100">
+        {emails.map((e) => (
+          <div key={e.id} className="grid gap-x-4 gap-y-1 py-3 text-sm sm:grid-cols-[10rem_1fr]">
+            <div className="tabular-nums text-slate-500">
+              {formatDateTime(e.sent_at)}
+              <div className="text-xs text-slate-400">
+                {e.automatic ? "automatic" : e.sent_by_name ? `by ${e.sent_by_name}` : "by hand"}
+              </div>
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium text-slate-800">{EMAIL_LABELS[e.kind]}</span>
+                {e.status === "failed" ? (
+                  <span className="pill bg-rose-50 text-rose-800 ring-rose-200">Not delivered</span>
+                ) : e.opened_at ? (
+                  <span
+                    className="pill bg-emerald-50 text-emerald-800 ring-emerald-200"
+                    title={`First ${formatDateTime(e.opened_at)}${e.last_opened_at && e.last_opened_at !== e.opened_at ? `, last ${formatDateTime(e.last_opened_at)}` : ""}`}
+                  >
+                    Opened {formatDateTime(e.opened_at)}
+                    {e.open_count > 1 ? ` · ${e.open_count} times` : ""}
+                  </span>
+                ) : (
+                  <span className="pill bg-slate-100 text-slate-600 ring-slate-200">Sent, not opened yet</span>
+                )}
+                {e.clicked_at && (
+                  <span className="pill bg-brand-50 text-link ring-brand-200">
+                    Followed the link {formatDateTime(e.clicked_at)}
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 break-words text-slate-600">
+                To {e.recipient_name ? `${e.recipient_name} <${e.recipient_email}>` : e.recipient_email}
+              </div>
+              {e.cc && <div className="break-words text-xs text-slate-500">Copied to {e.cc}</div>}
+              {e.status === "failed" && <div className="mt-1 text-xs text-rose-700">{e.error}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
