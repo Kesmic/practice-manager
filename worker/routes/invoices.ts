@@ -167,8 +167,11 @@ async function nextInvoiceNumber(
     .replace(/\{MM\}/g, when.slice(5, 7))
     .replace(/\{SEQ\}/g, String(row.value).padStart(4, "0"));
 
-  if (format.includes("{SEQ}")) return base;
-
+  /*
+   * Checked whatever the format, because a Partner can renumber an invoice by hand and
+   * may pick a number the sequence has not reached yet. Taking it again would fail on
+   * the unique index and lose the draft; a suffix keeps the draft and says why.
+   */
   const taken = await env.DB.prepare(`SELECT id FROM invoices WHERE number = ?`)
     .bind(base)
     .first();
@@ -782,6 +785,56 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       files: await filesFor(env, invoice.id, { sharedOnly: true }),
       limits: INVOICE_EMAIL_LIMITS,
     });
+  });
+
+  /**
+   * Corrects an invoice's number. A Partner's decision, as issuing is.
+   *
+   * Allowed in any state: a draft simply takes the new number, and an invoice already
+   * sent keeps everything else - its payments, its email log, its link in the client's
+   * portal, all of which follow the invoice rather than the number. What changes is the
+   * document: the next PDF carries the new number, while the client's copy still has
+   * the old one. So the History records both, and the screen suggests sending it again.
+   */
+  router.patch("/api/invoices/:id/number", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ number?: unknown }>(request);
+    const number = (typeof body.number === "string" ? body.number : "").trim().replace(/\s+/g, " ");
+    if (!number) throw badRequest("Give the invoice a number.");
+    if (number.length > 40) throw badRequest("Keep the number under 40 characters.");
+    if (!/^[\p{L}\p{N}_\-/.# ]+$/u.test(number)) {
+      throw badRequest("Use letters, numbers and - _ / . # only.");
+    }
+    const invoice = await env.DB.prepare(`SELECT id, number FROM invoices WHERE id = ?`)
+      .bind(params.id)
+      .first<{ id: string; number: string }>();
+    if (!invoice) throw notFound("There is no such invoice.");
+    if (invoice.number === number) return json(await fullInvoice(env, invoice.id));
+
+    const other = await env.DB.prepare(`SELECT id FROM invoices WHERE number = ? AND id <> ?`)
+      .bind(number, invoice.id)
+      .first<{ id: string }>();
+    if (other) throw conflict(`${number} is already the number of another invoice.`, other.id);
+
+    const timestamp = nowIso();
+    try {
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE invoices SET number = ?, updated_at = ? WHERE id = ?`).bind(
+          number,
+          timestamp,
+          invoice.id,
+        ),
+        env.DB.prepare(
+          `INSERT INTO invoice_events (id, invoice_id, kind, detail, actor_id, at)
+           VALUES (?, ?, 'renumbered', ?, ?, ?)`,
+        ).bind(newId(), invoice.id, `${invoice.number} → ${number}`, actor.id, timestamp),
+      ]);
+    } catch (err) {
+      // Taken between the check and the write.
+      if (/UNIQUE/i.test(String(err))) throw conflict(`${number} is already the number of another invoice.`);
+      throw err;
+    }
+    return json(await fullInvoice(env, invoice.id));
   });
 
   /** Cancels an invoice, keeping its number and freeing anything it billed. */

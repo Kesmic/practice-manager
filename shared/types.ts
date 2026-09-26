@@ -1373,7 +1373,7 @@ export interface InvoiceViewRow {
  * draft, and the date of an earlier issue that going back to draft cleared.
  */
 export interface InvoiceEventRow {
-  kind: "issued" | "cancelled" | "redrafted";
+  kind: "issued" | "cancelled" | "redrafted" | "renumbered";
   detail: string | null;
   at: string;
   actor_name: string | null;

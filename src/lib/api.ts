@@ -1297,6 +1297,8 @@ export const api = {
       `/api/invoices/${id}/resend`,
       { method: "POST", body: email },
     ),
+  renumberInvoice: (id: string, number: string) =>
+    request<InvoiceDetail>(`/api/invoices/${id}/number`, { method: "PATCH", body: { number } }),
   redraftInvoice: (id: string) =>
     request<InvoiceDetail>(`/api/invoices/${id}/redraft`, { method: "POST" }),
   deleteInvoice: (id: string, reason: string) =>
