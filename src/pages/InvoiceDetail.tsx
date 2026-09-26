@@ -79,6 +79,44 @@ export function InvoiceDetail() {
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <h1 className="section-title">{invoice.number}</h1>
+          {partner && (
+            <button
+              type="button"
+              className="btn-ghost btn-sm text-xs"
+              disabled={busy}
+              onClick={async () => {
+                const sent = invoice.state !== "draft";
+                const next = await dialogs.ask(
+                  sent
+                    ? `The client already has this invoice as ${invoice.number}. Its payments, emails and portal link stay with it, and the History keeps a note of the old number. Send it again afterwards so the client has a copy with the new one.`
+                    : "The draft takes the new number. It must not already be in use on another invoice.",
+                  {
+                    title: "Change the invoice number",
+                    initial: invoice.number,
+                    placeholder: "e.g. CPL202609",
+                    confirmLabel: "Change it",
+                  },
+                );
+                if (next === null || next.trim() === invoice.number) return;
+                setBusy(true);
+                setError(null);
+                try {
+                  setData(await api.renumberInvoice(invoice.id, next.trim()));
+                  setNotice(
+                    sent
+                      ? `Now ${next.trim()}. The client's copy still says ${invoice.number} - use "Send it again" to give them the new one.`
+                      : `Now ${next.trim()}.`,
+                  );
+                } catch (err) {
+                  setError(err instanceof ApiRequestError ? err.message : "Could not change the number.");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Change number
+            </button>
+          )}
           <InvoiceStatePill
             state={invoice.state}
             overdue={standing.overdue}
@@ -717,7 +755,12 @@ function History({ data }: { data: Detail }) {
     }
     items.push({
       at: ev.at,
-      title: ev.kind === "cancelled" ? "Cancelled" : "Put back to draft",
+      title:
+        ev.kind === "cancelled"
+          ? "Cancelled"
+          : ev.kind === "renumbered"
+            ? "Number changed"
+            : "Put back to draft",
       by: ev.actor_name,
       detail: ev.detail ? <span>{ev.detail}</span> : undefined,
     });
