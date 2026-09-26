@@ -185,7 +185,7 @@ export function EmailWordingAdmin() {
               to="Ama Owusu <ama@example.com>"
               subject={preview.subject}
               html={preview.html}
-              attachment="inv202610-example-client.html"
+              attachment="inv202610-example-client.pdf"
             />
             <p className="hint">An example client and figures, to show how it reads.</p>
           </div>

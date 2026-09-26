@@ -65,14 +65,18 @@ export function mailToken(): string {
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** UTF-8 text as base64, which is how the providers take an attachment. */
-export function base64Utf8(value: string): string {
-  const bytes = new TextEncoder().encode(value);
+/** Bytes as base64, which is how the providers take an attachment. */
+export function base64Bytes(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) {
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
   return btoa(binary);
+}
+
+/** UTF-8 text as base64. */
+export function base64Utf8(value: string): string {
+  return base64Bytes(new TextEncoder().encode(value));
 }
 
 /**
@@ -94,7 +98,8 @@ export async function sendInvoiceEmail(
     number: string;
     amountDue: string;
     dueOn: string;
-    attachment: { filename: string; html: string } | null;
+    /** The invoice as a PDF, or null to send without it. */
+    attachment: { filename: string; bytes: Uint8Array } | null;
     actorId: string | null;
     automatic: boolean;
   },
@@ -106,8 +111,8 @@ export async function sendInvoiceEmail(
     ? [
         {
           filename: input.attachment.filename,
-          content: base64Utf8(input.attachment.html),
-          contentType: "text/html",
+          content: base64Bytes(input.attachment.bytes),
+          contentType: "application/pdf",
         },
       ]
     : undefined;
