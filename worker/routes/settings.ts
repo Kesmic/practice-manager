@@ -62,6 +62,14 @@ const DEFAULTS: Record<string, string> = {
    */
   invoice_number_format: "{CLIENT}{YYYY}{MM}",
 
+  /**
+   * The firm's own wording for the email an invoice goes out with, when it has changed
+   * the standard one. Empty means the standard (shared/invoice-email-wording.ts). Set
+   * from the send screen's "use this wording from now on".
+   */
+  invoice_email_subject: "",
+  invoice_email_message: "",
+
   /** Days from issue to due. The firm's own invoices say Net 15. */
   invoice_terms_days: "15",
 
@@ -184,6 +192,7 @@ const MAX_LENGTH: Record<string, number> = {
   firm_about: 5_000,
   firm_core_services: 2_000,
   proposal_terms: 10_000,
+  invoice_email_message: 5_000,
   // One line per line, printed under the firm's name on an invoice.
   firm_address: 500,
   // JSON the screen writes: which services the intake form offers, and which

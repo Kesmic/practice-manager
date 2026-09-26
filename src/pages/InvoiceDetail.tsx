@@ -14,6 +14,7 @@ import type { InvoiceDetail as Detail, InvoiceEmailRow } from "@shared/types";
 import { useDialogs } from "../lib/dialogs";
 import { ApiRequestError, api } from "../lib/api";
 import { InvoiceStatePill, InvoiceTotals } from "../components/InvoiceTotals";
+import { InvoiceEmailComposer } from "../components/InvoiceEmailComposer";
 import {
   ErrorBanner,
   Field,
@@ -35,6 +36,7 @@ export function InvoiceDetail() {
   const dialogs = useDialogs();
   const navigate = useNavigate();
   const [paying, setPaying] = useState(false);
+  const [composing, setComposing] = useState<"issued" | "resent" | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -96,6 +98,20 @@ export function InvoiceDetail() {
       {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
       {notice && <SuccessBanner message={notice} onDismiss={() => setNotice(null)} />}
 
+      {composing && (
+        <InvoiceEmailComposer
+          invoiceId={invoice.id}
+          kind={composing}
+          onClose={() => setComposing(null)}
+          onDone={(said) => {
+            setComposing(null);
+            setError(null);
+            setNotice(said);
+            void load();
+          }}
+        />
+      )}
+
       <div className="flex flex-wrap gap-2">
         <a className="btn-secondary" href={`/api/invoices/${invoice.id}/document`}>
           Download the invoice
@@ -105,18 +121,9 @@ export function InvoiceDetail() {
             type="button"
             className="btn-primary"
             disabled={busy}
-            onClick={() =>
-              void act(async () => {
-                const { sent_to, failed } = await api.sendInvoice(invoice.id);
-                return sent_to.length
-                  ? `Issued and emailed to ${sent_to.join(", ")}.${failed.length ? ` It could not reach ${failed.map((f) => f.email).join(", ")}.` : ""}`
-                  : failed.length
-                    ? `Issued, but the email failed: ${failed[0].error}`
-                    : "Issued. Nobody at that client has an email address on file, so nothing was sent.";
-              }, "Issued.")
-            }
+            onClick={() => setComposing("issued")}
           >
-            Issue and send
+            Issue and send…
           </button>
         )}
         {partner && (invoice.state === "sent" || invoice.state === "part_paid") && (
@@ -144,24 +151,9 @@ export function InvoiceDetail() {
             type="button"
             className="btn-secondary"
             disabled={busy}
-            onClick={async () => {
-              const alsoTo = await dialogs.ask(
-                "It goes to the billing contacts again, in the same words as the first time. To send it somewhere else as well - the client's accountant, say - add the address.",
-                {
-                  title: "Send it again",
-                  required: false,
-                  placeholder: "Also send to (optional)",
-                  confirmLabel: "Send it again",
-                },
-              );
-              if (alsoTo === null) return;
-              void act(async () => {
-                const r = await api.resendInvoice(invoice.id, alsoTo.trim());
-                return `Sent again to ${r.sent_to.join(", ")}.${r.failed.length ? ` It could not reach ${r.failed.map((f) => f.email).join(", ")}.` : ""}`;
-              }, "Sent again.");
-            }}
+            onClick={() => setComposing("resent")}
           >
-            Send it again
+            Send it again…
           </button>
         )}
         {partner && invoice.state === "void" && (
@@ -607,6 +599,17 @@ function History({ data }: { data: Detail }) {
           </div>
           {e.cc && <div className="break-words text-xs text-slate-500">Copied to {e.cc}</div>}
           {e.status === "failed" && <div className="text-xs text-rose-700">{e.error}</div>}
+          {e.subject && (
+            <details className="mt-1 text-xs">
+              <summary className="cursor-pointer text-link">
+                What it said{e.attached ? "" : " · sent without the invoice attached"}
+              </summary>
+              <div className="mt-1 rounded-md bg-slate-50 p-3 ring-1 ring-slate-200">
+                <div className="font-semibold text-slate-900">{e.subject}</div>
+                <div className="mt-2 whitespace-pre-wrap break-words text-slate-700">{e.body}</div>
+              </div>
+            </details>
+          )}
         </>
       ),
       pills:

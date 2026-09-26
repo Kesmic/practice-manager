@@ -315,6 +315,7 @@ export function Modal({
   children,
   footer,
   wide,
+  xwide,
 }: {
   open: boolean;
   title: string;
@@ -322,6 +323,8 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** For side-by-side work, such as an email beside its preview. */
+  xwide?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   /*
@@ -365,7 +368,7 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className={`relative w-full ${wide ? "max-w-3xl" : "max-w-xl"} rounded-lg bg-panel shadow-xl`}
+        className={`relative w-full ${xwide ? "max-w-6xl" : wide ? "max-w-3xl" : "max-w-xl"} rounded-lg bg-panel shadow-xl`}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
           <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
@@ -380,7 +383,7 @@ export function Modal({
         </div>
         <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
         {footer && (
-          <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
             {footer}
           </div>
         )}

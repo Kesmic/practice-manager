@@ -1307,7 +1307,39 @@ export interface InvoiceEmailRow {
   open_count: number;
   clicked_at: string | null;
   click_count: number;
+  /** What it said. Empty for emails sent before wording could be edited. */
+  subject: string | null;
+  body: string | null;
+  attached: 0 | 1;
   sent_by_name: string | null;
+}
+
+/** The email an invoice is about to go out with, for the send screen to edit. */
+export interface InvoiceEmailDraft {
+  kind: "issued" | "resent";
+  from_name: string;
+  reply_to: string | null;
+  /** Whether the portal can send email at all. */
+  email_ready: boolean;
+  contacts: Array<{ email: string; full_name: string }>;
+  cc: string[];
+  wording: { subject: string; message: string };
+  standard: { subject: string; message: string };
+  /** Whether the firm has saved wording of its own in place of the standard. */
+  firm_wording: boolean;
+  facts: { number: string; firm_name: string; amount_due: string; due_on: string };
+  attachment_name: string;
+  limits: { subject: number; message: number };
+}
+
+/** An invoice email as edited on the send screen. */
+export interface InvoiceEmailComposed {
+  to: string[];
+  cc: string[];
+  subject: string;
+  message: string;
+  attach: boolean;
+  save_wording: boolean;
 }
 
 /** A client user looking at the invoice in the portal, grouped by person and kind. */

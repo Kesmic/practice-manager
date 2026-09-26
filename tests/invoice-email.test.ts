@@ -81,3 +81,81 @@ test("dates read as a letter writes them, tokens are long and unguessable, and a
   const encoded = base64Utf8("GH₵ 1,000 – café");
   assert.equal(new TextDecoder().decode(Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0))), "GH₵ 1,000 – café");
 });
+
+// ---------------------------------------------------------------- edited wording
+
+import {
+  STANDARD_INVOICE_EMAILS,
+  composeInvoiceEmail,
+  unknownPlaceholders,
+  wordingFor,
+  looksLikeEmail,
+} from "../shared/invoice-email-wording";
+
+test("edited wording fills in each bracketed word for the person it goes to", () => {
+  const { subject, text } = composeInvoiceEmail(
+    {
+      subject: "[Firm name]: invoice [Invoice number]",
+      message: "Hi [First name],\n\n[Amount due] is due on [Due date]. See it [here].\n\nThanks",
+    },
+    FACTS,
+  );
+  assert.equal(subject, "Kesmic Consultancy Hub: invoice CPL202608");
+  assert.equal(
+    text,
+    "Hi Kofi,\n\nGHS 1,494.00 is due on 15 October 2026. See it here (https://portal.example/api/invoice-mail/abc/view).\n\nThanks",
+  );
+});
+
+test("placeholders are read whatever their case, and unknown ones are left as typed and pointed out", () => {
+  const { text } = composeInvoiceEmail({ subject: "x", message: "Dear [NAME], re [Contact name]." }, FACTS);
+  assert.equal(text, "Dear Kofi Adom, re [Contact name].");
+  assert.deepEqual(unknownPlaceholders("Dear [Name], [Contact name] and [here] [Total]"), [
+    "[Contact name]",
+    "[Total]",
+  ]);
+});
+
+test("what the Partner types is text, never markup", () => {
+  const { html } = composeInvoiceEmail(
+    { subject: "x", message: '<script>alert(1)</script> <a href="https://evil.example">pay here</a>' },
+    FACTS,
+  );
+  assert.doesNotMatch(html, /<script>/);
+  assert.doesNotMatch(html, /<a href="https:\/\/evil/);
+  assert.match(html, /&lt;script&gt;/);
+});
+
+test("a subject is one line, and a line break inside a paragraph is kept", () => {
+  const { subject, html, text } = composeInvoiceEmail(
+    { subject: "Invoice\r\nBcc: someone@else.example", message: "Best regards,\nFinance Team" },
+    FACTS,
+  );
+  assert.equal(subject, "Invoice Bcc: someone@else.example");
+  assert.match(html, /Best regards,<br>Finance Team/);
+  assert.equal(text, "Best regards,\nFinance Team");
+});
+
+test("[Summary] on its own line is the box of figures; inside a sentence it is one line", () => {
+  const alone = composeInvoiceEmail({ subject: "x", message: "Hello\n\n[Summary]\n\nBye" }, FACTS);
+  assert.match(alone.html, /<table role="presentation"/);
+  assert.match(alone.text, /Invoice: CPL202608\nAmount due: GHS 1,494\.00\nDue date: 15 October 2026/);
+  const inline = composeInvoiceEmail({ subject: "x", message: "In short: [Summary]" }, FACTS);
+  assert.doesNotMatch(inline.html, /<table/);
+  assert.match(inline.text, /In short: Invoice: CPL202608 · Amount due: GHS 1,494\.00 · Due date: 15 October 2026/);
+});
+
+test("the firm's saved wording replaces the standard for invoices, never for reminders", () => {
+  const saved = { subject: "Our invoice [Invoice number]", message: "Dear [Name]" };
+  assert.deepEqual(wordingFor("issued", saved), saved);
+  assert.deepEqual(wordingFor("resent", saved), saved);
+  assert.deepEqual(wordingFor("overdue", saved), STANDARD_INVOICE_EMAILS.overdue);
+  assert.deepEqual(wordingFor("issued", { subject: "", message: " " }), STANDARD_INVOICE_EMAILS.issued);
+});
+
+test("an address is one plain mailbox", () => {
+  assert.ok(looksLikeEmail("kofi@adomfoods.com"));
+  for (const bad of ["kofi", "kofi@adom", "Kofi <kofi@adom.com>", "a@b.com, c@d.com", "a@b.com\nBcc: x@y.z"]) {
+    assert.ok(!looksLikeEmail(bad), bad);
+  }
+});

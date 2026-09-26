@@ -36,6 +36,8 @@ import type {
   WorkCover,
   GrowthPartnerOverview,
   InvoiceDetail,
+  InvoiceEmailComposed,
+  InvoiceEmailDraft,
   InvoiceList,
   PartnerPipeline,
   PartnerSelf,
@@ -1249,15 +1251,17 @@ export const api = {
     request<InvoiceDetail>(`/api/invoices/${id}/lines`, { method: "POST", body: line }),
   removeInvoiceLine: (lineId: string) =>
     request<InvoiceDetail>(`/api/invoice-lines/${lineId}`, { method: "DELETE" }),
-  sendInvoice: (id: string) =>
+  invoiceEmail: (id: string, kind: "issued" | "resent") =>
+    request<InvoiceEmailDraft>(`/api/invoices/${id}/email?kind=${kind}`),
+  sendInvoice: (id: string, email?: InvoiceEmailComposed) =>
     request<{ sent_to: string[]; failed: Array<{ email: string; error: string }> }>(
       `/api/invoices/${id}/send`,
-      { method: "POST" },
+      { method: "POST", body: email ?? {} },
     ),
-  resendInvoice: (id: string, alsoTo?: string) =>
+  resendInvoice: (id: string, email: InvoiceEmailComposed) =>
     request<{ sent_to: string[]; failed: Array<{ email: string; error: string }> }>(
       `/api/invoices/${id}/resend`,
-      { method: "POST", body: { also_to: alsoTo || undefined } },
+      { method: "POST", body: email },
     ),
   redraftInvoice: (id: string) =>
     request<InvoiceDetail>(`/api/invoices/${id}/redraft`, { method: "POST" }),
