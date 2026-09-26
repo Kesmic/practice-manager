@@ -43,7 +43,6 @@ import {
 import { MIN_SUPERVISOR_ROLE } from "../../shared/workflow";
 import { MIN_HR_ADMIN_ROLE } from "../../shared/hr";
 import { readSettings } from "./settings";
-import { sendToPerson } from "../email";
 import { feeFor, readCatalogue } from "./subscriptions";
 import {
   describeTerms,
@@ -59,6 +58,12 @@ import {
 } from "../../shared/discounts";
 import { activeDiscount, consumeDiscount, releaseDiscount } from "../discounts";
 import { accrueCommission, cancelCommission } from "../commissions";
+import {
+  PIXEL,
+  letterDate,
+  sendInvoiceEmail,
+  type InvoiceEmailKind,
+} from "../invoice-email";
 import { CURRENCIES, currencyOf } from "../../shared/money";
 import { billingDue, normaliseBillingDay } from "../../shared/billing";
 import {
@@ -72,7 +77,6 @@ import {
   taxableNetOf,
   whyNotALine,
   reminderDue,
-  reminderTone,
   round2,
   standingOf,
   stateAfterPayments,
@@ -255,7 +259,9 @@ async function recomputeDraft(env: Env, invoiceId: string): Promise<void> {
    * fee part.
    */
   const feeNet = taxableNetOf(rows, taken);
-  const taxed = computeTotals(feeNet, taxes);
+  // An invoice that is only things passed on at cost carries no tax lines at all, rather
+  // than a column of levies at nothing that a client will ask about.
+  const taxed = feeNet > 0 ? computeTotals(feeNet, taxes) : { taxes: [], tax_total: 0 };
   const totals = {
     net,
     taxes: taxed.taxes,
@@ -316,7 +322,7 @@ async function fullInvoice(env: Env, id: string) {
     .first<InvoiceRow & { client_name: string; client_code: string }>();
   if (!invoice) throw notFound("There is no such invoice.");
 
-  const [lines, taxes, payments, reminders] = await env.DB.batch([
+  const [lines, taxes, payments, reminders, emails, views] = await env.DB.batch([
     env.DB.prepare(
       `SELECT id, description, quantity, unit_amount, amount, source, subscription_period,
               taxable
@@ -336,6 +342,21 @@ async function fullInvoice(env: Env, id: string) {
       `SELECT step, days_late, sent_to, automatic, sent_at
          FROM invoice_reminders WHERE invoice_id = ? ORDER BY sent_at DESC`,
     ).bind(id),
+    env.DB.prepare(
+      `SELECT e.id, e.kind, e.recipient_email, e.recipient_name, e.cc, e.status, e.error,
+              e.automatic, e.sent_at, e.opened_at, e.last_opened_at, e.open_count,
+              e.clicked_at, e.click_count, u.full_name AS sent_by_name
+         FROM invoice_emails e LEFT JOIN users u ON u.id = e.sent_by
+        WHERE e.invoice_id = ? ORDER BY e.sent_at DESC`,
+    ).bind(id),
+    env.DB.prepare(
+      `SELECT cu.full_name, cu.email, v.what, MIN(v.viewed_at) AS first_at,
+              MAX(v.viewed_at) AS last_at, COUNT(*) AS times
+         FROM invoice_views v LEFT JOIN client_users cu ON cu.id = v.client_user_id
+        WHERE v.invoice_id = ?
+        GROUP BY v.client_user_id, v.what
+        ORDER BY last_at DESC`,
+    ).bind(id),
   ]);
 
   return {
@@ -344,6 +365,8 @@ async function fullInvoice(env: Env, id: string) {
     taxes: taxes.results,
     payments: payments.results,
     reminders: reminders.results,
+    emails: emails.results,
+    views: views.results,
     standing: standingOf(
       invoice,
       payments.results as unknown as PaymentLike[],
@@ -644,7 +667,7 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
     await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
     const settings = await readSettings(env);
-    const sent = await issueInvoice(env, params.id, firmCopies(settings, actor.email));
+    const sent = await issueInvoice(env, params.id, firmCopies(settings, actor.email), actor.id);
     return json(sent);
   });
 
@@ -685,7 +708,10 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
        * raise the corrected one.
        */
       env.DB.prepare(
-        `UPDATE invoice_lines SET subscription_period = NULL, client_service_id = NULL
+        `UPDATE invoice_lines
+            SET released_period = COALESCE(subscription_period, released_period),
+                released_service_id = COALESCE(client_service_id, released_service_id),
+                subscription_period = NULL, client_service_id = NULL
           WHERE invoice_id = ?`,
       ).bind(params.id),
     ]);
@@ -820,10 +846,236 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
 
   /** Chases one invoice by hand, outside the schedule. */
   router.post("/api/invoices/:id/remind", async ({ request, env, params }) => {
-    await requireRole(env, request, MIN_SUPERVISOR_ROLE);
-    const sent = await chase(env, params.id, false);
+    const actor = await requireRole(env, request, MIN_SUPERVISOR_ROLE);
+    const settings = await readSettings(env);
+    // On the day it falls due the letter is the due-today notice; after that, the reminder.
+    const due = await env.DB.prepare(`SELECT due_on FROM invoices WHERE id = ?`)
+      .bind(params.id)
+      .first<{ due_on: string }>();
+    if (due?.due_on === today()) {
+      const notice = await noticeDueToday(env, params.id, {
+        actorId: actor.id,
+        automatic: false,
+        cc: firmCopies(settings, actor.email),
+      });
+      if (!notice.sent) throw badRequest(notice.why ?? "There is nothing to chase.");
+      return json({ sent: true, step: 0, sent_to: notice.sent_to });
+    }
+    const sent = await chase(env, params.id, false, { actorId: actor.id, actorEmail: actor.email });
     if (!sent.sent) throw badRequest(sent.why ?? "There is nothing to chase.");
     return json(sent);
+  });
+
+  /**
+   * Sends an issued invoice again, in the same words as the first time, to its billing
+   * contacts and to one more address if somebody names it - the client's accountant,
+   * say, who never had a login. Logged like any other.
+   */
+  router.post("/api/invoices/:id/resend", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ also_to?: string }>(request);
+    const invoice = await env.DB.prepare(`SELECT state FROM invoices WHERE id = ?`)
+      .bind(params.id)
+      .first<{ state: InvoiceState }>();
+    if (!invoice) throw notFound("There is no such invoice.");
+    if (invoice.state === "draft") throw badRequest("A draft has not been sent yet. Issue it instead.");
+    if (invoice.state === "void") throw badRequest("A cancelled invoice is not sent again.");
+
+    const alsoTo = (body.also_to ?? "").trim();
+    if (alsoTo && !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(alsoTo)) {
+      throw badRequest("That does not look like an email address.");
+    }
+    const settings = await readSettings(env);
+    const outcome = await mailInvoice(env, params.id, "resent", {
+      actorId: actor.id,
+      automatic: false,
+      cc: firmCopies(settings, actor.email),
+      alsoTo: alsoTo || null,
+    });
+    if (!outcome.sent_to.length) {
+      throw badRequest(
+        outcome.failed.length
+          ? `It could not be sent: ${outcome.failed[0].error}`
+          : "There is nobody at that client to send it to. Add an address to send it to.",
+      );
+    }
+    return json(outcome);
+  });
+
+  /**
+   * Puts a cancelled invoice back to draft, under its own number, so it can be corrected
+   * and issued again. The client stops seeing it at once, because a client never sees a
+   * draft. The month and the work it billed are taken back, unless another invoice has
+   * billed them since - in which case it says which, rather than billing them twice.
+   */
+  router.post("/api/invoices/:id/redraft", async ({ request, env, params }) => {
+    await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const invoice = await env.DB.prepare(
+      `SELECT id, client_id, state, period_label FROM invoices WHERE id = ?`,
+    )
+      .bind(params.id)
+      .first<{ id: string; client_id: string; state: InvoiceState; period_label: string | null }>();
+    if (!invoice) throw notFound("There is no such invoice.");
+    if (invoice.state !== "void") throw badRequest("Only a cancelled invoice can go back to draft.");
+
+    const settings = await readSettings(env);
+    const termDays = Number(settings.invoice_terms_days) || 15;
+    const timestamp = nowIso();
+    try {
+      await env.DB.batch([
+        /*
+         * The month, from what the cancellation set aside - or, for an invoice cancelled
+         * before that was kept, from the period the invoice was raised for.
+         */
+        env.DB.prepare(
+          `UPDATE invoice_lines
+              SET subscription_period = COALESCE(released_period, ?),
+                  released_period = NULL
+            WHERE invoice_id = ? AND source = 'subscription'`,
+        ).bind(invoice.period_label, invoice.id),
+        env.DB.prepare(
+          `UPDATE invoice_lines
+              SET client_service_id = released_service_id, released_service_id = NULL
+            WHERE invoice_id = ? AND released_service_id IS NOT NULL`,
+        ).bind(invoice.id),
+        /*
+         * The commission its cancellation cancelled stays on record, detached, so the
+         * invoice can earn it afresh when it is issued again rather than colliding with
+         * the old row.
+         */
+        env.DB.prepare(
+          `UPDATE partner_commissions SET invoice_id = NULL, updated_at = ?
+            WHERE invoice_id = ? AND status = 'cancelled'`,
+        ).bind(timestamp, invoice.id),
+        env.DB.prepare(
+          `UPDATE invoices
+              SET state = 'draft', issued_on = NULL, sent_at = NULL, voided_at = NULL,
+                  void_reason = NULL, reminders_sent = 0, last_reminder_at = NULL,
+                  due_notice_at = NULL, due_on = ?, updated_at = ?
+            WHERE id = ? AND state = 'void'`,
+        ).bind(addDays(today(), termDays), timestamp, invoice.id),
+      ]);
+    } catch (err) {
+      if (/UNIQUE/i.test(String(err))) {
+        const other = invoice.period_label
+          ? await env.DB.prepare(
+              `SELECT i.number FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
+                WHERE l.client_id = ? AND l.subscription_period = ?`,
+            )
+              .bind(invoice.client_id, invoice.period_label)
+              .first<{ number: string }>()
+          : null;
+        throw conflict(
+          other
+            ? `${invoice.period_label} has been billed again on ${other.number}. Cancel or delete that one first, or delete this one.`
+            : "Something this invoice billed has been billed again on another invoice. Delete this one instead.",
+        );
+      }
+      throw err;
+    }
+    await recomputeDraft(env, invoice.id);
+    return json(await fullInvoice(env, invoice.id));
+  });
+
+  /**
+   * Deletes a draft or a cancelled invoice outright, so the client no longer sees it.
+   * The firm keeps one line - the number, the client, the amount, who and why - because
+   * a gap in the numbering is the first thing an auditor asks about.
+   */
+  router.delete("/api/invoices/:id", async ({ request, env, params }) => {
+    const actor = await requireRole(env, request, MIN_HR_ADMIN_ROLE);
+    const body = await readJson<{ reason?: string }>(request);
+    const reason = requireString(body.reason, "reason", { max: 300 });
+    const invoice = await env.DB.prepare(
+      `SELECT i.id, i.number, i.client_id, i.state, i.gross, i.currency, c.name AS client_name
+         FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ?`,
+    )
+      .bind(params.id)
+      .first<{
+        id: string;
+        number: string;
+        client_id: string;
+        state: InvoiceState;
+        gross: number;
+        currency: string;
+        client_name: string;
+      }>();
+    if (!invoice) throw notFound("There is no such invoice.");
+    if (invoice.state !== "draft" && invoice.state !== "void") {
+      throw badRequest("Only a draft or a cancelled invoice can be deleted. Cancel it first.");
+    }
+    if ((await paymentsFor(env, invoice.id)).length) {
+      throw badRequest("Money has been recorded against this invoice, so it cannot be deleted.");
+    }
+
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO invoice_deletions
+           (id, number, client_id, client_name, state, gross, currency, reason, deleted_by, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        newId(),
+        invoice.number,
+        invoice.client_id,
+        invoice.client_name,
+        invoice.state,
+        invoice.gross,
+        invoice.currency,
+        reason,
+        actor.id,
+        nowIso(),
+      ),
+      env.DB.prepare(`UPDATE partner_commissions SET invoice_id = NULL WHERE invoice_id = ?`).bind(invoice.id),
+      env.DB.prepare(`DELETE FROM invoice_emails WHERE invoice_id = ?`).bind(invoice.id),
+      env.DB.prepare(`DELETE FROM invoice_views WHERE invoice_id = ?`).bind(invoice.id),
+      env.DB.prepare(`DELETE FROM invoice_reminders WHERE invoice_id = ?`).bind(invoice.id),
+      env.DB.prepare(`DELETE FROM invoice_taxes WHERE invoice_id = ?`).bind(invoice.id),
+      env.DB.prepare(`DELETE FROM invoice_lines WHERE invoice_id = ?`).bind(invoice.id),
+      env.DB.prepare(`DELETE FROM invoices WHERE id = ?`).bind(invoice.id),
+    ]);
+    return noContent();
+  });
+
+  /*
+   * The two addresses an invoice email carries back. Open to anybody, because a mail app
+   * has no session: each only ever marks its own row by an unguessable token, and the
+   * link only ever leads to the invoice's own page in the client portal, never to an
+   * address taken from the request.
+   */
+  router.get("/api/invoice-mail/:token/open.gif", async ({ env, params }) => {
+    const at = nowIso();
+    await env.DB.prepare(
+      `UPDATE invoice_emails
+          SET opened_at = COALESCE(opened_at, ?), last_opened_at = ?, open_count = open_count + 1
+        WHERE token = ?`,
+    )
+      .bind(at, at, params.token)
+      .run();
+    return new Response(PIXEL, {
+      headers: {
+        "Content-Type": "image/gif",
+        "Cache-Control": "no-store, no-cache, must-revalidate, private",
+      },
+    });
+  });
+
+  router.get("/api/invoice-mail/:token/view", async ({ env, params }) => {
+    const at = nowIso();
+    const row = await env.DB.prepare(`SELECT invoice_id FROM invoice_emails WHERE token = ?`)
+      .bind(params.token)
+      .first<{ invoice_id: string }>();
+    if (row) {
+      await env.DB.prepare(
+        `UPDATE invoice_emails
+            SET clicked_at = COALESCE(clicked_at, ?), click_count = click_count + 1,
+                opened_at = COALESCE(opened_at, ?), last_opened_at = ?
+          WHERE token = ?`,
+      )
+        .bind(at, at, at, params.token)
+        .run();
+    }
+    const target = `${portalBase(env)}/client${row ? `/invoices/${row.invoice_id}` : "/invoices"}`;
+    return new Response(null, { status: 302, headers: { Location: target, "Cache-Control": "no-store" } });
   });
 
   /**
@@ -870,7 +1122,33 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
       (outcome.sent ? sent : skipped).push(row.id);
     }
 
-    return json({ considered: results.length, sent: sent.length, skipped: skipped.length });
+    /*
+     * And the notice on the day payment falls due, once, to anything issued and unpaid
+     * that falls due today.
+     */
+    const { results: dueToday } = await env.DB.prepare(
+      `SELECT id FROM invoices
+        WHERE state IN ('sent', 'part_paid') AND due_on = ? AND due_notice_at IS NULL`,
+    )
+      .bind(today())
+      .all<{ id: string }>();
+    const settings = await readSettings(env);
+    let noticed = 0;
+    for (const row of dueToday) {
+      const outcome = await noticeDueToday(env, row.id, {
+        actorId: null,
+        automatic: true,
+        cc: firmCopies(settings),
+      });
+      if (outcome.sent) noticed += 1;
+    }
+
+    return json({
+      considered: results.length,
+      sent: sent.length,
+      skipped: skipped.length,
+      due_today: noticed,
+    });
   });
 
   /**
@@ -977,6 +1255,22 @@ export function registerInvoiceRoutes(router: Router<Env>): void {
  * duplicating the assembly - two builders would be two invoices that disagree.
  */
 export async function serveDocument(env: Env, invoiceId: string): Promise<Response> {
+  const { html, filename } = await buildDocument(env, invoiceId);
+  return new Response(html, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      // Somebody's bill. Nothing should cache it.
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
+
+/** The invoice as a file: what is downloaded, and what travels with an invoice email. */
+async function buildDocument(
+  env: Env,
+  invoiceId: string,
+): Promise<{ html: string; filename: string }> {
   const row = await env.DB.prepare(
     `SELECT i.*, c.name AS client_name, c.code AS client_code, c.address AS client_address,
             c.tax_id AS client_tax_id
@@ -1099,14 +1393,114 @@ export async function serveDocument(env: Env, invoiceId: string): Promise<Respon
     },
   };
 
-  return new Response(renderInvoice(doc), {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${invoiceFilename(doc)}"`,
-      // Somebody's bill. Nothing should cache it.
-      "Cache-Control": "private, no-store",
-    },
+  return { html: renderInvoice(doc), filename: invoiceFilename(doc) };
+}
+
+/**
+ * Emails an invoice, in one of its four letters, to its billing contacts (and anybody
+ * named on top), with the invoice attached and the firm's finance address to reply to.
+ */
+async function mailInvoice(
+  env: Env,
+  invoiceId: string,
+  kind: InvoiceEmailKind,
+  options: { actorId: string | null; automatic: boolean; cc: string[]; alsoTo?: string | null },
+): Promise<{ sent_to: string[]; failed: Array<{ email: string; error: string }> }> {
+  const invoice = await env.DB.prepare(
+    `SELECT id, client_id, number, gross, balance_due, due_on, currency FROM invoices WHERE id = ?`,
+  )
+    .bind(invoiceId)
+    .first<{
+      id: string;
+      client_id: string;
+      number: string;
+      gross: number;
+      balance_due: number | null;
+      due_on: string;
+      currency: string;
+    }>();
+  if (!invoice) throw notFound("There is no such invoice.");
+
+  const recipients = await billingContacts(env, invoice.client_id);
+  if (options.alsoTo && !recipients.some((r) => r.email.toLowerCase() === options.alsoTo!.toLowerCase())) {
+    recipients.push({ email: options.alsoTo, full_name: "" });
+  }
+  if (!recipients.length) return { sent_to: [], failed: [] };
+
+  const settings = await readSettings(env);
+  const payments = await paymentsFor(env, invoiceId);
+  const standing = standingOf(
+    { ...invoice, state: "sent" as InvoiceState },
+    payments,
+    today(),
+  );
+  const { html, filename } = await buildDocument(env, invoiceId);
+
+  return await sendInvoiceEmail(env, {
+    invoiceId,
+    kind,
+    recipients,
+    cc: options.cc,
+    replyTo: (settings.firm_finance_email ?? "").trim() || null,
+    firmName: settings.firm_name,
+    number: invoice.number,
+    amountDue: formatMoney(
+      kind === "issued" || kind === "resent" ? askedFor(invoice) : standing.outstanding,
+      invoice.currency,
+    ),
+    dueOn: letterDate(invoice.due_on),
+    attachment: { filename, html },
+    actorId: options.actorId,
+    automatic: options.automatic,
   });
+}
+
+/**
+ * The notice on the day payment falls due. Once, unless somebody sends it by hand; and
+ * never for an invoice already settled, or on any other day - "due today" said the day
+ * after is simply untrue.
+ */
+async function noticeDueToday(
+  env: Env,
+  invoiceId: string,
+  options: { actorId: string | null; automatic: boolean; cc: string[] },
+): Promise<{ sent: boolean; why?: string; sent_to?: string[] }> {
+  const invoice = await env.DB.prepare(
+    `SELECT id, state, gross, balance_due, due_on, due_notice_at FROM invoices WHERE id = ?`,
+  )
+    .bind(invoiceId)
+    .first<{
+      id: string;
+      state: InvoiceState;
+      gross: number;
+      balance_due: number | null;
+      due_on: string;
+      due_notice_at: string | null;
+    }>();
+  if (!invoice) return { sent: false, why: "There is no such invoice." };
+  if (invoice.state !== "sent" && invoice.state !== "part_paid") {
+    return { sent: false, why: "Only an issued, unpaid invoice is chased." };
+  }
+  if (invoice.due_on !== today()) return { sent: false, why: "That invoice is not due today." };
+  if (options.automatic && invoice.due_notice_at) {
+    return { sent: false, why: "The notice has already gone today." };
+  }
+  const standing = standingOf(invoice, await paymentsFor(env, invoiceId), today());
+  if (standing.outstanding <= 0) return { sent: false, why: "That invoice is settled." };
+
+  const outcome = await mailInvoice(env, invoiceId, "due_today", options);
+  if (!outcome.sent_to.length) {
+    return {
+      sent: false,
+      why: outcome.failed.length
+        ? `It could not be sent: ${outcome.failed[0].error}`
+        : "There is nobody at that client to send it to.",
+    };
+  }
+  await env.DB.prepare(`UPDATE invoices SET due_notice_at = ?, updated_at = ? WHERE id = ?`)
+    .bind(nowIso(), nowIso(), invoiceId)
+    .run();
+  return { sent: true, sent_to: outcome.sent_to };
 }
 
 /**
@@ -1119,6 +1513,7 @@ async function chase(
   env: Env,
   invoiceId: string,
   automatic: boolean,
+  options: { actorId: string | null; actorEmail?: string | null } = { actorId: null },
 ): Promise<{ sent: boolean; step?: number; why?: string }> {
   const invoice = await env.DB.prepare(
     `SELECT i.id, i.number, i.state, i.gross, i.balance_due, i.due_on, i.currency,
@@ -1156,35 +1551,19 @@ async function chase(
   }
 
   const settings = await readSettings(env);
-  const standing = standingOf(invoice, payments, today());
-  const tone = reminderTone(due.days_late);
-  const headline =
-    tone === "gentle"
-      ? `Invoice ${invoice.number} became due on ${invoice.due_on} and is still outstanding.`
-      : tone === "firm"
-        ? `Invoice ${invoice.number} is now ${due.days_late} days overdue.`
-        : `Invoice ${invoice.number} is ${due.days_late} days overdue and needs your attention.`;
-
   const timestamp = nowIso();
-  for (const contact of contacts) {
-    await sendToPerson(env, {
-      to: contact,
-      subject: `Invoice ${invoice.number} - ${formatMoney(standing.outstanding, invoice.currency)} outstanding`,
-      headline,
-      detail:
-        `Outstanding: ${formatMoney(standing.outstanding, invoice.currency)}` +
-        (standing.outstanding < invoice.gross
-          ? `\nInvoiced: ${formatMoney(invoice.gross, invoice.currency)}`
-          : "") +
-        (tone === "final"
-          ? "\n\nIf this has been paid, please let us know and we will match it off."
-          : ""),
-      link: `${portalBase(env)}/client/invoices/${invoice.id}`,
-      linkLabel: "View the invoice",
-      firmName: settings.firm_name,
-      reason: `you are a billing contact for ${settings.firm_name}`,
-      cc: firmCopies(settings),
-    });
+  const outcome = await mailInvoice(env, invoiceId, "overdue", {
+    actorId: options.actorId,
+    automatic,
+    cc: firmCopies(settings, options.actorEmail),
+  });
+  if (!outcome.sent_to.length) {
+    return {
+      sent: false,
+      why: outcome.failed.length
+        ? `It could not be sent: ${outcome.failed[0].error}`
+        : "There is nobody at that client to send it to.",
+    };
   }
 
   await env.DB.batch([
@@ -1200,7 +1579,7 @@ async function chase(
       invoiceId,
       due.step,
       due.days_late,
-      contacts.map((c) => c.email).join(", "),
+      outcome.sent_to.join(", "),
       automatic ? 1 : 0,
       timestamp,
     ),
@@ -1484,7 +1863,8 @@ export async function issueInvoice(
   env: Env,
   invoiceId: string,
   copies: string[],
-): Promise<{ sent_to: string[] }> {
+  actorId: string | null = null,
+): Promise<{ sent_to: string[]; failed: Array<{ email: string; error: string }> }> {
     const { invoice } = await fullInvoice(env, invoiceId);
     if (invoice.state !== "draft") {
       throw badRequest("Only a draft can be issued. This one has already been sent.");
@@ -1493,7 +1873,6 @@ export async function issueInvoice(
       throw badRequest("An invoice for nothing cannot be issued.");
     }
 
-    const settings = await readSettings(env);
     const contacts = await billingContacts(env, invoice.client_id);
     const timestamp = nowIso();
 
@@ -1515,23 +1894,12 @@ export async function issueInvoice(
      */
     await accrueCommission(env, invoiceId);
 
-    for (const contact of contacts) {
-      await sendToPerson(env, {
-        to: contact,
-        subject: `Invoice ${invoice.number} from ${settings.firm_name}`,
-        headline: `Invoice ${invoice.number} for ${formatMoney(invoice.gross, invoice.currency)} is due on ${invoice.due_on}.`,
-        detail: invoice.period_label
-          ? `This covers your subscription for ${invoice.period_label}.`
-          : null,
-        link: `${portalBase(env)}/client/invoices/${invoice.id}`,
-        linkLabel: "View the invoice",
-        firmName: settings.firm_name,
-        reason: `you are a billing contact for ${settings.firm_name}`,
-        cc: copies,
-      });
-    }
-
-    return { sent_to: contacts.map((c) => c.email) };
+    if (!contacts.length) return { sent_to: [], failed: [] };
+    return await mailInvoice(env, invoiceId, "issued", {
+      actorId,
+      automatic: actorId === null,
+      cc: copies,
+    });
 }
 
 /**

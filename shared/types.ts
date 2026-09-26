@@ -1290,12 +1290,43 @@ export interface InvoiceReminderRow {
   sent_at: string;
 }
 
+/** One email about an invoice, to one person, with what became of it. */
+export interface InvoiceEmailRow {
+  id: string;
+  kind: "issued" | "resent" | "due_today" | "overdue";
+  recipient_email: string;
+  recipient_name: string | null;
+  cc: string | null;
+  status: "sent" | "failed";
+  error: string | null;
+  automatic: 0 | 1;
+  sent_at: string;
+  opened_at: string | null;
+  last_opened_at: string | null;
+  open_count: number;
+  clicked_at: string | null;
+  click_count: number;
+  sent_by_name: string | null;
+}
+
+/** A client user looking at the invoice in the portal, grouped by person and kind. */
+export interface InvoiceViewRow {
+  full_name: string | null;
+  email: string | null;
+  what: "page" | "download";
+  first_at: string;
+  last_at: string;
+  times: number;
+}
+
 export interface InvoiceDetail {
   invoice: InvoiceSummary & { note: string | null };
   lines: InvoiceLineRow[];
   taxes: InvoiceTaxRow[];
   payments: InvoicePaymentRow[];
   reminders: InvoiceReminderRow[];
+  emails: InvoiceEmailRow[];
+  views: InvoiceViewRow[];
   standing: Standing;
 }
 

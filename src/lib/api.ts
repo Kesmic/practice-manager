@@ -1250,7 +1250,19 @@ export const api = {
   removeInvoiceLine: (lineId: string) =>
     request<InvoiceDetail>(`/api/invoice-lines/${lineId}`, { method: "DELETE" }),
   sendInvoice: (id: string) =>
-    request<{ sent_to: string[] }>(`/api/invoices/${id}/send`, { method: "POST" }),
+    request<{ sent_to: string[]; failed: Array<{ email: string; error: string }> }>(
+      `/api/invoices/${id}/send`,
+      { method: "POST" },
+    ),
+  resendInvoice: (id: string, alsoTo?: string) =>
+    request<{ sent_to: string[]; failed: Array<{ email: string; error: string }> }>(
+      `/api/invoices/${id}/resend`,
+      { method: "POST", body: { also_to: alsoTo || undefined } },
+    ),
+  redraftInvoice: (id: string) =>
+    request<InvoiceDetail>(`/api/invoices/${id}/redraft`, { method: "POST" }),
+  deleteInvoice: (id: string, reason: string) =>
+    request<void>(`/api/invoices/${id}`, { method: "DELETE", body: { reason } }),
   voidInvoice: (id: string, reason: string) =>
     request<void>(`/api/invoices/${id}/void`, { method: "POST", body: { reason } }),
   recordPayment: (

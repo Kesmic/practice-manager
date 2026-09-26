@@ -339,6 +339,27 @@ interface ProviderRequest {
 }
 
 /**
+ * What a message may carry beyond the basics. Only invoices use these today: the
+ * invoice itself attached, replies going to the finance address rather than to a
+ * sending address nobody reads, and the firm's name on the envelope.
+ */
+export interface MessageExtras {
+  attachments?: Array<{ filename: string; content: string; contentType: string }>;
+  replyTo?: string;
+  /** The display name to send under, keeping the configured sending address. */
+  fromName?: string;
+}
+
+/** The configured sender with a different display name, or as configured. */
+function sender(env: Env, fromName?: string): string {
+  const from = fromAddress(env.EMAIL_FROM ?? "");
+  if (!fromName) return env.EMAIL_FROM ?? "";
+  // Quotes and angle brackets out of a name that goes into a header.
+  const name = fromName.replace(/["<>\r\n]/g, "").trim();
+  return name ? `${name} <${from.email}>` : (env.EMAIL_FROM ?? "");
+}
+
+/**
  * How each supported service wants to be asked. The differences are the URL, the
  * name of the auth header and the field names; everything else about sending is the
  * same, which is why this is a lookup table rather than three code paths.
@@ -363,39 +384,59 @@ export const PROVIDERS: Record<
      * recipient believe it was between the two of them.
      */
     cc: string[],
+    extras?: MessageExtras,
   ) => ProviderRequest
 > = {
-  resend: (env, to, subject, text, html, cc) => ({
+  resend: (env, to, subject, text, html, cc, extras = {}) => ({
     url: "https://api.resend.com/emails",
     headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
     body: {
-      from: env.EMAIL_FROM,
+      from: sender(env, extras.fromName),
       to: [to],
       ...(cc.length ? { cc } : {}),
+      ...(extras.replyTo ? { reply_to: extras.replyTo } : {}),
       subject,
       text,
       html,
+      ...(extras.attachments?.length
+        ? {
+            attachments: extras.attachments.map((a) => ({
+              filename: a.filename,
+              content: a.content,
+            })),
+          }
+        : {}),
     },
   }),
 
-  postmark: (env, to, subject, text, html, cc) => ({
+  postmark: (env, to, subject, text, html, cc, extras = {}) => ({
     url: "https://api.postmarkapp.com/email",
     headers: { "X-Postmark-Server-Token": env.EMAIL_API_KEY ?? "", Accept: "application/json" },
     body: {
-      From: env.EMAIL_FROM,
+      From: sender(env, extras.fromName),
       To: to,
       ...(cc.length ? { Cc: cc.join(",") } : {}),
+      ...(extras.replyTo ? { ReplyTo: extras.replyTo } : {}),
       Subject: subject,
       TextBody: text,
       HtmlBody: html,
       // Postmark separates transactional mail from bulk. These are notifications
       // about someone's own work, so they belong on the transactional stream.
       MessageStream: "outbound",
+      ...(extras.attachments?.length
+        ? {
+            Attachments: extras.attachments.map((a) => ({
+              Name: a.filename,
+              Content: a.content,
+              ContentType: a.contentType,
+            })),
+          }
+        : {}),
     },
   }),
 
-  sendgrid: (env, to, subject, text, html, cc) => {
-    const from = fromAddress(env.EMAIL_FROM ?? "");
+  sendgrid: (env, to, subject, text, html, cc, extras = {}) => {
+    const from = fromAddress(sender(env, extras.fromName));
     return {
       url: "https://api.sendgrid.com/v3/mail/send",
       headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
@@ -407,11 +448,22 @@ export const PROVIDERS: Record<
           },
         ],
         from: from.name ? { email: from.email, name: from.name } : { email: from.email },
+        ...(extras.replyTo ? { reply_to: { email: extras.replyTo } } : {}),
         subject,
         content: [
           { type: "text/plain", value: text },
           { type: "text/html", value: html },
         ],
+        ...(extras.attachments?.length
+          ? {
+              attachments: extras.attachments.map((a) => ({
+                content: a.content,
+                filename: a.filename,
+                type: a.contentType,
+                disposition: "attachment",
+              })),
+            }
+          : {}),
       },
     };
   },
@@ -442,14 +494,15 @@ function providerName(env: Env): string {
   return name;
 }
 
-/** Hands one message to whichever service is configured. */
-async function deliver(
+/** Hands one message to whichever service is configured. Throws with the provider's words. */
+export async function deliver(
   env: Env,
   to: string,
   subject: string,
   text: string,
   html: string,
   cc: string[] = [],
+  extras: MessageExtras = {},
 ): Promise<void> {
   const name = providerName(env);
   /*
@@ -458,7 +511,7 @@ async function deliver(
    * address that appears in both.
    */
   const copies = copyList(to, cc);
-  const request = PROVIDERS[name](env, to, subject, text, html, copies);
+  const request = PROVIDERS[name](env, to, subject, text, html, copies, extras);
 
   const response = await fetch(request.url, {
     method: "POST",
